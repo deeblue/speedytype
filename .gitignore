@@ -1,0 +1,6 @@
+.env
+bad.env
+__pycache__/
+.pytest_cache/
+*.pyc
+test_silence.wav

@@ -1,0 +1,61 @@
+{
+  "audio_path": "phase3_boundary_audio\\boundary_case_16k.wav",
+  "baseline": {
+    "stt_seconds": 1.588426400005119,
+    "llm_seconds": 0.768473299976904,
+    "raw": "先交代一下背景,先交代一下背景 接著我們下週一,啊,不對,下週三要跟 BJ 團隊開會",
+    "polished": "下週三要跟 BJ 團隊開會。"
+  },
+  "quasi_streaming": {
+    "stt_tail_seconds": 1.2913261999841783,
+    "total_whisper_request_seconds": 6.730650999961654,
+    "merged": "先招待一下背景 接著我們下週一 啊 不對 下週三要跟 BJ 團隊開會",
+    "polished": "背景說明如下：\n\n我們下週三要與 BJ 團隊開會。",
+    "chunks": [
+      {
+        "index": 1,
+        "audio_start_seconds": 0.0,
+        "audio_end_seconds": 3.0,
+        "audio_duration_seconds": 3.0,
+        "commit_until_seconds": 2.25,
+        "simulated_send_time_seconds": 3.0,
+        "whisper_response_seconds": 1.9039775999845006,
+        "simulated_finish_time_seconds": 4.903977599984501,
+        "text": "先招待一下背景 先招待一下背景"
+      },
+      {
+        "index": 2,
+        "audio_start_seconds": 2.25,
+        "audio_end_seconds": 5.25,
+        "audio_duration_seconds": 3.0,
+        "commit_until_seconds": 4.5,
+        "simulated_send_time_seconds": 5.25,
+        "whisper_response_seconds": 1.6853471999929752,
+        "simulated_finish_time_seconds": 6.935347199992975,
+        "text": "接著我們下週一"
+      },
+      {
+        "index": 3,
+        "audio_start_seconds": 4.5,
+        "audio_end_seconds": 7.5,
+        "audio_duration_seconds": 3.0,
+        "commit_until_seconds": 6.75,
+        "simulated_send_time_seconds": 7.5,
+        "whisper_response_seconds": 1.9302280999836512,
+        "simulated_finish_time_seconds": 9.430228099983651,
+        "text": "下週一 啊 不對 下週三"
+      },
+      {
+        "index": 4,
+        "audio_start_seconds": 6.75,
+        "audio_end_seconds": 9.35,
+        "audio_duration_seconds": 2.5999999999999996,
+        "commit_until_seconds": 9.35,
+        "simulated_send_time_seconds": 9.430228099983651,
+        "whisper_response_seconds": 1.2110981000005268,
+        "simulated_finish_time_seconds": 10.641326199984178,
+        "text": "下週三要跟 BJ 團隊開會"
+      }
+    ]
+  }
+}

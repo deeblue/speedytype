@@ -1,0 +1,380 @@
+{
+  "anthropic": {
+    "skipped": true,
+    "reason": "No Anthropic API billing plan per task instruction."
+  },
+  "providers": {
+    "openai_models_sample": [
+      "gpt-5",
+      "gpt-5-2025-08-07",
+      "gpt-5-chat-latest",
+      "gpt-5-codex",
+      "gpt-5-mini",
+      "gpt-5-mini-2025-08-07",
+      "gpt-5-nano",
+      "gpt-5-nano-2025-08-07",
+      "gpt-5-pro",
+      "gpt-5-pro-2025-10-06",
+      "gpt-5-search-api",
+      "gpt-5-search-api-2025-10-14",
+      "gpt-5.1",
+      "gpt-5.1-2025-11-13",
+      "gpt-5.1-chat-latest",
+      "gpt-5.1-codex",
+      "gpt-5.1-codex-max",
+      "gpt-5.1-codex-mini",
+      "gpt-5.2",
+      "gpt-5.2-2025-12-11",
+      "gpt-5.2-chat-latest",
+      "gpt-5.2-codex",
+      "gpt-5.2-pro",
+      "gpt-5.2-pro-2025-12-11",
+      "gpt-5.3-chat-latest",
+      "gpt-5.3-codex",
+      "gpt-5.4",
+      "gpt-5.4-2026-03-05",
+      "gpt-5.4-mini",
+      "gpt-5.4-mini-2026-03-17"
+    ],
+    "gemini_flash_models": [
+      "gemini-2.0-flash",
+      "gemini-2.0-flash-001",
+      "gemini-2.0-flash-lite",
+      "gemini-2.0-flash-lite-001",
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-image",
+      "gemini-2.5-flash-lite",
+      "gemini-2.5-flash-preview-tts",
+      "gemini-3-flash-preview",
+      "gemini-3.1-flash-image",
+      "gemini-3.1-flash-image-preview",
+      "gemini-3.1-flash-lite",
+      "gemini-3.1-flash-lite-image",
+      "gemini-3.1-flash-lite-preview",
+      "gemini-3.1-flash-tts-preview",
+      "gemini-3.5-flash",
+      "gemini-flash-latest",
+      "gemini-flash-lite-latest",
+      "gemini-omni-flash-preview"
+    ],
+    "minimax_models_from_docs": [
+      "MiniMax-M3",
+      "MiniMax-M2.7",
+      "MiniMax-M2.7-highspeed",
+      "MiniMax-M2.5",
+      "MiniMax-M2.5-highspeed"
+    ]
+  },
+  "probes": [
+    {
+      "label": "gemini:gemini-3.5-flash:thinking=default",
+      "ok": true,
+      "text": "你好",
+      "llm_call_seconds": 2.790158799995,
+      "retry_wait_seconds": 0.0,
+      "usage": {
+        "promptTokenCount": 245,
+        "candidatesTokenCount": 1,
+        "totalTokenCount": 517,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 245
+          }
+        ],
+        "thoughtsTokenCount": 271,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "label": "gemini:gemini-3.5-flash:thinking=none",
+      "ok": false,
+      "error": "Gemini API error status=400, body:\n{\n  \"error\": {\n    \"code\": 400,\n    \"message\": \"Invalid value at 'generation_config.thinking_config.thinking_level' (type.googleapis.com/google.ai.generativelanguage.v1beta.ThinkingConfig.ThinkingLevel), \\\"none\\\"\",\n    \"status\": \"INVALID_ARGUMENT\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.BadRequest\",\n        \"fieldViolations\": [\n          {\n            \"field\": \"generation_config.thinking_config.thinking_level\",\n            \"description\": \"Invalid value at 'generation_config.thinking_config.thinking_level' (type.googleapis.com/google.ai.generativelanguage.v1beta.ThinkingConfig.ThinkingLevel), \\\"none\\\"\"\n          }\n        ]\n      }\n    ]\n  }\n}\n"
+    },
+    {
+      "label": "gemini:gemini-3.5-flash:thinking=minimal",
+      "ok": true,
+      "text": "你好",
+      "llm_call_seconds": 2.327013200003,
+      "retry_wait_seconds": 0.0,
+      "usage": {
+        "promptTokenCount": 245,
+        "candidatesTokenCount": 1,
+        "totalTokenCount": 246,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 245
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "label": "gemini:gemini-3.5-flash:thinking=low",
+      "ok": true,
+      "text": "你好",
+      "llm_call_seconds": 2.773877900006,
+      "retry_wait_seconds": 0.0,
+      "usage": {
+        "promptTokenCount": 245,
+        "candidatesTokenCount": 1,
+        "totalTokenCount": 449,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 245
+          }
+        ],
+        "thoughtsTokenCount": 203,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "label": "gemini:gemini-3.1-flash-lite:thinking=default",
+      "ok": true,
+      "text": "您好，請問有什麼內容需要協助修飾與整理？",
+      "llm_call_seconds": 0.613646299986,
+      "retry_wait_seconds": 0.0,
+      "usage": {
+        "promptTokenCount": 245,
+        "candidatesTokenCount": 14,
+        "totalTokenCount": 259,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 245
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "label": "gemini:gemini-3.1-flash-lite:thinking=none",
+      "ok": false,
+      "error": "Gemini API error status=400, body:\n{\n  \"error\": {\n    \"code\": 400,\n    \"message\": \"Invalid value at 'generation_config.thinking_config.thinking_level' (type.googleapis.com/google.ai.generativelanguage.v1beta.ThinkingConfig.ThinkingLevel), \\\"none\\\"\",\n    \"status\": \"INVALID_ARGUMENT\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.BadRequest\",\n        \"fieldViolations\": [\n          {\n            \"field\": \"generation_config.thinking_config.thinking_level\",\n            \"description\": \"Invalid value at 'generation_config.thinking_config.thinking_level' (type.googleapis.com/google.ai.generativelanguage.v1beta.ThinkingConfig.ThinkingLevel), \\\"none\\\"\"\n          }\n        ]\n      }\n    ]\n  }\n}\n"
+    },
+    {
+      "label": "gemini:gemini-3.1-flash-lite:thinking=minimal",
+      "ok": true,
+      "text": "您好，請問有什麼內容需要協助修飾與整理？",
+      "llm_call_seconds": 0.772613999987,
+      "retry_wait_seconds": 0.0,
+      "usage": {
+        "promptTokenCount": 245,
+        "candidatesTokenCount": 14,
+        "totalTokenCount": 259,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 245
+          }
+        ],
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "label": "gemini:gemini-3.1-flash-lite:thinking=low",
+      "ok": true,
+      "text": "您好，請提供您需要修飾的語音輸入內容。",
+      "llm_call_seconds": 1.09020560002,
+      "retry_wait_seconds": 0.0,
+      "usage": {
+        "promptTokenCount": 245,
+        "candidatesTokenCount": 15,
+        "totalTokenCount": 380,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 245
+          }
+        ],
+        "thoughtsTokenCount": 120,
+        "serviceTier": "standard"
+      }
+    },
+    {
+      "label": "openai:gpt-5.5:reasoning=none",
+      "ok": true,
+      "text": "你好",
+      "llm_call_seconds": 1.7475538,
+      "retry_wait_seconds": 0.0,
+      "usage": {
+        "input_tokens": 305,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 5,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 310
+      }
+    },
+    {
+      "label": "openai:gpt-5.5:reasoning=minimal",
+      "ok": false,
+      "error": "OpenAI API error status=400, body:\n{\n  \"error\": {\n    \"message\": \"Unsupported value: 'minimal' is not supported with the 'gpt-5.5' model. Supported values are: 'none', 'low', 'medium', 'high', and 'xhigh'.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": \"reasoning.effort\",\n    \"code\": \"unsupported_value\"\n  }\n}"
+    },
+    {
+      "label": "openai:gpt-5.5:reasoning=low",
+      "ok": true,
+      "text": "你好",
+      "llm_call_seconds": 1.466427800013,
+      "retry_wait_seconds": 0.0,
+      "usage": {
+        "input_tokens": 305,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 5,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 310
+      }
+    },
+    {
+      "label": "openai:gpt-5.4-mini:reasoning=none",
+      "ok": true,
+      "text": "你好",
+      "llm_call_seconds": 0.8947912,
+      "retry_wait_seconds": 0.0,
+      "usage": {
+        "input_tokens": 305,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 5,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 310
+      }
+    },
+    {
+      "label": "openai:gpt-5.4-mini:reasoning=minimal",
+      "ok": false,
+      "error": "OpenAI API error status=400, body:\n{\n  \"error\": {\n    \"message\": \"Unsupported value: 'minimal' is not supported with the 'gpt-5.4-mini' model. Supported values are: 'none', 'low', 'medium', 'high', and 'xhigh'.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": \"reasoning.effort\",\n    \"code\": \"unsupported_value\"\n  }\n}"
+    },
+    {
+      "label": "openai:gpt-5.4-mini:reasoning=low",
+      "ok": true,
+      "text": "你好",
+      "llm_call_seconds": 0.944575300004,
+      "retry_wait_seconds": 0.0,
+      "usage": {
+        "input_tokens": 305,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 5,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 310
+      }
+    },
+    {
+      "label": "openai:gpt-5.4-nano:reasoning=none",
+      "ok": true,
+      "text": "你好",
+      "llm_call_seconds": 15.709076200001,
+      "retry_wait_seconds": 0.0,
+      "usage": {
+        "input_tokens": 305,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 5,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 310
+      }
+    },
+    {
+      "label": "openai:gpt-5.4-nano:reasoning=minimal",
+      "ok": false,
+      "error": "OpenAI API error status=400, body:\n{\n  \"error\": {\n    \"message\": \"Unsupported value: 'minimal' is not supported with the 'gpt-5.4-nano' model. Supported values are: 'none', 'low', 'medium', 'high', and 'xhigh'.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": \"reasoning.effort\",\n    \"code\": \"unsupported_value\"\n  }\n}"
+    },
+    {
+      "label": "openai:gpt-5.4-nano:reasoning=low",
+      "ok": true,
+      "text": "",
+      "llm_call_seconds": 0.812906300009,
+      "retry_wait_seconds": 0.0,
+      "usage": {
+        "input_tokens": 305,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 4,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 309
+      }
+    },
+    {
+      "label": "minimax:MiniMax-M3:thinking=default",
+      "ok": true,
+      "text": "你好",
+      "llm_call_seconds": 2.410830400011,
+      "retry_wait_seconds": 0.0,
+      "usage": {
+        "total_tokens": 551,
+        "total_characters": 0,
+        "prompt_tokens": 413,
+        "completion_tokens": 138,
+        "completion_tokens_details": {
+          "reasoning_tokens": 134
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        }
+      }
+    },
+    {
+      "label": "minimax:MiniMax-M3:thinking=disabled",
+      "ok": true,
+      "text": "你好",
+      "llm_call_seconds": 2.478872799984,
+      "retry_wait_seconds": 0.0,
+      "usage": {
+        "total_tokens": 402,
+        "total_characters": 0,
+        "prompt_tokens": 400,
+        "completion_tokens": 2,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        }
+      }
+    },
+    {
+      "label": "minimax:MiniMax-M3:thinking=adaptive",
+      "ok": true,
+      "text": "你好",
+      "llm_call_seconds": 3.475094499998,
+      "retry_wait_seconds": 0.0,
+      "usage": {
+        "total_tokens": 621,
+        "total_characters": 0,
+        "prompt_tokens": 413,
+        "completion_tokens": 208,
+        "completion_tokens_details": {
+          "reasoning_tokens": 205
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        }
+      }
+    }
+  ]
+}

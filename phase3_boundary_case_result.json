@@ -1,0 +1,42 @@
+{
+  "baseline": {
+    "stt_wall_seconds": 2.2578645999892615,
+    "raw": "先交代一下背景,先交代一下背景 接著我們下週一,啊,不對,下週三要跟 BJ 團隊開會",
+    "polished": "下週三要跟 BJ 團隊開會。"
+  },
+  "quasi_streaming": {
+    "stt_tail_seconds": 5.092520500009414,
+    "merged": "先招待一下背景 接著我們下週一 啊 不對 下週三要跟 BJ 團隊開會",
+    "polished": "背景說明如下：\n\n我們下週三要與 BJ 團隊開會。",
+    "chunks": [
+      {
+        "index": 1,
+        "start_seconds": 0.0,
+        "end_seconds": 3.0,
+        "commit_until_seconds": 2.25,
+        "text": "先招待一下背景 先招待一下背景"
+      },
+      {
+        "index": 2,
+        "start_seconds": 2.25,
+        "end_seconds": 5.25,
+        "commit_until_seconds": 4.5,
+        "text": "接著我們下週一"
+      },
+      {
+        "index": 3,
+        "start_seconds": 4.5,
+        "end_seconds": 7.5,
+        "commit_until_seconds": 6.75,
+        "text": "下週一 啊 不對 下週三"
+      },
+      {
+        "index": 4,
+        "start_seconds": 6.75,
+        "end_seconds": 9.35,
+        "commit_until_seconds": 9.35,
+        "text": "下週三要跟 BJ 團隊開會"
+      }
+    ]
+  }
+}
