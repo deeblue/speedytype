@@ -176,3 +176,215 @@ Phase 4 headline:
 - Real-path average tail latency is `3.575354s`, not the older harness-inflated `3.978559s`, but it still misses the `1.0-1.5s` target.
 - Disambiguation hints showed no measurable benefit on Round 2: overall term accuracy stayed `93.8%`.
 - `whisper-1` remains the recommended STT default for now because it had the best focused `BJ 團隊` accuracy in the Phase 4 comparison.
+
+## Phase 5: Daily-Usability Hardening
+
+Phase 5 shifts from "does the architecture work" validation to closing gaps that block daily use. This round is scoped as Part A (clipboard protection) → Part B (background daemon + visual feedback, checkpointed) → Part C (documentation).
+
+### Part A: Clipboard Protection (completed)
+
+Problem: every paste previously overwrote the user's actual clipboard contents unconditionally. If the user had just copied something else (code, a link) before dictating, it was permanently lost.
+
+Implementation:
+
+- [speedytype/clipboard.py](speedytype/clipboard.py) adds `snapshot_clipboard()` / `restore_clipboard()`, using `win32clipboard` to capture and restore **all** clipboard formats present (not just text), so images/file-drops/app-specific formats are handled without crashing even when they can't be fully round-tripped.
+- `paste_text_preserving_clipboard()` wraps the existing `paste_text()`: snapshot before paste, paste as before, then restore the original clipboard content after a configurable delay (`CLIPBOARD_RESTORE_DELAY_SECONDS`, default `0.3s`). The restore runs on a background thread by default so it does not add to measured pipeline latency (the paste has already visibly completed by then).
+- `speedytype/pipeline.py` now calls `paste_text_preserving_clipboard()` instead of `paste_text()`.
+
+Restore-delay evidence ([scripts/test_clipboard_restore.py](scripts/test_clipboard_restore.py)):
+
+- Tested delays `0.0s, 0.02s, 0.05s, 0.15s, 0.3s, 0.6s` against Notepad and an Edge browser textarea. All delays down to `0.0s` passed cleanly except one flaky Notepad readback at `0.02s` that was not reproducible over 3 repeats (restore itself succeeded in that run; only the test harness's UI read was stale).
+- Selected default: `0.3s` — comfortably above the observed working range, and still far under the ~3.5s total pipeline latency so it is not user-perceptible.
+
+5-run full-pipeline evidence ([scripts/run_clipboard_protection_benchmark.py](scripts/run_clipboard_protection_benchmark.py)), using real Whisper + Gemini + paste against Notepad, five distinct "pre-existing clipboard" snippets (code, a URL, SQL, a shell command, JS):
+
+```text
+RUN 1/5 status=PASS paste_ok=True polished_present=True restored_correct=True
+RUN 2/5 status=PASS paste_ok=True polished_present=True restored_correct=True
+RUN 3/5 status=PASS paste_ok=True polished_present=True restored_correct=True
+RUN 4/5 status=PASS paste_ok=True polished_present=True restored_correct=True
+RUN 5/5 status=PASS paste_ok=True polished_present=True restored_correct=True
+IMAGE_EDGE_CASE status=PASS paste_ok=True polished_present=True cf_dib_restored=True
+SUMMARY total=6 passed=6 failed=0
+```
+
+The `IMAGE_EDGE_CASE` run pre-loaded the clipboard with a minimal synthetic `CF_DIB` bitmap (non-text) instead of a code snippet, confirming the snapshot/restore path does not crash or silently drop non-text formats.
+
+Automated tests: [tests/test_clipboard.py](tests/test_clipboard.py) adds 6 tests covering text round-trip, empty-clipboard restore, an opaque/unknown binary format, a simulated snapshot-read failure, and both the synchronous and background restore paths. Full suite: `python -m pytest -q` → `23 passed`.
+
+### Part B: Background Daemon + Visual Feedback (completed)
+
+Implementation:
+
+- [speedytype/audio.py](speedytype/audio.py): `Recorder.record_until_stop()` gained an optional `on_level(rms)` callback, throttled to fire at most once per `level_interval_seconds` (default `0.12s`, inside the requested 100-150ms range), computed from the real audio block being recorded.
+- [speedytype/overlay.py](speedytype/overlay.py): `RecordingPill`, a frameless, translucent, always-on-top, click-through PyQt6 widget. Fixed dark background (`#1a1a1a`, not theme-reactive), two decorative side dots, and 9 bars whose heights are driven by `update_level(rms)`. A second "processing" render mode shows a spinner + `處理中...` label. `AudioLevelEmitter` is a `QObject` with a `pyqtSignal(float)`; emitting it from the recording thread and connecting it to the pill's slot is the thread-safe bridge to the Qt GUI thread — no shared variables or polling.
+- [speedytype/daemon.py](speedytype/daemon.py): `DaemonController` wires the hotkey (`keyboard.on_press_key`), `Recorder`, the existing `process_wav()` pipeline, and the overlay together. Every widget mutation crosses threads via `pyqtSignal`s (`show_recording_signal`, `show_processing_signal`, `hide_signal`), never by touching the widget directly from a worker thread. Writes/removes a PID file (`speedytype_daemon.pid`) so it can be stopped externally.
+- [speedytype/cli.py](speedytype/cli.py): new subcommands `daemon`, `daemon-stop`, `install-autostart`, `uninstall-autostart`.
+- [speedytype/autostart.py](speedytype/autostart.py): writes/removes a `.bat` script in the user's Startup folder that launches the daemon via `pythonw.exe` (no console window) at logon. Task Scheduler was tried first and rejected with `Access is denied` by this machine's local policy even for a plain per-user trigger (confirmed independent of SpeedyType's code by calling `schtasks` directly); the Startup-folder script is the documented fallback in the task brief and needs no elevation. See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) item 7.
+- `PyQt6==6.11.0` added to [requirements.txt](requirements.txt).
+
+No tray icon was added. The task brief's idle-state requirement ("平時畫面上不應該有任何常駐圖示、視窗或系統匣提示") and its own alternative ("...或至少提供一個簡單指令可以停止背景程序") together point to a stop *command* rather than a persistent tray icon competing with "zero idle footprint"; `daemon-stop` was chosen to satisfy both.
+
+Test evidence:
+
+- **Widget rendering**: `pill.grab()` screenshots confirm the recording-mode pill (dots + bars) and processing-mode pill (spinner + text) render as specified.
+- **Headless/background operation** ([scripts/test_daemon_smoke.py](scripts/test_daemon_smoke.py)): daemon launched via `pythonw.exe` with `CREATE_NO_WINDOW | DETACHED_PROCESS` (no console ever allocated — the same mechanism the Startup script and a real logon launch use). 5 consecutive hotkey-hold cycles all completed cleanly (2 produced a Whisper-transcribed/polished/pasted result from ambient/played audio, 3 correctly and silently skipped paste on an empty transcript); daemon log showed no exceptions across any run. `daemon-stop` correctly terminated the process by PID afterward.
+  - Caveat: because no live human speaker is available to this automated session, "with-text" runs relied on ambient sound/played-back audio rather than fresh dictated speech; content-correctness of the underlying pipeline on real human speech was already established via Part A's 5 real runs and Phases 1-4's real-voice validation, since the daemon calls the exact same `process_wav()`. If a live "hold F9 and speak" check is wanted for full closure of this specific gap, that requires the user's own voice.
+- **Volume-reactive bars** ([scripts/verify_volume_bars.py](scripts/verify_volume_bars.py)): real microphone RMS was captured live (through the same `Recorder.record_until_stop(on_level=...)` code path the daemon uses) and each sample logged alongside the resulting bar height, confirming the mapping is driven by live audio, not a fixed animation loop. However, three attempted loudness conditions (silence, played-back audio, amplified played-back audio) produced statistically indistinguishable RMS ranges (all roughly `0.0001-0.009`) on this machine's hardware — the microphone is part of an "AT-CSP1" conferencing speakerphone unit, which likely applies acoustic echo cancellation that suppresses its own speaker output from its own mic feed. This is a hardware constraint discovered during testing, not a code defect; a live "quiet vs. loud human voice" contrast still needs the user's own voice to verify definitively. **Resolved in Phase 8**: the user spoke live at normal then louder volume and confirmed the bars visibly rose — see Phase 8 below and [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) item 13.
+- **Mouse click-through** ([scripts/verify_click_through.py](scripts/verify_click_through.py)): the pill was positioned to exactly cover a point inside a real Notepad text-edit control; a real OS-level click was sent at that point, followed by typed text. The typed text appeared inside Notepad, proving the click passed through the visually-opaque pill to the window underneath. `PASS`.
+- **Multi-monitor**: **not tested** — this environment has a single display, so multi-monitor positioning/covering behavior could not be verified either way.
+- **Real reboot**: **not tested** — a real OS reboot was not performed. Instead, the Startup `.bat` script was invoked directly (the same file, the same way Windows invokes everything in the Startup folder at logon) and confirmed to correctly launch the daemon and produce a valid PID file.
+- Full test suite unaffected: `python -m pytest -q` → `23 passed`.
+
+### Part C: Known Limitations
+
+See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) for all limitation entries: the five carried forward from Phases 1-4 (tail latency, `API`/`BJ 團隊` residual error, UAC-elevated paste, plaintext API keys, disambiguation-hint effectiveness), plus two added by Part B (Python-vs-native daemon tradeoff, and Task Scheduler being blocked in favor of the Startup-folder script) — each with its current state, why it isn't being addressed now, and the condition that should trigger re-evaluation.
+
+## Phase 6: Tray Settings, Combo Hotkeys, and About
+
+Phase 6 extends the daemon with a real system tray menu (setting up the `QSystemTrayIcon` this POC did not previously have — Phase 5 had used a `daemon-stop` CLI command instead of a tray icon), a Settings dialog covering recording length/hotkey/vocabulary/API keys, an About dialog, and a `settings.json` persistence layer separate from `.env`.
+
+### Part A: `settings.json` Persistence
+
+- [speedytype/settings.py](speedytype/settings.py): `AppSettings` (max record seconds, hotkey combo as a list, vocab terms as a list), auto-created with defaults on first run, and falling back to in-memory defaults **without touching the file** if it's malformed (so a manually-broken file is diagnosable, not silently clobbered).
+- [speedytype/config.py](speedytype/config.py): `load_config()` now sources `max_record_seconds`, `hotkey`, and `whisper_vocab_bias` from `settings.json` instead of `.env`; API keys, provider/model, and other tuning stay in `.env` as before. Default `max_record_seconds` raised from `30s` to `60s` to match the new slider floor.
+- Tests ([tests/test_settings.py](tests/test_settings.py), 7 tests): auto-create-on-missing, round-trip, malformed-JSON fallback (file left untouched, warning printed), wrong-shape JSON, hotkey-validation rule, vocab export/import round-trip.
+
+### Part B: Settings Dialog
+
+- [speedytype/settings_dialog.py](speedytype/settings_dialog.py): a `QDialog` with four sections.
+  - **Recording length**: a `QSlider` hard-locked to `60-540s` (can't be dragged outside that range — this is a Qt property, not just UI styling), with a live human-readable label (`format_seconds_readable`, e.g. "3 分 30 秒").
+  - **Hotkey**: a "擷取新組合鍵" button that calls `keyboard.read_hotkey(suppress=True)` on a background thread and delivers the result back via a `pyqtSignal`. Captured combos are rejected (with an on-screen message, not silently) unless they include a modifier (Ctrl/Alt/Shift/Win) or are a single dedicated function key (F1-F24) — see the design note below. A captured combo is also checked against a small static list of well-known Windows/app shortcuts and flagged as a possible conflict if matched.
+  - **Vocabulary**: add/remove/reset-to-default/export/import, with import explicitly labeled "匯入並取代" (replace, not merge) to avoid ambiguity.
+  - **API keys**: `OPENAI_API_KEY`/`GEMINI_API_KEY`/`MINIMAX_API_KEY`, masked to the last 4 characters by default with a per-field reveal toggle, plus a "測試連線" button that pings a minimal-cost endpoint (model list) with whatever is currently typed, not necessarily the saved value.
+- [speedytype/env_writer.py](speedytype/env_writer.py): `update_env_key()` rewrites only the target `KEY=value` line, leaving every other line (including comments and blank lines) byte-for-byte untouched; appends the line if the key wasn't present. `mask_secret()` implements the last-4-visible masking. `test_openai_key`/`test_gemini_key`/`test_minimax_key` each do a lightweight "list models" GET.
+- Save writes `settings.json` unconditionally (cheap/safe) and only touches `.env` for keys that actually changed, reporting exactly which ones in the status line (e.g. "一般設定已儲存 / 金鑰已更新（GEMINI_API_KEY）"). Cancel (`close()`) writes nothing at all, even if a key field was edited during a test-connection check.
+
+**Hotkey design decision (any-key-release ends recording, not all-keys-released)**: reusing the existing single-key `wait_until_hotkey_released()` polling loop unchanged, driven by `keyboard.is_pressed("ctrl+alt+space")`, means recording stops the instant *any one* key of the combo is released — this is the `keyboard` library's documented behavior for `is_pressed()` on a `+`-joined string, not extra code written for this feature. Reasoning for keeping this rather than requiring all keys released: (1) it requires zero new release-detection logic, reusing an already-working path; (2) real combo releases are rarely simultaneous, and requiring every key held until the last one lifts is a less forgiving, less natural gesture than the common "push-to-talk" convention (e.g. Discord) of stopping on first release.
+
+**This design was not verified with real/simulated key presses this round.** At the user's explicit request, no synthetic system-wide key events (`keyboard.press()/release()`) were sent, since those affect whatever window currently has focus regardless of which app "owns" the test. What *was* verified without any OS-level input simulation:
+- Countdown-timer and auto-stop-at-limit behavior ([scripts/verify_countdown_and_autostop.py](scripts/verify_countdown_and_autostop.py)): `DaemonController.on_press()` called directly (a plain method call, not a key event) with `max_record_seconds=8.0` and `countdown_warning_seconds=4.0`, `keyboard.is_pressed` monkeypatched to `True` for the test's duration (an in-process Python function stand-in with no OS-level effect, the same technique already used in `tests/test_hotkey.py`). Result: countdown first appeared at `t=4.03s` (threshold `4.0s`), ticked down to `0`, and recording auto-stopped at `t=8.55s` (limit `8.0s`, the ~0.5s overshoot being the 0.2s ticker poll interval); `process_wav` was invoked exactly once.
+- Non-blocking Settings dialog ([scripts/verify_settings_dialog_nonblocking.py](scripts/verify_settings_dialog_nonblocking.py)): opened non-modally (`.show()`, not `.exec()`) alongside a simulated (direct-call) recording/timeout/processing cycle; the dialog remained visible and interactively responsive (a live text edit was accepted) throughout, and the pipeline still completed. `PASS`.
+- Settings dialog widget behavior ([tests/test_settings_dialog.py](tests/test_settings_dialog.py), 7 tests; [tests/test_about_dialog.py](tests/test_about_dialog.py), 1 test): slider min/max clamping, vocab add/remove/reset, vocab export-then-import round-trip (content compared, not just file existence), masked-field reveal/hide/edit, save-only-touches-changed-keys with `.env` line preservation verified against a multi-line file with comments, cancel-writes-nothing, and About dialog content matching the live config — all via Qt method calls (`.click()`, `.setText()`), which are in-process signal triggers, not OS input.
+
+**Live verification (post-delivery)**: the user captured `ctrl+alt+space` via the Settings dialog, saved, restarted the daemon from the tray, and confirmed holding/releasing the combo starts and stops recording normally — confirming the any-key-release-ends design above works in practice, not just per the `keyboard` library's documented behavior. See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) item 8 (now marked resolved) and item 9 (conflict detection, still a static list only).
+
+### Part C: About Dialog
+
+- [speedytype/version.py](speedytype/version.py): `VERSION = "0.5.0"`, `BUILD_DATE = "2026-07-10"`, `STT_MODEL = "whisper-1"`.
+- [speedytype/about_dialog.py](speedytype/about_dialog.py): shows version, build date, current `llm_provider`/`llm_model` (read live from config), STT model, and a pointer to `KNOWN_LIMITATIONS.md`. Verified by test to match the live `AppConfig` rather than hardcoded strings.
+
+### Part D: Tray Menu Integration
+
+- [speedytype/daemon.py](speedytype/daemon.py): added a `QSystemTrayIcon` (icon generated at runtime — no icon asset file exists in this POC) with a context menu: 設定, 關於, a separator, 重新啟動, 結束. Hotkey registration switched from `keyboard.on_press_key` (single-key only) to `keyboard.add_hotkey()`, which accepts both single keys and `+`-joined combos through the same call, so no special-casing is needed for the new combo support.
+- "重新啟動" spawns a fresh detached `pythonw.exe` daemon process, then calls `app.quit()` on the current one. `run_daemon()`'s PID-file cleanup now only deletes the file if it still names *this* process's PID (checked before unlinking), closing a race where a fast-starting new process's PID file could otherwise be deleted by the old process's shutdown.
+- Both dialogs are opened non-modally (`.show()`), confirmed above to keep the hotkey/pipeline fully functional while either is open.
+
+Full automated suite after all Phase 6 changes: `python -m pytest -q` → `43 passed` (one `test_paste_text_preserving_clipboard_background_restores_after_delay` run showed a transient, pre-existing `OpenClipboard`/`Access is denied` flake unrelated to this round's changes — passes cleanly on rerun, consistent with clipboard-contention flakiness already noted in Phase 5).
+
+### Bug found and fixed: the daemon crashed immediately whenever launched via `pythonw.exe` without an explicit stdout redirect
+
+While verifying the live "重新啟動" tray action (in response to the user reporting no tray icon appeared after restart, and that it also never appeared when using the Startup-folder autostart), the actual root cause was found and confirmed with direct evidence, not assumed:
+
+```text
+stdout=None
+safe_print_failed=AttributeError("'NoneType' object has no attribute 'write'")
+```
+
+`pythonw.exe` has no console, so `sys.stdout`/`sys.stderr` are `None` unless a caller explicitly redirects them. `speedytype/console.py`'s `safe_print()` called `sys.stdout.write(...)` directly with no guard for `None`, so the very first `safe_print()` call in `run_daemon()` — right after `tray.show()` — crashed the whole process. The tray icon would appear for a fraction of a second (from `tray.show()` succeeding) and then vanish as the process died, matching the user's report exactly. This same code path exists in the **Phase 5** `run_daemon()`, so the Startup-folder autostart added in Phase 5 has likely never actually kept the daemon running after logon; this had gone unnoticed because the daemon smoke test in Phase 5 happened to explicitly redirect `stdout=` to a log file when spawning, which avoided triggering the crash.
+
+Fix, verified with real (non-simulated) process checks:
+
+- [speedytype/console.py](speedytype/console.py): `safe_print()` now returns silently instead of raising if `sys.stdout` is `None` or the stream write/flush fails (`AttributeError`/`ValueError`/`OSError`), tested in [tests/test_console.py](tests/test_console.py) (3 tests, including one that monkeypatches `sys.stdout = None` directly).
+- [speedytype/daemon.py](speedytype/daemon.py)'s `_relaunch_daemon()` and [speedytype/autostart.py](speedytype/autostart.py)'s generated `.bat` now both explicitly redirect stdout/stderr to `speedytype_daemon.log` (with `PYTHONIOENCODING=utf-8` set for the child process, since the default encoding for a redirected non-console stream otherwise mangled Chinese log text into `?`/`??`) — belt-and-suspenders on top of the `safe_print` fix, so restart/autostart failures stay diagnosable.
+- Verified: launched `pythonw.exe -m speedytype daemon` directly (mirroring exactly what restart/autostart do) — confirmed via `tasklist` and the PID file that the process was still alive after 9 seconds (previously it died within ~1s of starting), then re-ran the actual generated Startup `.bat` script end-to-end and confirmed the log file now contains correctly-encoded Chinese text (`結束`) instead of `??`.
+- Also fixed while in the area: `speedytype/settings_dialog.py`/`about_dialog.py` now call `setWindowIcon()` (previously unset, leaving a blank top-left title-bar icon, which the user also flagged), reusing a small shared glyph generator moved to [speedytype/icon.py](speedytype/icon.py).
+
+See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) item 11 for how this affects Phase 5's already-shipped autostart claim.
+
+## Phase 7: Recording Device Selection
+
+Adds a microphone/input-device picker to the Settings dialog. No other section of the dialog (recording-length slider, hotkey, vocabulary, API keys) was touched.
+
+Implementation:
+
+- [speedytype/audio.py](speedytype/audio.py): `list_input_device_names()` and `find_input_device_index_by_name(name)` (exact-name lookup against `sounddevice.query_devices()`).
+- [speedytype/settings.py](speedytype/settings.py): `AppSettings.mic_device_name` (empty string = system default), persisted in `settings.json` like the other behavior settings. Stored **by name, not index**, since device indices can shift across reboots/replugs/host-API enumeration order changes.
+- [speedytype/config.py](speedytype/config.py): new `resolve_mic_device_setting(name)` resolves a saved device name against currently-available devices at `load_config()` time. If the name is no longer found, it falls back to the system default (empty string) and returns a non-empty warning message instead of raising — `AppConfig` gained a `mic_device_warning: str` field carrying that message through.
+- [speedytype/settings_dialog.py](speedytype/settings_dialog.py): a new "錄音裝置" `QComboBox` group, "系統預設裝置" listed first (maps to `""`), followed by every current input device's name (no raw index shown to the user). If `config.mic_device_warning` is non-empty, it's shown as a red warning label at the top of this group when the dialog opens — chosen over the About dialog since it's the actionable place to immediately pick a replacement device. Marked with the same "restart required" note as hotkey/recording-length, since the daemon's `Recorder` is only constructed once at startup.
+
+Test evidence:
+
+- **List accuracy** ([tests/test_settings_dialog.py](tests/test_settings_dialog.py), `test_device_combo_lists_current_input_devices_matching_sounddevice`; also [scripts/verify_mic_device_selection.py](scripts/verify_mic_device_selection.py)): the combo box's contents were compared directly against a raw `sounddevice.query_devices()` filter, not just against our own wrapper — exact match confirmed on the real machine (16 real input devices enumerated, including duplicate names across host APIs, e.g. four devices all named `Microphone (AT-CSP1)` at different indices — resolution is first-match-in-enumeration-order, which happens to coincide with the system default here).
+- **Selection actually changes the device passed to recording** (`scripts/verify_mic_device_selection.py`): built a `Recorder` with the system default (`device=""`) and confirmed its resolved `.device` matched `sounddevice`'s actual default index; then built one with an explicit **non-default** device name and confirmed `.device` resolved to that device's own distinct index — proving the UI selection genuinely changes what gets passed to `sd.InputStream`, not a hardcoded value. Repeated with a second, genuinely distinct physical microphone (`Microphone Array (2- Intel...)`, index 2 vs. default index 1) for stronger evidence than the first pass (which happened to land on a virtual "Sound Mapper" pseudo-device).
+- **Real audio captured through the selected device**: `record_diagnostic()` through the explicit non-default device produced non-zero real samples (`rms=0.000204-0.002159`, `peak` correspondingly non-zero across two different devices tested) — not a stub.
+- **End-to-end via settings.json + load_config()**: saved a specific device name to a real `settings.json`, loaded config, and confirmed `config.mic_device` equals that name with no warning, and that a `Recorder` built from that config resolves to the correct device index.
+- **Fallback on a missing device**: saved a fabricated nonexistent device name to `settings.json`; `load_config()` correctly fell back to `config.mic_device == ""` with a non-empty `mic_device_warning`, and a `Recorder` built from the fallback config did not crash (resolved to the real system default). Also covered in the Settings dialog itself (`test_device_combo_falls_back_to_default_when_saved_device_missing`): the combo box selects "系統預設裝置" without crashing when the saved name isn't found among current devices.
+- Full suite: `python -m pytest -q` → `55 passed` (one `test_snapshot_restore_survives_opaque_binary_format_without_crashing` run hit the same pre-existing transient `OpenClipboard`/`Access is denied` clipboard-contention flake noted in Phases 5-6 — passes cleanly on rerun).
+
+## Phase 8: Overlay Centering, PID Staleness, and Long-Text Real-Voice Retest
+
+### Part A: Overlay Centered at Bottom of Screen
+
+- [speedytype/overlay.py](speedytype/overlay.py): `_position_at_corner()` renamed to `_position_bottom_center()`. Horizontal offset changed from `geo.right() - PILL_WIDTH - SCREEN_MARGIN` (bottom-right) to `geo.left() + (geo.width() - PILL_WIDTH) // 2` (horizontally centered); the vertical offset (`geo.bottom() - PILL_HEIGHT - SCREEN_MARGIN`) is unchanged, per the task's scope. Multi-monitor logic is unchanged — still resolves via `QApplication.primaryScreen()`, only the horizontal formula changed.
+- Verified with real coordinates, not just a screenshot: on this machine's primary screen (`availableGeometry` = left=0, top=0, width=1536, height=912), the pill's actual position after `show_recording()` was `x=658, y=831`, exactly matching the computed expectation, and the pill's own center (`658 + 220/2 = 768`) exactly matches the screen's center (`1536/2 = 768`, diff `0.0`). Re-verified against a **real running `DaemonController`** (`on_press()` called directly, real `Recorder`, real overlay, real ~2s recording) rather than just an isolated widget — same exact match.
+- Single-monitor environment only; multi-monitor centering behavior remains **not tested**, unchanged from Phase 5's note.
+- Bonus fix found while verifying: `tests/test_clipboard.py`'s helper functions (`_set_clipboard_text`, `_clear_clipboard`, `_get_clipboard_text`) called `win32clipboard.OpenClipboard()` directly with no retry, unlike production code's `_open_clipboard()` which already retries 5× with backoff — back-to-back tests in the same file gave near-zero gap between clipboard operations, causing exactly the transient `Access is denied` flakiness documented (and shrugged off) since Phase 5. Added the same retry pattern to the test helpers; confirmed with 5 consecutive clean full-suite runs (previously failing on most runs) that this was the actual root cause, not unfixable OS-level contention.
+
+### Part B: PID Staleness Detection
+
+Checked current behavior first, per the task's explicit request not to assume:
+
+- Normal `daemon-stop` → PID file deletion: confirmed still correct (unchanged).
+- Stale PID file (manually wrote a non-existent PID, confirmed via `tasklist` that it corresponded to no process) → **no check existed at all**. `run_daemon()` unconditionally overwrote the PID file and started normally regardless of its prior content. This means a stale PID file was never actually a "wrongly refuses to start" problem — but by the same token, a **genuinely live** daemon's PID file also provided zero protection against a second real instance starting, which independently confirms a bug an earlier code review had already flagged (dual-daemon race on restart).
+
+Implemented `check_existing_daemon()` in [speedytype/daemon.py](speedytype/daemon.py): no PID file → proceed silently; unreadable/non-numeric content → treated as stale, cleaned up, proceed; PID file names a process confirmed via `tasklist` to no longer be running → cleaned up automatically, proceed (no manual deletion needed); PID file names a genuinely live process → refuse to start with a clear message instead of launching a second instance. Wired into `run_daemon()` before any Qt/tray setup.
+
+This also exposed and fixed a second bug: `restart_daemon()` (tray "重新啟動") spawns the replacement process *before* the current one quits, so the new process's own `check_existing_daemon()` check would see the still-alive old PID and refuse to start — silently breaking restart. Fixed by having `restart_daemon()` remove its own PID file (via the existing `_remove_pid_file_if_mine()`, which only acts if the file still names the calling process) immediately before spawning the replacement.
+
+Test evidence, all against real processes (not mocks):
+
+- `tests/test_daemon_pid.py` (4 tests): no-file, stale-numeric-PID (auto-cleaned), genuinely-running-PID (this test process's own PID — refused, file left untouched), and non-numeric-content (treated as stale).
+- Real end-to-end: wrote a fake stale PID (`888888`), launched the real daemon via `pythonw.exe` — it started cleanly with a fresh real PID, confirmed via `tasklist`. Then attempted a **second** real launch while the first was genuinely running — confirmed via its log that it printed the refusal message and exited, and `tasklist` showed only the original single process throughout; the PID file was untouched.
+- Full restart cycle: reproduced `restart_daemon()`'s exact sequence (`_remove_pid_file_if_mine()` then `_relaunch_daemon()`) from within a process holding its own real PID in the file — confirmed the new process started cleanly (not refused) and wrote its own fresh PID.
+
+### Part C: Long-Text + Live Real-Voice Retest
+
+All three sub-tests below used the user's own live voice through the real daemon and real microphone — no synthetic playback, no environment-noise substitution, addressing both the Phase 5 AEC gap and the never-tested "long recording through the full pipeline" question.
+
+**Test 1 — quiet vs. loud, real voice**: user held the hotkey, spoke at normal volume, released; held again, spoke noticeably louder, released. Confirmed: the pill's bars visibly rose higher during the louder pass. This closes [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) item 13 (previously blocked because the test machine's mic is part of an echo-cancelling conferencing speakerphone that suppressed its own played-back test audio — a live human voice sidesteps that entirely). Both runs completed normally (`total_tail_latency_seconds` = `2.664s`, `3.420s`).
+
+**Test 2 — short-sentence regression (4 runs, reusing Round 2-style sentences)**: all technical terms preserved correctly across all runs — `TPE 團隊` (×2), `BIOS` (×2), `QA`, `NPI`, `BJ 團隊`, `USB`. Tail latencies: `2.817s, 3.532s, 2.484s, 1.771s` (avg `2.651s`).
+
+**Test 3 — long-form (~2-2.5 minutes, real continuous speech)**: two recordings, `126.4s` and `133.8s` long. The countdown warning was confirmed by the user to display correctly during both (both recordings ran past the 120s mark, i.e. within 60s of the temporary 180s test ceiling used for this round). Neither hit the hard 180s cutoff (both were released by the user), so auto-stop-at-limit itself was not re-exercised here — that was already verified synthetically in Phase 6 ([scripts/verify_countdown_and_autostop.py](scripts/verify_countdown_and_autostop.py)) and this round's own live countdown confirmation is the piece that mattered (a real multi-minute recording, not a mocked timer). The second recording's polished output (reproduced from the actual Notepad paste) correctly used two Markdown bullet lists, preserved every technical term mentioned (`Python`, `BIOS`, `Firmware`, `TPE 團隊`, `BJ 團隊`, `API`, `USB`, `Thunderbolt`, `PM`), and organized freeform rambling into two clearly-labeled sections. Whisper time for these ~130s recordings was `6.49s` and `7.19s` — meaningfully higher than short clips but far from linear with the ~26× increase in audio duration, confirming with real human speech (not just TTS, as in Phase 3) that Whisper latency does not scale proportionally with recording length. Tail latencies: `8.167s`, `8.839s` — a new data point (no prior long-form baseline to compare against), but well within usable range for a 2+ minute dictation.
+
+Note: recording 1 of Test 3 pasted into a window that had lost focus by the time processing finished (a real, if narrow, timing risk with long dictations — the user must keep the target window focused for the full duration plus processing time); this is not a new bug, just an observation, and is left unaddressed as out of this round's scope.
+
+The user also flagged, from the Test 3 transcript, that "LeetCode" was misheard by Whisper as "Zcode" — a minor STT miss on a term not in the tracked vocabulary bias list; noted but not acted on this round.
+
+### Follow-up finding: Whisper collapses an exact phrase repeated back-to-back in one recording
+
+After the main three tests, the user asked to specifically verify a suspicion: that a short recording containing the same phrase repeated multiple times might lose content. Live-tested: user held the hotkey **once** and said "測試1、2、3、4" three times in a row within a single continuous recording. The daemon's own log showed only **one** `Recording...` cycle (not three separate ones — confirming the user did one continuous hold, not three press/release cycles) and:
+
+```text
+Recording ended.
+Whisper raw transcript: 測試 1、2、3、4
+Gemini polished text: 測試 1、2、3、4
+Latency seconds: recording=8.580, whisper=1.098, gemini=0.572, paste=0.188, total_tail=1.859
+```
+
+The raw Whisper transcript already contains only one instance of the phrase — Gemini's polishing stage passed it through completely unchanged, proving the loss happens at the Whisper API stage itself, not in this project's prompt or polishing logic. This is a real, narrow finding (repeating the exact same short phrase with no variation inside one continuous recording), distinct from Test 2's result (three *different* sentences across three *separate* recordings, all transcribed correctly with zero loss). Documented as [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) item 15.
+
+**Latency comparison table** (all numbers real, pulled directly from `speedytype_latency_log.csv`):
+
+| Source | Content type | n | Avg tail (s) | Min (s) | Max (s) |
+|---|---|---:|---:|---:|---:|
+| Phase 2 full-pipeline benchmark | TTS-generated, short/medium/long | 10 | 3.979 | 2.660 | 5.281 |
+| Phase 4 real-path benchmark | TTS-generated, harness artifact removed | 10 | 3.575 | 2.071 | 4.684 |
+| Historical `real_voice` validate-real-voice runs (Rounds 1-2 combined) | Real human, guided short/medium sentences | 36 | 3.632 | 1.311 | 14.222 |
+| **Phase 8 Test 1+2 (this round)** | **Real human, live daemon, short sentences** | **6** | **2.781** | **1.771** | **3.532** |
+| **Phase 8 Test 3 (this round)** | **Real human, live daemon, ~2-2.5 min continuous** | **2** | **8.503** | **8.167** | **8.839** |
+
+Conclusion: **no latency regression detected** from Phases 5-6's UI/feature additions (tray icon, Settings/About dialogs, settings.json loading, clipboard protection). This round's short-sentence real-voice numbers are as good as or better than every prior benchmark, including the very first Phase 2/4 TTS-based ones. The long-form number is a new data point with no prior baseline, not a regression by definition, and is itself reassuringly modest for 2+ minutes of continuous dictation.
+
+Full suite after all Phase 8 changes: `python -m pytest -q` → `59 passed`, confirmed stable across 3 consecutive full runs (this also includes the clipboard-flake fix noted in Part A above).

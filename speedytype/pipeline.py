@@ -6,7 +6,7 @@ import time
 import wave
 
 from speedytype.api import transcribe_audio
-from speedytype.clipboard import paste_text
+from speedytype.clipboard import paste_text_preserving_clipboard
 from speedytype.console import safe_print
 from speedytype.config import AppConfig
 from speedytype.latency import LatencyRecord, append_latency_record
@@ -66,7 +66,9 @@ def process_wav(audio_path: Path, config: AppConfig, *, do_paste: bool = True, r
     paste_start = time.perf_counter()
     paste_result = None
     if do_paste and polished.strip():
-        paste_result = paste_text(polished)
+        paste_result = paste_text_preserving_clipboard(
+            polished, restore_delay_seconds=config.clipboard_restore_delay_seconds
+        )
         paste_ok, paste_message = paste_result.ok, paste_result.message
     else:
         paste_ok, paste_message = False, "Paste skipped by command option."

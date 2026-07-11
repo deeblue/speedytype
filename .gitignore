@@ -4,3 +4,6 @@ __pycache__/
 .pytest_cache/
 *.pyc
 test_silence.wav
+settings.json
+speedytype_daemon.pid
+speedytype_daemon.log

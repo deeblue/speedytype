@@ -9,7 +9,9 @@ import keyboard
 
 from speedytype.api import discover_flash_model
 from speedytype.audio import Recorder, list_input_devices, record_diagnostic, temp_wav_path
+from speedytype.autostart import install_autostart, uninstall_autostart
 from speedytype.config import ConfigError, load_config
+from speedytype.daemon import run_daemon, stop_daemon
 from speedytype.hotkey import wait_until_hotkey_released
 from speedytype.pipeline import process_wav
 from speedytype.real_voice import guided_recording, validate_real_voice
@@ -109,6 +111,31 @@ def command_listen(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_daemon(args: argparse.Namespace) -> int:
+    config = _load_config_or_print(args.env)
+    if config is None:
+        return 2
+    return run_daemon(config, env_path=args.env)
+
+
+def command_daemon_stop(args: argparse.Namespace) -> int:
+    ok, message = stop_daemon()
+    print(message)
+    return 0 if ok else 1
+
+
+def command_install_autostart(args: argparse.Namespace) -> int:
+    ok, message = install_autostart(env_path=args.env)
+    print(message)
+    return 0 if ok else 1
+
+
+def command_uninstall_autostart(args: argparse.Namespace) -> int:
+    ok, message = uninstall_autostart()
+    print(message)
+    return 0 if ok else 1
+
+
 def command_list_audio_devices(args: argparse.Namespace) -> int:
     devices = list_input_devices()
     for device in devices:
@@ -180,6 +207,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     listen = sub.add_parser("listen")
     listen.set_defaults(func=command_listen)
+
+    daemon = sub.add_parser("daemon")
+    daemon.set_defaults(func=command_daemon)
+
+    daemon_stop = sub.add_parser("daemon-stop")
+    daemon_stop.set_defaults(func=command_daemon_stop)
+
+    install_auto = sub.add_parser("install-autostart")
+    install_auto.set_defaults(func=command_install_autostart)
+
+    uninstall_auto = sub.add_parser("uninstall-autostart")
+    uninstall_auto.set_defaults(func=command_uninstall_autostart)
 
     list_audio = sub.add_parser("list-audio-devices")
     list_audio.set_defaults(func=command_list_audio_devices)

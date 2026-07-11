@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 import tempfile
 import threading
 import time
@@ -30,6 +31,24 @@ def list_input_devices() -> list[dict[str, object]]:
     return devices
 
 
+def list_input_device_names() -> list[str]:
+    """Names of currently available input devices, for a UI picker. Order
+    matches list_input_devices()/sd.query_devices() enumeration order."""
+    return [str(device["name"]) for device in list_input_devices()]
+
+
+def find_input_device_index_by_name(name: str) -> int | None:
+    """Exact-name lookup among currently available input devices (used to
+    resolve a device name saved in settings.json back to a live index at
+    startup). Returns None if no current input device has that exact name."""
+    if not name:
+        return None
+    for index, device in enumerate(sd.query_devices()):
+        if device["max_input_channels"] > 0 and str(device["name"]) == name:
+            return index
+    return None
+
+
 def resolve_input_device(device_hint: str | int | None) -> int | None:
     if device_hint in (None, ""):
         default_input = sd.default.device[0]
@@ -53,14 +72,35 @@ class Recorder:
         self.device = resolve_input_device(device)
         self._stop_event = threading.Event()
 
-    def record_until_stop(self, output_path: Path) -> float:
+    def record_until_stop(
+        self,
+        output_path: Path,
+        on_level: Callable[[float], None] | None = None,
+        level_interval_seconds: float = 0.12,
+    ) -> float:
+        """Record until `stop()` is called.
+
+        If `on_level` is given, it is called with the RMS amplitude (0.0-1.0
+        range for normalized float audio) of the most recent audio block, at
+        most once every `level_interval_seconds`, so a UI can show real-time
+        volume feedback without being flooded by every low-level audio
+        callback.
+        """
         self._stop_event.clear()
         started = time.perf_counter()
+        last_level_emit = 0.0
         with sf.SoundFile(output_path, mode="w", samplerate=self.sample_rate, channels=self.channels, subtype="PCM_16") as wav_file:
             def callback(indata, frames, time_info, status):
+                nonlocal last_level_emit
                 if status:
                     print(f"Recording warning: {status}", flush=True)
                 wav_file.write(indata.copy())
+                if on_level is not None:
+                    now = time.perf_counter()
+                    if now - last_level_emit >= level_interval_seconds:
+                        rms = float(np.sqrt(np.mean(np.square(indata)))) if indata.size else 0.0
+                        on_level(rms)
+                        last_level_emit = now
 
             with sd.InputStream(samplerate=self.sample_rate, channels=self.channels, device=self.device, callback=callback):
                 while not self._stop_event.is_set():
