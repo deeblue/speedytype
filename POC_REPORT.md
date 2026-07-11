@@ -404,7 +404,7 @@ This round intentionally implemented only the platform abstraction layer and mac
 ## External API investigations
 
 - Gemini prompt follow-up: current prompt produced 4/4 valid number-preserving samples; 4 current and 8 candidate attempts returned HTTP 429. The candidate remains unapplied because it received zero new valid samples.
-- Long recordings: batch Whisper tail for 126.412s, 133.796s, and 262.208s audio was 6.478s, 7.907s, and 14.072s. The 30s/5s-overlap quasi simulation reduced modeled tail to 2.065s, 1.203s, and 2.056s, while increasing total request time and introducing minor text differences. This supports a future long-recording-only hybrid, but it is not enabled until full LLM quality evidence is available.
+- Long recordings: the initial 262s composite was rejected as decisive evidence because its two source recordings discuss overlapping meeting topics. A replacement 294.792s continuous, non-repeating TTS narrative measured 18.098s batch tail versus 1.874s for the 30s/5s-overlap quasi simulation (89.6% improvement). This confirms the latency trend is not a splice artifact, while transcript omissions/boundary errors still block production enablement.
 
 ## macOS handoff
 

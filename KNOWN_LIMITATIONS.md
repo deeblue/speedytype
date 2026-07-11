@@ -136,7 +136,8 @@ Each item lists: current state, known impact, why it was not addressed, and the 
 
 ## 19. Long-recording quasi-streaming is promising but not enabled in production
 
-- **Current state**: On 126.412s, 133.796s, and 262.208s recordings, batch Whisper tail was 6.478s, 7.907s, and 14.072s. A 30s/5s-overlap quasi-streaming simulation measured 2.065s, 1.203s, and 2.056s tail, improvements of roughly 68%, 85%, and 85%.
-- **Trade-off**: Total Whisper request time increased from 6.478/7.907/14.072s to 16.789/13.455/32.281s, and spot inspection found minor duplication and wording differences. The 262s case is a documented composite of the two real recordings, not an independent quality sample.
-- **Decision**: Evidence supports a future hybrid threshold for recordings over roughly 60-90 seconds, but production remains batch-only until the final merged transcript also passes a complete Gemini/paste quality comparison. Gemini quota prevented that final comparison in this run.
-- **Evidence**: `long_recording_results.jsonl` and `test_audio_long/manifest.json`.
+- **Original concern**: The first 262.208s case concatenated the two shorter recordings, whose meeting topics and technical terms overlap. It was therefore vulnerable to both content similarity and splice artifacts and is not used as the decisive length result.
+- **Replacement evidence**: A 294.792s continuous TTS recording reads one complete, non-repeating travel narrative. In the same three-case rerun, batch/quasi tails were 7.785/2.127s (126s), 7.329/3.444s (134s), and 18.098/1.874s (295s), improvements of 72.7%, 53.0%, and 89.6%. The long-case improvement remains and grows after removing the splice confounder.
+- **Trade-off**: The 295s quasi path used 12 requests totaling 34.742s versus one 18.098s batch request, about 1.92x request work. Spot inspection also found omissions and boundary merge errors in the quasi transcript, so lower tail does not yet imply acceptable output quality.
+- **Decision**: A hybrid path above roughly 60-90 seconds is worth developing, and the observed latency trend is not an artifact of the composite file. Production remains batch-only until chunk merge quality and the final Gemini/paste output pass a dedicated comparison.
+- **Evidence**: `long_recording_results_continuous.jsonl`, `test_audio_long/continuous_tts_script.txt`, and `test_audio_long/manifest.json`. The earlier `long_recording_results.jsonl` is retained as superseded evidence.
