@@ -388,3 +388,24 @@ The raw Whisper transcript already contains only one instance of the phrase — 
 Conclusion: **no latency regression detected** from Phases 5-6's UI/feature additions (tray icon, Settings/About dialogs, settings.json loading, clipboard protection). This round's short-sentence real-voice numbers are as good as or better than every prior benchmark, including the very first Phase 2/4 TTS-based ones. The long-form number is a new data point with no prior baseline, not a regression by definition, and is itself reassuringly modest for 2+ minutes of continuous dictation.
 
 Full suite after all Phase 8 changes: `python -m pytest -q` → `59 passed`, confirmed stable across 3 consecutive full runs (this also includes the clipboard-flake fix noted in Part A above).
+# Cross-Platform Core Follow-up (2026-07-11)
+
+This round intentionally implemented only the platform abstraction layer and macOS source backends. Packaging, signing/notarization, installers, icons, `pyproject.toml`, and CI were not created.
+
+## Windows evidence
+
+- Pre-change baseline: `59 passed in 6.30s`.
+- Post-change suite: `72 passed` before final documentation/script tests; final count is recorded by the closing verification command.
+- Clean environment: a new `.venv-clean` installed `requirements.txt` successfully and printed `CLEAN_IMPORT_OK` after importing numpy, PyQt6, platformdirs, psutil, CLI, and daemon modules.
+- Startup integration: the real Startup-folder script was installed, queried as present, removed, and queried as absent.
+- Daemon smoke: the updated app-data PID path was observed with a live `pythonw` process; one hotkey record/process/paste run returned `PASS_WITH_TEXT`, then daemon-stop succeeded.
+- Full paste latency: one valid run measured `3.732907s` total tail (`2.024753s` Whisper, `0.612778s` Gemini, `1.095331s` paste), consistent with the historical approximately 3.5-second baseline.
+
+## External API investigations
+
+- Gemini prompt follow-up: current prompt produced 4/4 valid number-preserving samples; 4 current and 8 candidate attempts returned HTTP 429. The candidate remains unapplied because it received zero new valid samples.
+- Long recordings: batch Whisper tail for 126.412s, 133.796s, and 262.208s audio was 6.478s, 7.907s, and 14.072s. The 30s/5s-overlap quasi simulation reduced modeled tail to 2.065s, 1.203s, and 2.056s, while increasing total request time and introducing minor text differences. This supports a future long-recording-only hybrid, but it is not enabled until full LLM quality evidence is available.
+
+## macOS handoff
+
+Code and Windows-runnable contracts exist for text-only clipboard preservation, pynput hold/release and capture, canonical hotkey tokens, LaunchAgent plist management, reserved shortcut warnings, and permission guidance. These are not claimed as operationally verified until the exact real-Mac checklist in `KNOWN_LIMITATIONS.md` item 18 is completed.

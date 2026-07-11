@@ -114,3 +114,29 @@ Each item lists: current state, known impact, why it was not addressed, and the 
 - **Known impact**: The one live failure (`測試。`) appears to have been rare sampling variance in Gemini's output for genuinely garbled/repeated input, rather than a reliably reproducible bug in the current prompt — the same prompt preserved numbers correctly 6/6 times when retested. No regression was found in the candidate prompt either (self-correction, filler removal, list formatting, and a natural stutter-repeat case all produced identical output to the current prompt), but there isn't enough evidence to say it measurably *improves* the failure rate versus just being additional prompt complexity with an unproven benefit.
 - **Why not addressed**: The investigation was cut short by hitting the Gemini API's request quota before a fair, adequately-sampled comparison could be completed. Applying a prompt change on the strength of a single favorable sample (which is exactly what looked like a fix at first) would not meet this project's own evidence bar. Left as an open decision for the user rather than guessed at.
 - **Trigger to re-evaluate**: Once API quota resets, re-run the repeated-trials comparison (`scripts/test_prompt_variants_repeated.py`, `scripts/test_prompt_variants.py` — both already written) with a larger sample size for the candidate prompt specifically, to get a real failure-rate comparison. Alternatively, if this pattern (repeated numeric/garbled content within one recording) recurs often enough in real usage to matter, that alone is enough reason to apply the candidate prompt as low-cost insurance even without statistically strong proof it helps.
+
+### 2026-07-11 follow-up
+
+- A new repeated run produced 4/4 valid current-prompt samples preserving numbers. The other 4 current attempts and all 8 candidate attempts returned HTTP 429 quota errors. The candidate therefore still has no new valid evidence and cannot be compared fairly.
+- The script now excludes API errors from semantic success rates. The candidate prompt remains unapplied until at least 5-6 valid candidate samples are available.
+
+## 17. macOS clipboard restoration is text-only
+
+- **Current state**: The macOS backend snapshots and restores only text through `pyperclip`; Windows continues to preserve all writable clipboard formats.
+- **Known impact**: If the macOS clipboard initially contains an image, file list, rich text, or application-specific format, a SpeedyType paste cannot restore those non-text formats.
+- **Why not addressed**: Full `NSPasteboard` multi-format migration would require substantially more AppKit-specific code and is unnecessary for the personal text-dictation goal.
+- **Trigger to re-evaluate**: Daily use regularly overwrites non-text clipboard content that must be preserved.
+
+## 18. macOS backends are implemented but require real-Mac verification
+
+- **Windows-verified**: platform dispatch, canonical hotkey migration, Windows hold/release behavior, clipboard preservation, psutil process handling, Startup install/query/uninstall, Settings checkbox, daemon smoke, and latency regression.
+- **Unit-tested only**: macOS text clipboard contract, chord state semantics, LaunchAgent plist and launchctl arguments, and permission-error guidance.
+- **Must be tested on the Mac**: deny then grant Accessibility/Input Monitoring; hold the configured chord to start and release any key to stop; timeout stop; Cmd+V into at least two applications; text clipboard restoration; Settings shortcut capture and reserved warnings; LaunchAgent install/query/remove and logout/login persistence; tray/settings behavior; overlay click-through/topmost behavior on normal desktops, Spaces, and Mission Control.
+- **Trigger to re-evaluate**: Complete this checklist on the target Mac and record actual results before describing macOS support as verified.
+
+## 19. Long-recording quasi-streaming is promising but not enabled in production
+
+- **Current state**: On 126.412s, 133.796s, and 262.208s recordings, batch Whisper tail was 6.478s, 7.907s, and 14.072s. A 30s/5s-overlap quasi-streaming simulation measured 2.065s, 1.203s, and 2.056s tail, improvements of roughly 68%, 85%, and 85%.
+- **Trade-off**: Total Whisper request time increased from 6.478/7.907/14.072s to 16.789/13.455/32.281s, and spot inspection found minor duplication and wording differences. The 262s case is a documented composite of the two real recordings, not an independent quality sample.
+- **Decision**: Evidence supports a future hybrid threshold for recordings over roughly 60-90 seconds, but production remains batch-only until the final merged transcript also passes a complete Gemini/paste quality comparison. Gemini quota prevented that final comparison in this run.
+- **Evidence**: `long_recording_results.jsonl` and `test_audio_long/manifest.json`.

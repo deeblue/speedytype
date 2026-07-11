@@ -1,0 +1,22 @@
+Running 8 repeats each for CURRENT and CANDIDATE prompts on the same garbled input.
+
+CURRENT   run 1/8: numbers_preserved=True -> '123 測試，123 Test。'
+CURRENT   run 2/8: numbers_preserved=True -> '123 測試，123 Test。'
+CURRENT   run 3/8: numbers_preserved=True -> '123 測試，123 Test。'
+CURRENT   run 4/8: numbers_preserved=False -> '[FAILED after 4 attempts] [ERROR 429] {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-a'
+CURRENT   run 5/8: numbers_preserved=True -> '123 測試，123 Test。'
+CURRENT   run 6/8: numbers_preserved=False -> '[FAILED after 4 attempts] [ERROR 429] {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-a'
+CURRENT   run 7/8: numbers_preserved=False -> '[FAILED after 4 attempts] [ERROR 429] {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-a'
+CURRENT   run 8/8: numbers_preserved=False -> '[FAILED after 4 attempts] [ERROR 429] {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-a'
+
+CANDIDATE run 1/8: numbers_preserved=False -> '[FAILED after 4 attempts] [ERROR 429] {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-a'
+CANDIDATE run 2/8: numbers_preserved=False -> '[FAILED after 4 attempts] [ERROR 429] {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-a'
+CANDIDATE run 3/8: numbers_preserved=False -> '[FAILED after 4 attempts] [ERROR 429] {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-a'
+CANDIDATE run 4/8: numbers_preserved=False -> '[FAILED after 4 attempts] [ERROR 429] {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-a'
+CANDIDATE run 5/8: numbers_preserved=False -> '[FAILED after 4 attempts] [ERROR 429] {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-a'
+CANDIDATE run 6/8: numbers_preserved=False -> '[FAILED after 4 attempts] [ERROR 429] {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-a'
+CANDIDATE run 7/8: numbers_preserved=False -> '[FAILED after 4 attempts] [ERROR 429] {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-a'
+CANDIDATE run 8/8: numbers_preserved=False -> '[FAILED after 4 attempts] [ERROR 429] {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-a'
+
+CURRENT preserved-numbers rate:   4/8
+CANDIDATE preserved-numbers rate: 0/8

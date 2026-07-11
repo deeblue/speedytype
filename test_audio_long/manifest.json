@@ -1,0 +1,25 @@
+{
+  "cases": [
+    {
+      "name": "real_126s",
+      "file": "real_126s.wav",
+      "duration_seconds": 126.412,
+      "sha256": "43d0fa628eae24c370dad90c0e1d35440a26caa73aa5cd2504b779a814c77d63",
+      "source": "C:/Users/HPDOCK/AppData/Local/Temp/speedytype_0l1h1hcx.wav"
+    },
+    {
+      "name": "real_134s",
+      "file": "real_134s.wav",
+      "duration_seconds": 133.796,
+      "sha256": "c5f8a62b0076625b4cad8522044002cef70277965158e994419594a231c7e6e7",
+      "source": "C:/Users/HPDOCK/AppData/Local/Temp/speedytype_6alyelny.wav"
+    },
+    {
+      "name": "composite_262s",
+      "file": "composite_262s.wav",
+      "duration_seconds": 262.208,
+      "sha256": "83ae789e10ac569c398872447fb3de972d8368c61789d5276bdacc2c17abdcab",
+      "source": "real_126s.wav + 2 seconds silence + real_134s.wav; latency-only composite"
+    }
+  ]
+}
