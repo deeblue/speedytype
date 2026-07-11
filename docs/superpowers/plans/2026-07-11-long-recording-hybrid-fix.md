@@ -50,10 +50,10 @@ With fixed 30-second chunks and five-second overlap:
 
 The modeled tail improved by 89.6%, confirming that the latency benefit is not caused by the old splice. However, the quasi transcript is not production-safe. Direct comparison with the complete source and batch transcript found concrete content failures:
 
-- The complete sentence `列車準時出發` is present in batch but absent from quasi output.
-- `我在海邊停留約四十分鐘，記錄潮水顏色和風速變化` is corrupted to `一分鐘，記錄潮水顏色和風速變化`, losing the subject and changing the duration.
-- `傍晚，我回到車站附近的咖啡館整理筆記` is reduced to `整理筆記`, dropping the time, return action, and location.
-- `把博物館、市場、舊城街道和海邊步道依照距離重新排序` becomes the malformed `把博物館、市場、舊城街道和海邊不到一兆距離重新排序` near a chunk boundary.
+- **[Case A]** The complete sentence `列車準時出發` is present in batch but absent from quasi output.
+- **[Case B]** `我在海邊停留約四十分鐘，記錄潮水顏色和風速變化` is corrupted to `一分鐘，記錄潮水顏色和風速變化`, losing the subject and changing the duration.
+- **[Case C]** `傍晚，我回到車站附近的咖啡館整理筆記` is reduced to `整理筆記`, dropping the time, return action, and location.
+- **[Case D]** `把博物館、市場、舊城街道和海邊步道依照距離重新排序` becomes the malformed `把博物館、市場、舊城街道和海邊不到一兆距離重新排序` near a chunk boundary.
 - Other substitutions such as `一杯清香` becoming `清爽` show that Whisper variability also exists, but the complete missing clauses and boundary-shaped corruption are the blocking failures addressed by this plan.
 
 Therefore the current conclusion is deliberately two-part:
@@ -62,6 +62,8 @@ Therefore the current conclusion is deliberately two-part:
 2. **Quality conclusion:** the current fixed-chunk/midpoint/exact-overlap merger must not be enabled in production because it can omit or corrupt content. Silence-aware cutting, timestamp-safe deferred boundary ownership, integrity checks, and batch fallback are required before enablement.
 
 Raw evidence is stored in `long_recording_results_continuous.jsonl`. The earlier `long_recording_results.jsonl` remains available only as superseded composite evidence.
+
+> **Case labels A-D above are referenced later in Task 1 and Task 7. They are the confirmed, real-content failures this plan exists to fix. Every later fix must be checked against these specific cases by name, not only against aggregate pass/fail metrics.**
 
 ---
 
@@ -78,6 +80,7 @@ Raw evidence is stored in `long_recording_results_continuous.jsonl`. The earlier
 - Produces: `passes_quality_gate(metrics) -> tuple[bool, list[str]]`.
 
 - [ ] Write failing tests for an omitted sentence, duplicated boundary phrase, reordered sentence, changed number, and unchanged transcript.
+- [ ] Include Cases A-D from the Evidence section verbatim as named regression fixtures, not only synthetic constructed cases, so the metrics are proven against the actual confirmed failures before being trusted on new data.
 - [ ] Run `python -m pytest tests/test_transcript_quality.py -q`; expect missing-module failure.
 - [ ] Implement sentence/token normalization without hiding numbers or technical terms.
 - [ ] Implement metrics and explicit failure reasons.
@@ -211,6 +214,7 @@ Raw evidence is stored in `long_recording_results_continuous.jsonl`. The earlier
 - [ ] Run batch at least three times per recording and save all raw outputs/timings.
 - [ ] Run hybrid v2 at least three times per recording with identical configuration.
 - [ ] Compare each hybrid output with its same-run batch reference using Task 1 metrics.
+- [ ] For each of Cases A-D specifically, record whether it is now resolved and attribute the resolution to a specific task. If a case is resolved by a combination of tasks or remains unresolved, state that explicitly rather than only reporting an aggregate pass/fail.
 - [ ] Record STT tail, complete Gemini/paste tail, request amplification, fallback rate, chunk locations, cut reasons, merge decisions, and quality metrics.
 - [ ] Inspect the 295-second output against `continuous_tts_script.txt`, not only against imperfect batch text.
 - [ ] Confirm natural cuts dominate when pauses exist and forced cuts remain bounded.
@@ -230,6 +234,7 @@ Hybrid mode may be enabled by default only when all conditions pass:
 8. Fallback succeeds for every intentionally injected failure.
 9. Windows full tests and latency regression remain green.
 10. The target Mac passes the same long-recording workflow after the existing macOS handoff checklist.
+11. Cases A-D are each individually confirmed resolved per Task 7's attribution record; a passing aggregate metric alone does not satisfy this gate if any named case remains unresolved or its resolution is unverified.
 
 If any gate fails, production remains batch-only. The failed metric and raw result must be documented rather than lowering the threshold after seeing results.
 
