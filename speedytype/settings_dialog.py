@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import threading
+import sys
 
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
+    QCheckBox,
     QDialog,
     QFileDialog,
     QGroupBox,
@@ -18,12 +20,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-import keyboard
-
 from speedytype.audio import list_input_devices
+from speedytype.autostart import install_autostart, query_autostart, uninstall_autostart
 from speedytype.config import AppConfig
 from speedytype.env_writer import mask_secret, test_gemini_key, test_minimax_key, test_openai_key, update_env_key
 from speedytype.icon import build_app_icon
+from speedytype.hotkey import PlatformPermissionError, capture_hotkey
 from speedytype.settings import (
     MAX_MAX_RECORD_SECONDS,
     MIN_MAX_RECORD_SECONDS,
@@ -41,7 +43,7 @@ from speedytype.settings import (
 # app shortcuts. Real-time conflict detection against arbitrary other
 # background programs is not reliably automatable, so this is a warning
 # hint, not a guarantee of no conflicts. See KNOWN_LIMITATIONS.md.
-KNOWN_RESERVED_SHORTCUTS = {
+WINDOWS_RESERVED_SHORTCUTS = {
     "ctrl+alt+delete",
     "ctrl+shift+esc",
     "alt+f4",
@@ -61,6 +63,18 @@ KNOWN_RESERVED_SHORTCUTS = {
     "win+shift+s",
     "ctrl+shift+space",
 }
+MACOS_RESERVED_SHORTCUTS = {
+    "cmd+space",
+    "cmd+tab",
+    "cmd+alt+esc",
+    "cmd+shift+3",
+    "cmd+shift+4",
+    "cmd+shift+5",
+    "ctrl+cmd+q",
+    "cmd+h",
+    "cmd+m",
+}
+KNOWN_RESERVED_SHORTCUTS = MACOS_RESERVED_SHORTCUTS if sys.platform == "darwin" else WINDOWS_RESERVED_SHORTCUTS
 
 SYSTEM_DEFAULT_DEVICE_LABEL = "系統預設裝置"
 
@@ -157,6 +171,7 @@ class SettingsDialog(QDialog):
         self._vocab_terms = list(self._settings.vocab_terms)
         self._hotkey_capture_signal = HotkeyCaptureSignal()
         self._hotkey_capture_signal.captured.connect(self._on_hotkey_captured)
+        self._autostart_enabled, _ = query_autostart()
 
         layout = QVBoxLayout(self)
 
@@ -165,6 +180,10 @@ class SettingsDialog(QDialog):
         layout.addWidget(self._build_device_group())
         layout.addWidget(self._build_vocab_group())
         layout.addWidget(self._build_keys_group())
+
+        self.autostart_checkbox = QCheckBox("開機時自動啟動")
+        self.autostart_checkbox.setChecked(self._autostart_enabled)
+        layout.addWidget(self.autostart_checkbox)
 
         self.status_label = QLabel("")
         layout.addWidget(self.status_label)
@@ -224,7 +243,11 @@ class SettingsDialog(QDialog):
         self.hotkey_warning_label.setText("")
 
         def worker() -> None:
-            combo = keyboard.read_hotkey(suppress=True)
+            try:
+                combo = capture_hotkey()
+            except PlatformPermissionError:
+                self._hotkey_capture_signal.captured.emit("")
+                return
             self._hotkey_capture_signal.captured.emit(combo)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -232,6 +255,11 @@ class SettingsDialog(QDialog):
     def _on_hotkey_captured(self, combo_string: str) -> None:
         self.capture_button.setEnabled(True)
         self.capture_button.setText("擷取新組合鍵")
+        if not combo_string:
+            self.hotkey_warning_label.setText(
+                "無法擷取熱鍵。請到 macOS 系統設定 > 隱私權與安全性，允許 Accessibility 與 Input Monitoring。"
+            )
+            return
         parts = combo_string.split("+")
 
         if not hotkey_has_modifier_or_is_function_key(parts):
@@ -246,7 +274,7 @@ class SettingsDialog(QDialog):
 
         if combo_string.lower() in KNOWN_RESERVED_SHORTCUTS:
             self.hotkey_warning_label.setText(
-                f"注意：「{combo_string}」可能已被 Windows 或其他常駐程式使用，建議換一組。"
+                f"注意：「{combo_string}」可能已被作業系統或其他常駐程式使用，建議換一組。"
             )
         else:
             self.hotkey_warning_label.setText("")
@@ -391,6 +419,16 @@ class SettingsDialog(QDialog):
         save_settings(self.settings_path, new_settings)
         messages.append("一般設定已儲存")
         self.vocab_applied.emit(new_settings.vocab_bias_string)
+
+        desired_autostart = self.autostart_checkbox.isChecked()
+        if desired_autostart != self._autostart_enabled:
+            if desired_autostart:
+                ok, autostart_message = install_autostart(self.env_path)
+            else:
+                ok, autostart_message = uninstall_autostart()
+            messages.append(("自動啟動：" if ok else "自動啟動失敗：") + autostart_message)
+            if ok:
+                self._autostart_enabled = desired_autostart
 
         key_changes = []
         for field, env_key, original in (

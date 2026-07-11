@@ -161,6 +161,27 @@ def test_cancel_writes_nothing(qapp, tmp_path):
     assert env_path.read_text(encoding="utf-8") == before_env
 
 
+def test_autostart_checkbox_installs_when_enabled_on_save(qapp, tmp_path, monkeypatch):
+    settings_path = tmp_path / "settings.json"
+    env_path = tmp_path / ".env"
+    save_settings(settings_path, AppSettings())
+    calls = []
+    monkeypatch.setattr("speedytype.settings_dialog.query_autostart", lambda: (False, "disabled"))
+    monkeypatch.setattr(
+        "speedytype.settings_dialog.install_autostart",
+        lambda path: calls.append(path) or (True, "installed"),
+    )
+    monkeypatch.setattr("speedytype.settings_dialog.uninstall_autostart", lambda: (True, "removed"))
+
+    dialog = SettingsDialog(make_config(), str(env_path), str(settings_path))
+    assert dialog.autostart_checkbox.isChecked() is False
+    dialog.autostart_checkbox.setChecked(True)
+    dialog._save()
+
+    assert calls == [str(env_path)]
+    assert "installed" in dialog.status_label.text()
+
+
 def make_config_with_warning(warning=""):
     from speedytype.config import AppConfig
 

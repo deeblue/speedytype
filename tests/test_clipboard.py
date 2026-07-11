@@ -1,4 +1,9 @@
 import time
+import sys
+
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="requires the real Windows clipboard")
 
 import win32clipboard
 import win32con
@@ -112,7 +117,7 @@ def test_snapshot_read_failure_produces_safe_restore_skip():
 
 
 def test_paste_text_preserving_clipboard_restores_original_synchronously(monkeypatch):
-    monkeypatch.setattr("speedytype.clipboard.keyboard.send", lambda combo: None)
+    monkeypatch.setattr("speedytype.clipboard.send_paste_shortcut", lambda: None)
     original = "original clipboard content before dictation"
     _set_clipboard_text(original)
 
@@ -126,7 +131,7 @@ def test_paste_text_preserving_clipboard_restores_original_synchronously(monkeyp
 
 
 def test_paste_text_preserving_clipboard_background_restores_after_delay(monkeypatch):
-    monkeypatch.setattr("speedytype.clipboard.keyboard.send", lambda combo: None)
+    monkeypatch.setattr("speedytype.clipboard.send_paste_shortcut", lambda: None)
     original = "original clipboard content, background path"
     _set_clipboard_text(original)
 

@@ -5,14 +5,12 @@ from pathlib import Path
 import sys
 import threading
 
-import keyboard
-
 from speedytype.api import discover_flash_model
 from speedytype.audio import Recorder, list_input_devices, record_diagnostic, temp_wav_path
 from speedytype.autostart import install_autostart, uninstall_autostart
 from speedytype.config import ConfigError, load_config
 from speedytype.daemon import run_daemon, stop_daemon
-from speedytype.hotkey import wait_until_hotkey_released
+from speedytype.hotkey import register_hold_hotkey, remove_hotkey, wait_until_hotkey_released
 from speedytype.pipeline import process_wav
 from speedytype.paths import default_env_path
 from speedytype.real_voice import guided_recording, validate_real_voice
@@ -80,7 +78,7 @@ def command_listen(args: argparse.Namespace) -> int:
     stop_thread: threading.Thread | None = None
     active_path: Path | None = None
 
-    def on_press(_event):
+    def on_press():
         nonlocal active_thread, stop_thread, active_path
         if active_thread and active_thread.is_alive():
             return
@@ -103,12 +101,14 @@ def command_listen(args: argparse.Namespace) -> int:
         active_thread.join()
         process_wav(active_path, config, do_paste=True)
 
-    keyboard.on_press_key(config.hotkey, on_press, suppress=False)
+    hotkey_handle = register_hold_hotkey(config.hotkey, on_press)
     print(f"SpeedyType listening. Hold {config.hotkey.upper()} to record. Press Ctrl+C to exit.", flush=True)
     try:
-        keyboard.wait()
+        threading.Event().wait()
     except KeyboardInterrupt:
         print("Exiting.", flush=True)
+    finally:
+        remove_hotkey(hotkey_handle)
     return 0
 
 

@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 
 from speedytype.paths import default_settings_path
+from speedytype.platform.hotkey import normalize_hotkey_tokens
 
 
 DEFAULT_VOCAB_TERMS = ["BIOS", "Firmware", "NPI", "QA", "API", "TPE 團隊", "BJ 團隊", "USB", "Thunderbolt"]
@@ -16,7 +17,7 @@ MAX_MAX_RECORD_SECONDS = 540.0
 
 SETTINGS_FILE_NAME = "settings.json"
 
-MODIFIER_KEYS = {"ctrl", "alt", "shift", "windows", "win"}
+MODIFIER_KEYS = {"ctrl", "alt", "shift", "cmd"}
 
 
 def _is_function_key(key: str) -> bool:
@@ -71,7 +72,7 @@ class AppSettings:
     def from_dict(cls, data: dict) -> "AppSettings":
         return cls(
             max_record_seconds=float(data.get("max_record_seconds", DEFAULT_MAX_RECORD_SECONDS)),
-            hotkey_combo=list(data.get("hotkey_combo", DEFAULT_HOTKEY_COMBO)) or list(DEFAULT_HOTKEY_COMBO),
+            hotkey_combo=normalize_hotkey_tokens(list(data.get("hotkey_combo", DEFAULT_HOTKEY_COMBO))) or list(DEFAULT_HOTKEY_COMBO),
             vocab_terms=list(data.get("vocab_terms", DEFAULT_VOCAB_TERMS)) or list(DEFAULT_VOCAB_TERMS),
             mic_device_name=str(data.get("mic_device_name", "") or ""),
         )

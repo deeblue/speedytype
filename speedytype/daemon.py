@@ -8,15 +8,14 @@ import sys
 import threading
 import time
 
-import keyboard
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 from speedytype.audio import Recorder, temp_wav_path
 from speedytype.config import AppConfig
 from speedytype.console import safe_print
-from speedytype.hotkey import wait_until_hotkey_released
+from speedytype.hotkey import PlatformPermissionError, register_hold_hotkey, remove_hotkey, wait_until_hotkey_released
 from speedytype.icon import build_app_icon
 from speedytype.overlay import AudioLevelEmitter, RecordingPill
 from speedytype.pipeline import process_wav
@@ -71,10 +70,10 @@ class DaemonController(QObject):
     def register_hotkey(self) -> None:
         if self._hotkey_handle is not None:
             try:
-                keyboard.remove_hotkey(self._hotkey_handle)
+                remove_hotkey(self._hotkey_handle)
             except Exception:
                 pass
-        self._hotkey_handle = keyboard.add_hotkey(self.config.hotkey, self.on_press, suppress=False)
+        self._hotkey_handle = register_hold_hotkey(self.config.hotkey, self.on_press)
 
     def on_press(self) -> None:
         if self._active_thread and self._active_thread.is_alive():
@@ -218,7 +217,15 @@ def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_p
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     controller = DaemonController(config, env_path=env_path, settings_path=settings_path)
-    controller.register_hotkey()
+    try:
+        controller.register_hotkey()
+    except PlatformPermissionError:
+        QMessageBox.critical(
+            None,
+            "SpeedyType 權限不足",
+            "請到 macOS 系統設定 > 隱私權與安全性，允許 SpeedyType（或目前使用的 Python）使用 Accessibility 與 Input Monitoring，然後重新啟動。",
+        )
+        return 2
 
     tray = QSystemTrayIcon(build_app_icon())
     tray.setToolTip("SpeedyType")
