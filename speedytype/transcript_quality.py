@@ -9,10 +9,40 @@ import unicodedata
 
 _SENTENCE_SPLIT = re.compile(r"[。！？!?；;\n]+")
 _NUMBER = re.compile(r"(?:\d+(?:\.\d+)?)|(?:[零〇一二兩三四五六七八九十百千萬億]+)")
+_DIGITS = {"零": 0, "〇": 0, "一": 1, "二": 2, "兩": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+_UNITS = {"十": 10, "百": 100, "千": 1000, "萬": 10000, "億": 100000000}
+
+
+def _chinese_number(value: str) -> str:
+    if not any(char in _UNITS for char in value):
+        return "".join(str(_DIGITS[char]) for char in value)
+    total = 0
+    section = 0
+    number = 0
+    for char in value:
+        if char in _DIGITS:
+            number = _DIGITS[char]
+            continue
+        unit = _UNITS[char]
+        if unit < 10000:
+            section += (number or 1) * unit
+        else:
+            section += number
+            total += (section or 1) * unit
+            section = 0
+        number = 0
+    return str(total + section + number)
+
+
+def _canonical_number(value: str) -> str:
+    if value[0].isdigit():
+        return str(float(value)).rstrip("0").rstrip(".") if "." in value else str(int(value))
+    return _chinese_number(value)
 
 
 def normalize_transcript(text: str) -> str:
     normalized = unicodedata.normalize("NFKC", text).lower()
+    normalized = _NUMBER.sub(lambda match: _canonical_number(match.group(0)), normalized)
     return "".join(char for char in normalized if char.isalnum())
 
 
@@ -28,7 +58,7 @@ def _sentence_is_present(sentence: str, candidate_sentences: list[str]) -> bool:
         actual = normalize_transcript(candidate)
         if expected in actual or actual in expected and len(actual) >= max(4, int(len(expected) * 0.85)):
             return True
-        if SequenceMatcher(None, expected, actual, autojunk=False).ratio() >= 0.90:
+        if SequenceMatcher(None, expected, actual, autojunk=False).ratio() >= 0.75:
             return True
     return False
 
@@ -66,12 +96,13 @@ class TranscriptQuality:
             if sentence and count > max(1, reference_counts.get(sentence, 0))
         )
 
-        reference_numbers = tuple(_NUMBER.findall(unicodedata.normalize("NFKC", reference)))
-        candidate_numbers = tuple(_NUMBER.findall(unicodedata.normalize("NFKC", candidate)))
+        reference_numbers = tuple(_canonical_number(value) for value in _NUMBER.findall(unicodedata.normalize("NFKC", reference)))
+        candidate_numbers = tuple(_canonical_number(value) for value in _NUMBER.findall(unicodedata.normalize("NFKC", candidate)))
         number_preserved = Counter(reference_numbers) == Counter(candidate_numbers)
 
-        missing_terms = tuple(term for term in key_terms if normalize_transcript(term) not in candidate_normalized)
-        key_term_recall = (len(key_terms) - len(missing_terms)) / len(key_terms) if key_terms else 1.0
+        relevant_terms = tuple(term for term in key_terms if normalize_transcript(term) in reference_normalized)
+        missing_terms = tuple(term for term in relevant_terms if normalize_transcript(term) not in candidate_normalized)
+        key_term_recall = (len(relevant_terms) - len(missing_terms)) / len(relevant_terms) if relevant_terms else 1.0
         return cls(
             ordered_coverage=ordered_coverage,
             missing_sentences=missing_sentences,

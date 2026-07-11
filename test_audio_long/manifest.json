@@ -19,7 +19,8 @@
       "file": "continuous_tts_295s.wav",
       "duration_seconds": 294.792,
       "sha256": "2d139c6eae54f926eca2b565b445100cfc6f5110fc820aff2f3c35ef60dca3cc",
-      "source": "Edge TTS 7.2.8, zh-TW-YunJheNeural, continuous_tts_script.txt; complete non-repeating script; 1.02x tempo normalization"
+      "source": "Edge TTS 7.2.8, zh-TW-YunJheNeural, continuous_tts_script.txt; complete non-repeating script; 1.02x tempo normalization",
+      "reference_text_file": "continuous_tts_script.txt"
     }
   ]
 }

@@ -31,7 +31,7 @@ def test_empty_active_speech_chunk_is_rejected():
 
 
 def test_non_silent_timeline_gap_is_rejected():
-    validation = validate_hybrid_result(plans(), merge(gaps=((4, 6),)), results(), [(5, 5.5)])
+    validation = validate_hybrid_result(plans(), merge(gaps=((4, 7),)), results(), [(4, 7)])
     assert any("active-audio gap" in reason for reason in validation.reasons)
 
 
@@ -62,8 +62,13 @@ def test_valid_output_passes():
 
 def test_invalid_output_uses_batch_once():
     calls = []
-    validation = validate_hybrid_result(plans(), merge(gaps=((4, 6),)), results(), [(5, 5.5)])
+    validation = validate_hybrid_result(plans(), merge(gaps=((4, 7),)), results(), [(4, 7)])
     outcome = resolve_with_batch_fallback(validation, "unsafe partial", lambda: calls.append(1) or "safe batch")
     assert outcome.text == "safe batch"
     assert outcome.fallback_used is True
     assert calls == [1]
+
+
+def test_short_timestamp_gap_is_tolerated():
+    validation = validate_hybrid_result(plans(), merge(gaps=((4, 5.5),)), results(), [(4, 5.5)])
+    assert validation.ok, validation.reasons

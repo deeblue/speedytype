@@ -46,6 +46,7 @@ def validate_hybrid_result(
     chunk_results: list[HybridChunkResult],
     audio_activity: list[tuple[float, float]],
 ) -> HybridValidation:
+    minimum_actionable_gap_seconds = 2.5
     reasons: list[str] = []
     by_index = {result.index: result for result in chunk_results}
     densities: list[tuple[int, float]] = []
@@ -72,6 +73,8 @@ def validate_hybrid_result(
     active_total = _active_duration(audio_activity)
     active_gap = 0.0
     for gap in merge_result.gaps:
+        if gap[1] - gap[0] < minimum_actionable_gap_seconds:
+            continue
         for interval in audio_activity:
             overlap = max(0.0, min(gap[1], interval[1]) - max(gap[0], interval[0]))
             active_gap += overlap

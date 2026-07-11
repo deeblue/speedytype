@@ -29,14 +29,31 @@ def wav_duration_seconds(path: Path) -> float:
         return frames / float(rate) if rate else 0.0
 
 
-def process_wav(audio_path: Path, config: AppConfig, *, do_paste: bool = True, run_label: str = "") -> PipelineResult:
+def process_wav(
+    audio_path: Path,
+    config: AppConfig,
+    *,
+    do_paste: bool = True,
+    run_label: str = "",
+    raw_transcript_override: str | None = None,
+    whisper_seconds_override: float | None = None,
+    hybrid_request_count: int = 0,
+    hybrid_request_seconds: float = 0.0,
+    hybrid_fallback_used: bool = False,
+    hybrid_validation_reasons: str = "",
+    precomputed_tail_seconds: float = 0.0,
+) -> PipelineResult:
     recording_seconds = wav_duration_seconds(audio_path)
     tail_start = time.perf_counter()
     safe_print("Recording ended.", flush=True)
 
-    whisper_start = time.perf_counter()
-    raw = transcribe_audio(audio_path, config)
-    whisper_seconds = time.perf_counter() - whisper_start
+    if raw_transcript_override is None:
+        whisper_start = time.perf_counter()
+        raw = transcribe_audio(audio_path, config)
+        whisper_seconds = time.perf_counter() - whisper_start
+    else:
+        raw = raw_transcript_override
+        whisper_seconds = 0.0 if whisper_seconds_override is None else whisper_seconds_override
     safe_print(f"Whisper raw transcript: {raw}", flush=True)
 
     if not raw.strip():
@@ -45,12 +62,16 @@ def process_wav(audio_path: Path, config: AppConfig, *, do_paste: bool = True, r
             whisper_seconds=whisper_seconds,
             gemini_seconds=0.0,
             paste_seconds=0.0,
-            total_tail_latency_seconds=time.perf_counter() - tail_start,
+            total_tail_latency_seconds=precomputed_tail_seconds + time.perf_counter() - tail_start,
             run_label=run_label,
             llm_provider=config.llm_provider,
             llm_model=config.llm_model,
             llm_call_seconds=0.0,
             retry_wait_seconds=0.0,
+            hybrid_request_count=hybrid_request_count,
+            hybrid_request_seconds=hybrid_request_seconds,
+            hybrid_fallback_used=hybrid_fallback_used,
+            hybrid_validation_reasons=hybrid_validation_reasons,
         )
         append_latency_record(config.latency_log_path, latency)
         message = "Whisper returned empty text; skipped Gemini and paste."
@@ -73,7 +94,7 @@ def process_wav(audio_path: Path, config: AppConfig, *, do_paste: bool = True, r
     else:
         paste_ok, paste_message = False, "Paste skipped by command option."
     paste_seconds = time.perf_counter() - paste_start
-    total_tail = time.perf_counter() - tail_start
+    total_tail = precomputed_tail_seconds + time.perf_counter() - tail_start
 
     latency = LatencyRecord.create(
         recording_seconds=recording_seconds,
@@ -92,6 +113,10 @@ def process_wav(audio_path: Path, config: AppConfig, *, do_paste: bool = True, r
         key_send_seconds=0.0 if paste_result is None else paste_result.key_send_seconds,
         post_paste_wait_seconds=0.0 if paste_result is None else paste_result.post_send_wait_seconds,
         paste_verification_seconds=0.0 if paste_result is None else paste_result.verification_seconds,
+        hybrid_request_count=hybrid_request_count,
+        hybrid_request_seconds=hybrid_request_seconds,
+        hybrid_fallback_used=hybrid_fallback_used,
+        hybrid_validation_reasons=hybrid_validation_reasons,
     )
     append_latency_record(config.latency_log_path, latency)
     safe_print(

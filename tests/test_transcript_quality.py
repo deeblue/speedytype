@@ -1,5 +1,5 @@
 from speedytype.transcript_quality import TranscriptQuality, normalize_transcript, passes_quality_gate
-from scripts.run_long_recording_benchmark import quality_payload
+from scripts.run_long_recording_benchmark import case_resolution, quality_payload
 
 
 def assert_rejected(reference: str, candidate: str, expected_reason: str) -> TranscriptQuality:
@@ -29,6 +29,17 @@ def test_reordered_content_is_rejected():
 
 def test_changed_number_is_rejected():
     assert_rejected("停留四十分鐘。", "停留一分鐘。", "numbers changed")
+
+
+def test_chinese_and_arabic_numbers_are_equivalent():
+    metrics = TranscriptQuality.compare("九點四十分，停留二十分鐘。", "9點40分，停留20分鐘。")
+    assert metrics.number_preserved is True
+
+
+def test_key_terms_absent_from_reference_are_not_required():
+    metrics = TranscriptQuality.compare("今天搭火車。", "今天搭火車。", ["BIOS", "API"])
+    assert metrics.key_term_recall == 1.0
+    assert metrics.missing_key_terms == ()
 
 
 def test_unchanged_transcript_passes():
@@ -66,3 +77,8 @@ def test_benchmark_quality_payload_is_machine_readable():
     assert payload["quality_gate_ok"] is True
     assert payload["quality_gate_reasons"] == []
     assert payload["quality"]["number_preserved"] is True
+
+
+def test_named_case_resolution_is_individually_traceable():
+    status = case_resolution("列車準時出發。我在海邊停留約四十分鐘。")
+    assert status == {"A": True, "B": True, "C": False, "D": False}

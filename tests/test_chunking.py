@@ -47,3 +47,21 @@ def test_trailing_audio_is_fully_covered():
     assert min(chunk.start_seconds for chunk in chunks) == 0.0
     for left, right in zip(chunks, chunks[1:]):
         assert right.start_seconds <= left.end_seconds
+
+
+def test_adaptive_rms_finds_same_pause_with_realistic_background_noise():
+    sample_rate = 1000
+    rng = np.random.default_rng(7)
+    clean = signal_with_silence(35, 24.5, 25.4, sample_rate)
+    noisy = clean + rng.normal(0, 0.008, len(clean)).astype(np.float32)
+    noisy[int(24.5 * sample_rate):int(25.4 * sample_rate)] = rng.normal(
+        0, 0.008, int(0.9 * sample_rate)
+    ).astype(np.float32)
+
+    clean_regions = detect_silence_regions(clean, sample_rate, ChunkingConfig())
+    noisy_regions = detect_silence_regions(noisy, sample_rate, ChunkingConfig())
+
+    assert clean_regions and noisy_regions
+    clean_center = (clean_regions[0].start_seconds + clean_regions[0].end_seconds) / 2
+    noisy_center = (noisy_regions[0].start_seconds + noisy_regions[0].end_seconds) / 2
+    assert abs(clean_center - noisy_center) < 0.2
