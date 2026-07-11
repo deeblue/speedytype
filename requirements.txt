@@ -2,12 +2,17 @@ audioop-lts==0.2.2
 keyboard==0.13.5
 edge-tts==7.0.2
 imageio-ffmpeg==0.6.0
+numpy==2.3.1
+platformdirs==4.3.8
+psutil==7.0.0
+PyQt6==6.9.1
 pyperclip==1.9.0
 pydub==0.25.1
 pytest==8.4.1
 python-dotenv==1.1.1
-pywin32==312
-pywinauto==0.6.9
+pywin32==312; sys_platform == "win32"
+pywinauto==0.6.9; sys_platform == "win32"
+pynput==1.8.1; sys_platform == "darwin"
 requests==2.32.4
 sounddevice==0.5.2
 soundfile==0.13.1

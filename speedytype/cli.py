@@ -14,6 +14,7 @@ from speedytype.config import ConfigError, load_config
 from speedytype.daemon import run_daemon, stop_daemon
 from speedytype.hotkey import wait_until_hotkey_released
 from speedytype.pipeline import process_wav
+from speedytype.paths import default_env_path
 from speedytype.real_voice import guided_recording, validate_real_voice
 
 
@@ -191,7 +192,7 @@ def command_validate_real_voice(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="speedytype", description="SpeedyType Windows voice input POC")
-    parser.add_argument("--env", default=".env", help="Path to .env config file")
+    parser.add_argument("--env", default=str(default_env_path()), help="Path to .env config file")
     sub = parser.add_subparsers(dest="command", required=True)
 
     diagnose = sub.add_parser("diagnose-config")
@@ -245,4 +246,3 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)
-

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import os
 import shlex
 
 from speedytype.audio import find_input_device_index_by_name
+from speedytype.paths import default_env_path, default_latency_log_path
 from speedytype.settings import SETTINGS_FILE_NAME, load_settings
 
 
@@ -34,7 +35,7 @@ class AppConfig:
     llm_thinking_type: str = ""
     llm_disambiguation_hints: str = "on"
     max_record_seconds: float = 60.0
-    latency_log_path: Path = Path("speedytype_latency_log.csv")
+    latency_log_path: Path = field(default_factory=default_latency_log_path)
     clipboard_restore_delay_seconds: float = 0.3
 
     @property
@@ -85,8 +86,8 @@ def resolve_mic_device_setting(device_name: str) -> tuple[str, str]:
     )
 
 
-def load_config(path: str | Path = ".env", settings_path: str | Path = SETTINGS_FILE_NAME) -> AppConfig:
-    env_path = Path(path)
+def load_config(path: str | Path | None = None, settings_path: str | Path | None = None) -> AppConfig:
+    env_path = Path(path) if path is not None else default_env_path()
     file_values = _parse_env_file(env_path)
 
     def get(name: str, default: str = "") -> str:
@@ -126,6 +127,6 @@ def load_config(path: str | Path = ".env", settings_path: str | Path = SETTINGS_
         llm_thinking_type=get("LLM_THINKING_TYPE"),
         llm_disambiguation_hints=get("LLM_DISAMBIGUATION_HINTS", "on") or "on",
         max_record_seconds=settings.max_record_seconds,
-        latency_log_path=Path(get("LATENCY_LOG_PATH", "speedytype_latency_log.csv") or "speedytype_latency_log.csv"),
+        latency_log_path=Path(get("LATENCY_LOG_PATH", str(default_latency_log_path())) or default_latency_log_path()),
         clipboard_restore_delay_seconds=float(get("CLIPBOARD_RESTORE_DELAY_SECONDS", "0.3") or "0.3"),
     )

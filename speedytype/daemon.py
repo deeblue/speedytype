@@ -20,9 +20,11 @@ from speedytype.hotkey import wait_until_hotkey_released
 from speedytype.icon import build_app_icon
 from speedytype.overlay import AudioLevelEmitter, RecordingPill
 from speedytype.pipeline import process_wav
+from speedytype.paths import default_daemon_log_path, default_env_path, default_pid_path, default_settings_path
+from speedytype.platform.process import is_process_running, terminate_process
 
 
-PID_FILE = Path("speedytype_daemon.pid")
+PID_FILE = default_pid_path()
 COUNTDOWN_WARNING_SECONDS = 60.0
 
 
@@ -38,12 +40,12 @@ class DaemonController(QObject):
     show_countdown_signal = pyqtSignal(int)
     hide_signal = pyqtSignal()
 
-    def __init__(self, config: AppConfig, env_path: str = ".env", settings_path: str = "settings.json",
+    def __init__(self, config: AppConfig, env_path: str | Path | None = None, settings_path: str | Path | None = None,
                  countdown_warning_seconds: float = COUNTDOWN_WARNING_SECONDS) -> None:
         super().__init__()
         self.config = config
-        self.env_path = env_path
-        self.settings_path = settings_path
+        self.env_path = str(env_path or default_env_path())
+        self.settings_path = str(settings_path or default_settings_path())
         self.countdown_warning_seconds = countdown_warning_seconds
         self.pill = RecordingPill()
         self.level_emitter = AudioLevelEmitter()
@@ -129,16 +131,12 @@ class DaemonController(QObject):
 
 
 def _write_pid_file() -> None:
+    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
     PID_FILE.write_text(str(os.getpid()), encoding="utf-8")
 
 
 def _is_pid_running(pid: int) -> bool:
-    result = subprocess.run(
-        ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
-        capture_output=True,
-        text=True,
-    )
-    return str(pid) in result.stdout
+    return is_process_running(pid)
 
 
 def check_existing_daemon(pid_file: Path = PID_FILE) -> tuple[bool, str]:
@@ -185,13 +183,18 @@ def _remove_pid_file_if_mine() -> None:
 
 
 def _relaunch_daemon(env_path: str) -> None:
-    pythonw = Path(sys.executable).with_name("pythonw.exe")
-    interpreter = str(pythonw) if pythonw.exists() else sys.executable
-    creationflags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+    if sys.platform == "win32":
+        pythonw = Path(sys.executable).with_name("pythonw.exe")
+        interpreter = str(pythonw) if pythonw.exists() else sys.executable
+        creationflags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+    else:
+        interpreter = sys.executable
+        creationflags = 0
     # pythonw.exe has no console, so sys.stdout/sys.stderr are None unless
     # explicitly redirected here; safe_print() tolerates that, but redirecting
     # to a real log file keeps restart/autostart diagnostics visible.
-    log_path = Path("speedytype_daemon.log")
+    log_path = default_daemon_log_path()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     log_file = open(log_path, "a", encoding="utf-8")
     child_env = dict(os.environ)
     child_env["PYTHONIOENCODING"] = "utf-8"
@@ -205,7 +208,7 @@ def _relaunch_daemon(env_path: str) -> None:
     )
 
 
-def run_daemon(config: AppConfig, env_path: str = ".env", settings_path: str = "settings.json") -> int:
+def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_path: str | Path | None = None) -> int:
     should_start, message = check_existing_daemon()
     if message:
         safe_print(message, flush=True)
@@ -290,16 +293,10 @@ def stop_daemon(pid_file: Path = PID_FILE) -> tuple[bool, str]:
         return False, f"PID file content is invalid: {pid_text!r}"
     pid = int(pid_text)
 
-    result = subprocess.run(
-        ["taskkill", "/PID", str(pid), "/F"],
-        capture_output=True,
-        text=True,
-    )
+    ok, message = terminate_process(pid)
     try:
         pid_file.unlink()
     except Exception:
         pass
 
-    if result.returncode == 0:
-        return True, f"Stopped daemon PID {pid}."
-    return False, f"taskkill failed (code={result.returncode}): {(result.stderr or result.stdout).strip()}"
+    return ok, message

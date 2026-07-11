@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import json
 
+from speedytype.paths import default_settings_path
+
 
 DEFAULT_VOCAB_TERMS = ["BIOS", "Firmware", "NPI", "QA", "API", "TPE 團隊", "BJ 團隊", "USB", "Thunderbolt"]
 DEFAULT_MAX_RECORD_SECONDS = 60.0
@@ -79,13 +81,13 @@ class AppSettings:
         return cls()
 
 
-def load_settings(path: str | Path = SETTINGS_FILE_NAME) -> AppSettings:
+def load_settings(path: str | Path | None = None) -> AppSettings:
     """Load settings.json, auto-creating it with defaults if missing, and
     falling back to in-memory defaults (without touching the file) if its
     content is not valid JSON/schema, so a manually-broken file can never
     crash the app.
     """
-    settings_path = Path(path)
+    settings_path = Path(path) if path is not None else default_settings_path()
     if not settings_path.exists():
         defaults = AppSettings.default()
         save_settings(settings_path, defaults)
@@ -108,6 +110,7 @@ def load_settings(path: str | Path = SETTINGS_FILE_NAME) -> AppSettings:
 
 def save_settings(path: str | Path, settings: AppSettings) -> None:
     settings_path = Path(path)
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(
         json.dumps(settings.to_dict(), ensure_ascii=False, indent=2),
         encoding="utf-8",
