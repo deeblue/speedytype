@@ -259,7 +259,14 @@ Three paid API runs per audio case were saved to `long_recording_hybrid_v2_gate_
 | 133.796s real | 9.491s | 6.306s | 33.6% | 2.18x | 0/3 |
 | 294.792s continuous TTS | 23.185s | 6.423s | 72.3% | 1.83x | 0/3 |
 
-The structural validator passed all final runs without fallback. This only proves that requests completed and no actionable active-audio gap, empty chunk, or repeated sentence was detected; it does not override the reference-based content gate.
+The structural validator passed all final runs without fallback. This only proves that requests completed and no actionable active-audio gap, empty chunk, or repeated sentence was detected; it does not override content quality.
+
+Quality reporting was subsequently split so third-party Whisper errors are not automatically attributed to hybrid code:
+
+- `source_quality` compares output with a known source script. It is available for the 295-second TTS case and describes total model-plus-pipeline accuracy.
+- `hybrid_regression_quality` compares hybrid raw output with the same run's batch raw output. This is the production decision metric for extra chunk/merge regression.
+
+Reanalysis is stored in `long_recording_hybrid_v2_quality_reanalysis.jsonl`. Hybrid regression still passed 0/3 runs for every case: 126s failed coverage/number/BJ-term checks, 134s added a number token, and 295s added a number token associated with the Case D `一兆` corruption. The TTS source gate also passed 0/3, but that separate result is not used to blame hybrid for batch Whisper's baseline errors.
 
 ### Case A-D Attribution
 
@@ -270,4 +277,4 @@ The structural validator passed all final runs without fallback. This only prove
 
 ### Gate Decision
 
-Production enablement is rejected. Gate 5 passes only for the 295-second case, gate 6 passes for all cases, and the Windows regression/failure controls pass. Gates 1-4 and 11 fail because every hybrid case missed at least one raw content requirement and Case D remains unstable. Real long-output paste timing and the target-Mac workflow were not completed, so gates 5 (including paste) and 10 also remain incomplete. The feature flag must remain `false`.
+Production enablement is rejected. Gate 5 passes only for the 295-second case, gate 6 passes for all cases, and the Windows regression/failure controls pass. The batch-relative hybrid regression gate remains 0/3 for every case and Case D remains unstable. Real long-output paste timing and the target-Mac workflow were not completed, so gates 5 (including paste) and 10 also remain incomplete. The feature flag must remain `false`.

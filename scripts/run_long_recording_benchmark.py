@@ -27,6 +27,15 @@ def quality_payload(reference: str, candidate: str, key_terms: list[str]) -> dic
     return {"quality": asdict(metrics), "quality_gate_ok": ok, "quality_gate_reasons": reasons}
 
 
+def named_quality_payload(prefix: str, reference: str, candidate: str, key_terms: list[str]) -> dict:
+    payload = quality_payload(reference, candidate, key_terms)
+    return {
+        f"{prefix}_quality": payload["quality"],
+        f"{prefix}_gate_ok": payload["quality_gate_ok"],
+        f"{prefix}_gate_reasons": payload["quality_gate_reasons"],
+    }
+
+
 def run_batch(path: Path, config) -> dict:
     started = time.perf_counter()
     text = transcribe_audio(path, config)
@@ -198,10 +207,11 @@ def main() -> int:
             continue
         path = manifest_path.parent / case["file"]
         for run_index in range(args.runs):
-            reference = (
+            source_reference = (
                 (manifest_path.parent / case["reference_text_file"]).read_text(encoding="utf-8")
                 if case.get("reference_text_file") else ""
             )
+            batch_reference = ""
             key_terms = [term.strip() for term in config.whisper_vocab_bias.split(",") if term.strip()]
             runners = (
                 lambda: run_batch(path, config),
@@ -211,10 +221,15 @@ def main() -> int:
             for runner in runners:
                 try:
                     record = {"case": case["name"], "run": run_index + 1, "duration_seconds": case["duration_seconds"], **runner()}
-                    if record["mode"] == "batch" and not case.get("reference_text_file"):
-                        reference = record["text"]
+                    if record["mode"] == "batch":
+                        batch_reference = record["text"]
                     quality_candidate = record.get("hybrid_text", record["text"])
-                    record.update(quality_payload(reference, quality_candidate, key_terms))
+                    if source_reference:
+                        record.update(named_quality_payload("source", source_reference, quality_candidate, key_terms))
+                    regression_reference = batch_reference or quality_candidate
+                    record.update(
+                        named_quality_payload("hybrid_regression", regression_reference, quality_candidate, key_terms)
+                    )
                     if case["name"] == "continuous_tts_295s":
                         record["case_resolution_raw"] = case_resolution(quality_candidate)
                         record["case_resolution_polished"] = case_resolution(record.get("polished_text", quality_candidate))

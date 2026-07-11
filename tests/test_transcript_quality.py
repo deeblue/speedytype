@@ -1,5 +1,5 @@
 from speedytype.transcript_quality import TranscriptQuality, normalize_transcript, passes_quality_gate
-from scripts.run_long_recording_benchmark import case_resolution, quality_payload
+from scripts.run_long_recording_benchmark import case_resolution, named_quality_payload, quality_payload
 
 
 def assert_rejected(reference: str, candidate: str, expected_reason: str) -> TranscriptQuality:
@@ -82,3 +82,11 @@ def test_benchmark_quality_payload_is_machine_readable():
 def test_named_case_resolution_is_individually_traceable():
     status = case_resolution("列車準時出發。我在海邊停留約四十分鐘。")
     assert status == {"A": True, "B": True, "C": False, "D": False}
+
+
+def test_source_and_hybrid_regression_quality_have_separate_names():
+    source = named_quality_payload("source", "原稿四十分鐘", "辨識一分鐘", [])
+    regression = named_quality_payload("hybrid_regression", "batch 一分鐘", "hybrid 一分鐘", [])
+    assert source["source_gate_ok"] is False
+    assert "hybrid_regression_gate_ok" in regression
+    assert "source_gate_ok" not in regression
