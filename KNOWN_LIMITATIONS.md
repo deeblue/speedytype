@@ -142,3 +142,10 @@ Each item lists: current state, known impact, why it was not addressed, and the 
 - **Concrete quality failures**: Quasi omitted the complete sentence `列車準時出發`; changed `我在海邊停留約四十分鐘` to `一分鐘`; reduced `傍晚，我回到車站附近的咖啡館整理筆記` to `整理筆記`; and corrupted the itinerary phrase near a boundary into `海邊不到一兆距離重新排序`. These are content-integrity failures, not formatting differences.
 - **Decision**: A hybrid path above roughly 60-90 seconds is worth developing, and the observed latency trend is not an artifact of the composite file. Production remains batch-only until chunk merge quality and the final Gemini/paste output pass a dedicated comparison.
 - **Evidence**: `long_recording_results_continuous.jsonl`, `test_audio_long/continuous_tts_script.txt`, and `test_audio_long/manifest.json`. The earlier `long_recording_results.jsonl` is retained as superseded evidence.
+
+### Hybrid v2 implementation result
+
+- Silence-aware chunking, timestamp merging, integrity validation, one-time batch fallback, request circuit breaking, and real Recorder/daemon integration are implemented behind `HYBRID_TRANSCRIPTION_ENABLED=false`.
+- Three final runs per case measured complete batch/hybrid tails of 9.521/6.003s (126s), 9.491/6.306s (134s), and 23.185/6.423s (295s). Request amplification was 1.70x, 2.18x, and 1.83x.
+- The raw quality gate passed 0/3 runs for every case. Cases A-C were present in every 295s hybrid transcript, but Case D still produced `海邊不到一兆距離重新排序`. Other number/coverage failures remained in the real recordings.
+- **Current decision**: do not enable hybrid by default. Latency and request-cost results are promising, but the named-case and content-integrity production gates are not satisfied. See `long_recording_hybrid_v2_gate_results.jsonl` and the implementation-result section of the hybrid fix plan.

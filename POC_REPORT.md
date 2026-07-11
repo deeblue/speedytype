@@ -409,3 +409,7 @@ This round intentionally implemented only the platform abstraction layer and mac
 ## macOS handoff
 
 Code and Windows-runnable contracts exist for text-only clipboard preservation, pynput hold/release and capture, canonical hotkey tokens, LaunchAgent plist management, reserved shortcut warnings, and permission guidance. These are not claimed as operationally verified until the exact real-Mac checklist in `KNOWN_LIMITATIONS.md` item 18 is completed.
+
+## Hybrid v2 follow-up
+
+The silence-aware hybrid plan was implemented behind a disabled-by-default feature flag. Offline and integration coverage reached 122 passing tests, and a Windows daemon smoke exercised the real hybrid record/transcribe/polish/paste path. The final three-run benchmark showed 72.3% complete-tail improvement on the 295-second continuous file with 1.83x Whisper request work, but raw quality passed 0/3 runs. Cases A-C were recovered; Case D remained a Whisper lexical corruption inside a distinct segment. Because the content gate failed and real Mac/paste benchmark gates remain incomplete, production stays on batch transcription.

@@ -246,3 +246,28 @@ If any gate fails, production remains batch-only. The failed metric and raw resu
 4. Execute paid API benchmarks only after offline merge and validation tests pass.
 5. Enable hybrid behind `HYBRID_TRANSCRIPTION_ENABLED=false` first.
 6. Change the default only after every production gate passes.
+
+## Implementation Result (2026-07-11)
+
+Tasks 1-6 were implemented behind `HYBRID_TRANSCRIPTION_ENABLED=false`. The Windows suite reached 122 passing tests, including named Case A-D metric fixtures, clean/noisy VAD signals, timestamp merging, structural fallback, circuit breaking, non-blocking Recorder feed, pipeline integration, and latency diagnostics. A real Windows daemon smoke with a temporary one-second threshold completed record, hybrid Whisper, Gemini, paste, and shutdown successfully.
+
+Three paid API runs per audio case were saved to `long_recording_hybrid_v2_gate_results.jsonl`:
+
+| Case | Batch complete tail | Hybrid complete tail | Improvement | Request amplification | Raw quality gate |
+|---|---:|---:|---:|---:|---:|
+| 126.412s real | 9.521s | 6.003s | 37.0% | 1.70x | 0/3 |
+| 133.796s real | 9.491s | 6.306s | 33.6% | 2.18x | 0/3 |
+| 294.792s continuous TTS | 23.185s | 6.423s | 72.3% | 1.83x | 0/3 |
+
+The structural validator passed all final runs without fallback. This only proves that requests completed and no actionable active-audio gap, empty chunk, or repeated sentence was detected; it does not override the reference-based content gate.
+
+### Case A-D Attribution
+
+- **Case A:** Resolved in raw output in all three final runs. The result is attributable to the combined Task 2 natural-silence plan and Task 3 full timestamped-segment commit; no single-task ablation was performed.
+- **Case B:** Resolved in raw output in all three final runs, attributable to the same Task 2+3 combination.
+- **Case C:** Resolved in raw output in all three final runs, attributable to the same Task 2+3 combination.
+- **Case D:** Not resolved. Raw output consistently contained `海邊不到一兆距離重新排序` in the final gate runs. Merge logs classified the segment as distinct rather than an overlap duplicate, so this occurrence is a Whisper lexical error inside one chunk, not evidence that Task 3 dropped or duplicated a boundary. Gemini produced a semantically sensible itinerary, but exact-phrase matching is not a valid polished-output judge because Gemini restructures text.
+
+### Gate Decision
+
+Production enablement is rejected. Gate 5 passes only for the 295-second case, gate 6 passes for all cases, and the Windows regression/failure controls pass. Gates 1-4 and 11 fail because every hybrid case missed at least one raw content requirement and Case D remains unstable. Real long-output paste timing and the target-Mac workflow were not completed, so gates 5 (including paste) and 10 also remain incomplete. The feature flag must remain `false`.
