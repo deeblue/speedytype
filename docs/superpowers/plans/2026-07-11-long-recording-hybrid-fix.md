@@ -37,6 +37,32 @@ silence_exit_multiplier = 2.4
 
 These are starting values, not hidden constants. They belong in an immutable configuration dataclass and must be recorded in benchmark output.
 
+## Evidence Driving This Plan
+
+The decisive long-file test uses `test_audio_long/continuous_tts_295s.wav`: a 294.792-second, single continuous TTS reading of the non-repeating script in `test_audio_long/continuous_tts_script.txt`. It replaced the earlier 262-second composite because the two composite source recordings discuss overlapping meeting topics and could confound the result.
+
+With fixed 30-second chunks and five-second overlap:
+
+| Path | STT tail | Total Whisper request time | Requests |
+|---|---:|---:|---:|
+| Batch | 18.098s | 18.098s | 1 |
+| Quasi-streaming POC | 1.874s | 34.742s | 12 |
+
+The modeled tail improved by 89.6%, confirming that the latency benefit is not caused by the old splice. However, the quasi transcript is not production-safe. Direct comparison with the complete source and batch transcript found concrete content failures:
+
+- The complete sentence `列車準時出發` is present in batch but absent from quasi output.
+- `我在海邊停留約四十分鐘，記錄潮水顏色和風速變化` is corrupted to `一分鐘，記錄潮水顏色和風速變化`, losing the subject and changing the duration.
+- `傍晚，我回到車站附近的咖啡館整理筆記` is reduced to `整理筆記`, dropping the time, return action, and location.
+- `把博物館、市場、舊城街道和海邊步道依照距離重新排序` becomes the malformed `把博物館、市場、舊城街道和海邊不到一兆距離重新排序` near a chunk boundary.
+- Other substitutions such as `一杯清香` becoming `清爽` show that Whisper variability also exists, but the complete missing clauses and boundary-shaped corruption are the blocking failures addressed by this plan.
+
+Therefore the current conclusion is deliberately two-part:
+
+1. **Latency conclusion:** long-recording background transcription is worth pursuing; the improvement persists on genuine continuous, non-repeating audio.
+2. **Quality conclusion:** the current fixed-chunk/midpoint/exact-overlap merger must not be enabled in production because it can omit or corrupt content. Silence-aware cutting, timestamp-safe deferred boundary ownership, integrity checks, and batch fallback are required before enablement.
+
+Raw evidence is stored in `long_recording_results_continuous.jsonl`. The earlier `long_recording_results.jsonl` remains available only as superseded composite evidence.
+
 ---
 
 ### Task 1: Establish Transcript Quality Metrics
@@ -215,4 +241,3 @@ If any gate fails, production remains batch-only. The failed metric and raw resu
 4. Execute paid API benchmarks only after offline merge and validation tests pass.
 5. Enable hybrid behind `HYBRID_TRANSCRIPTION_ENABLED=false` first.
 6. Change the default only after every production gate passes.
-
