@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 import json
 from pathlib import Path
 import sys
@@ -13,6 +14,13 @@ import soundfile as sf
 from speedytype.api import transcribe_audio, transcribe_audio_verbose
 from speedytype.config import load_config
 from speedytype.quasi_streaming import build_chunk_plan, merge_text_with_overlap, slice_wav, tail_prompt
+from speedytype.transcript_quality import TranscriptQuality, passes_quality_gate
+
+
+def quality_payload(reference: str, candidate: str, key_terms: list[str]) -> dict:
+    metrics = TranscriptQuality.compare(reference, candidate, key_terms)
+    ok, reasons = passes_quality_gate(metrics)
+    return {"quality": asdict(metrics), "quality_gate_ok": ok, "quality_gate_reasons": reasons}
 
 
 def run_batch(path: Path, config) -> dict:
@@ -65,9 +73,14 @@ def main() -> int:
     records = []
     for case in json.loads(manifest_path.read_text(encoding="utf-8"))["cases"]:
         path = manifest_path.parent / case["file"]
+        reference = ""
+        key_terms = [term.strip() for term in config.whisper_vocab_bias.split(",") if term.strip()]
         for runner in (lambda: run_batch(path, config), lambda: run_quasi(path, config, args.chunk_seconds, args.overlap_seconds)):
             try:
                 record = {"case": case["name"], "duration_seconds": case["duration_seconds"], **runner()}
+                if record["mode"] == "batch":
+                    reference = record["text"]
+                record.update(quality_payload(reference, record["text"], key_terms))
             except Exception as exc:
                 record = {"case": case["name"], "duration_seconds": case["duration_seconds"], "error": f"{type(exc).__name__}: {exc}"}
             print(json.dumps(record, ensure_ascii=False), flush=True)
