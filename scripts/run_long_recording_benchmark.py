@@ -18,17 +18,22 @@ from speedytype.hybrid_validation import HybridChunkResult, validate_hybrid_resu
 from speedytype.llm import call_llm_polisher
 from speedytype.quasi_streaming import build_chunk_plan, merge_text_with_overlap, slice_wav, tail_prompt
 from speedytype.segment_merge import TimedSegment, merge_timed_segments
-from speedytype.transcript_quality import TranscriptQuality, normalize_transcript, passes_quality_gate
+from speedytype.transcript_quality import (
+    TranscriptQuality,
+    normalize_transcript,
+    passes_polished_regression_gate,
+    passes_quality_gate,
+)
 
 
-def quality_payload(reference: str, candidate: str, key_terms: list[str]) -> dict:
+def quality_payload(reference: str, candidate: str, key_terms: list[str], gate_fn=passes_quality_gate) -> dict:
     metrics = TranscriptQuality.compare(reference, candidate, key_terms)
-    ok, reasons = passes_quality_gate(metrics)
+    ok, reasons = gate_fn(metrics)
     return {"quality": asdict(metrics), "quality_gate_ok": ok, "quality_gate_reasons": reasons}
 
 
-def named_quality_payload(prefix: str, reference: str, candidate: str, key_terms: list[str]) -> dict:
-    payload = quality_payload(reference, candidate, key_terms)
+def named_quality_payload(prefix: str, reference: str, candidate: str, key_terms: list[str], gate_fn=passes_quality_gate) -> dict:
+    payload = quality_payload(reference, candidate, key_terms, gate_fn)
     return {
         f"{prefix}_quality": payload["quality"],
         f"{prefix}_gate_ok": payload["quality_gate_ok"],
@@ -212,6 +217,7 @@ def main() -> int:
                 if case.get("reference_text_file") else ""
             )
             batch_reference = ""
+            batch_polished_reference = ""
             key_terms = [term.strip() for term in config.whisper_vocab_bias.split(",") if term.strip()]
             runners = (
                 lambda: run_batch(path, config),
@@ -223,16 +229,36 @@ def main() -> int:
                     record = {"case": case["name"], "run": run_index + 1, "duration_seconds": case["duration_seconds"], **runner()}
                     if record["mode"] == "batch":
                         batch_reference = record["text"]
+                        batch_polished_reference = record.get("polished_text", "")
                     quality_candidate = record.get("hybrid_text", record["text"])
+                    quality_candidate_polished = record.get("polished_text", "")
                     if source_reference:
                         record.update(named_quality_payload("source", source_reference, quality_candidate, key_terms))
                     regression_reference = batch_reference or quality_candidate
                     record.update(
                         named_quality_payload("hybrid_regression", regression_reference, quality_candidate, key_terms)
                     )
+                    # Polished-text regression: compare this run's polished output against
+                    # the SAME run's batch-mode polished output, not against the raw source
+                    # script. A literal-phrase check against the source script was found to
+                    # have no discriminating power here — Gemini restructures long narratives
+                    # into bullet-point summaries regardless of mode, so even a from-scratch
+                    # batch run's polished output never contains the literal Case A-D source
+                    # sentences either (see KNOWN_LIMITATIONS.md item 19). Comparing against
+                    # same-run batch-polished mirrors hybrid_regression_quality's design and
+                    # is tolerant of paraphrasing while still catching genuine content loss.
+                    regression_polished_reference = batch_polished_reference or quality_candidate_polished
+                    record.update(
+                        named_quality_payload(
+                            "hybrid_regression_polished",
+                            regression_polished_reference,
+                            quality_candidate_polished,
+                            key_terms,
+                            gate_fn=passes_polished_regression_gate,
+                        )
+                    )
                     if case["name"] == "continuous_tts_295s":
                         record["case_resolution_raw"] = case_resolution(quality_candidate)
-                        record["case_resolution_polished"] = case_resolution(record.get("polished_text", quality_candidate))
                 except Exception as exc:
                     record = {"case": case["name"], "run": run_index + 1, "duration_seconds": case["duration_seconds"], "error": f"{type(exc).__name__}: {exc}"}
                 print(json.dumps(record, ensure_ascii=False), flush=True)

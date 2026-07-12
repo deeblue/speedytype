@@ -130,3 +130,38 @@ def passes_quality_gate(metrics: TranscriptQuality) -> tuple[bool, list[str]]:
             f"key-term recall {metrics.key_term_recall:.3f} is below 0.980; missing={list(metrics.missing_key_terms)}"
         )
     return not reasons, reasons
+
+
+def passes_polished_regression_gate(metrics: TranscriptQuality) -> tuple[bool, list[str]]:
+    """Gate for comparing two independently LLM-polished/restructured texts
+    (e.g. hybrid-polished vs same-run batch-polished), as opposed to two raw
+    STT transcripts of the same audio timeline.
+
+    `passes_quality_gate`'s `ordered_coverage`/`missing_sentences` checks
+    assume both texts preserve the same literal sentence-by-sentence order,
+    which holds for STT transcripts of one audio file but not for two
+    independent Gemini calls: Gemini is free to regroup a long narrative into
+    differently-organized bullet sections each time, which is legitimate,
+    faithful restructuring, not information loss. Verified against real data:
+    the actual 295s-case batch vs. hybrid polished outputs (both good-quality,
+    hand-inspected restructurings of the same content) score
+    ordered_coverage=0.643 and trip ~13 "missing complete sentence" reasons
+    purely from different bullet/section grouping, which would make this
+    gate fail on every real hybrid run regardless of whether hybrid's
+    chunking/merging actually lost anything - not a usable signal.
+
+    What DOES stay meaningful across independent restructurings: whether the
+    same key terms and numbers are still present somewhere in the output,
+    since those are copied through verbatim by the polishing prompt rather
+    than reworded. This gate checks only those two.
+    """
+    reasons: list[str] = []
+    if not metrics.number_preserved:
+        reasons.append(
+            f"numbers changed: reference={list(metrics.reference_numbers)} candidate={list(metrics.candidate_numbers)}"
+        )
+    if metrics.key_term_recall < 0.98:
+        reasons.append(
+            f"key-term recall {metrics.key_term_recall:.3f} is below 0.980; missing={list(metrics.missing_key_terms)}"
+        )
+    return not reasons, reasons

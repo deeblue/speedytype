@@ -104,8 +104,13 @@ def slice_wav(audio_path: Path, start_seconds: float, end_seconds: float) -> Pat
 
 
 def tail_prompt(config: AppConfig, prior_text: str, max_chars: int = 200) -> str:
-    tail = prior_text[-max_chars:].strip()
-    return config.whisper_vocab_bias if not tail else f"{config.whisper_vocab_bias}\n{tail}"
+    """Return stable vocabulary hints without feeding prior transcript text back to Whisper.
+
+    ``prior_text`` and ``max_chars`` remain in the compatibility signature for
+    the historical benchmark callers. Real API trials showed that the rolling
+    narrative tail deterministically triggered Case D's ``一兆`` hallucination.
+    """
+    return config.whisper_vocab_bias
 
 
 def simulate_quasi_streaming_transcription(

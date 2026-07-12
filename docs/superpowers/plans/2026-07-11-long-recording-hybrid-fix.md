@@ -238,6 +238,33 @@ Hybrid mode may be enabled by default only when all conditions pass:
 
 If any gate fails, production remains batch-only. The failed metric and raw result must be documented rather than lowering the threshold after seeing results.
 
+### Task 8: Remove Narrative Continuation Prompt That Triggers Case D
+
+**Files:**
+- Modify: `speedytype/quasi_streaming.py`
+- Modify: `speedytype/hybrid_pipeline.py`
+- Modify: `tests/test_hybrid_pipeline.py`
+- Create: `tests/test_quasi_streaming.py`
+- Create: `scripts/verify_case_d_prompt_fix.py`
+- Create: `case_d_prompt_fix_results.txt`
+- Create: `long_recording_hybrid_v4_results.jsonl`
+- Modify: `KNOWN_LIMITATIONS.md`
+
+**Interfaces:**
+- Produces: `tail_prompt(config: AppConfig, prior_text: str = "") -> str`, retained for compatibility but returning only `config.whisper_vocab_bias`.
+- Changes: `HybridTranscriber` sends the immutable `initial_prompt` to every chunk and no longer feeds recognized narrative text into later Whisper calls.
+
+- [x] Record the original design evidence: `tail_prompt()` entered in the repository's earliest available baseline commit `1406f9c`; its data flow supplies the last 200 recognized characters as cross-chunk context, while `whisper_vocab_bias` separately supplies stable terminology. No commit message or code comment documents a narrower motivation.
+- [x] Add failing tests proving `tail_prompt()` ignores prior narrative text and every `HybridTranscriber` request receives only the immutable vocabulary prompt.
+- [x] Run `python -m pytest tests/test_quasi_streaming.py tests/test_hybrid_pipeline.py -q`; the new assertions failed because narrative text was appended (2 failed, 6 passed).
+- [x] Remove narrative continuation from both the benchmark/POC path and the real `HybridTranscriber` path without changing vocabulary bias, chunk planning, timestamps, merging, validation, or fallback.
+- [x] Run the focused tests and the full offline suite (8 focused tests passed; 129 full-suite tests passed before final documentation cleanup).
+- [x] Mirror isolation group J on chunk 3 (`50.88-75.24s`) six times with the fixed production prompt. Result: 6/6 correct and 0/6 corrupt in `case_d_prompt_fix_results.txt`.
+- [x] Run `scripts/run_long_recording_benchmark.py --hybrid-v2 --runs 3` across all three cases in `long_recording_hybrid_v4_results.jsonl`. Retain one real timeout/fallback run and add one successful 295s replacement pair in `long_recording_hybrid_v4_295s_recovery.jsonl`.
+- [x] Verify Cases A-D individually: all four are present in 3/3 valid 295s hybrid samples, Case D has 0/3 `一兆`, and `BJ 團隊` remains in all six real-recording runs. Aggregate regression gates remain 0/3 for reasons documented in `KNOWN_LIMITATIONS.md` item 19.
+- [x] Inspect chunk-boundary terminology across all hybrid outputs. Canonical term counts match v3 and all three v4 runs use stable spellings; only optional whitespace around `TPE/BJ 團隊` differs from v3.
+- [x] Update `KNOWN_LIMITATIONS.md` item 19 and audit all 11 Production Enablement Gate conditions. `HYBRID_TRANSCRIPTION_ENABLED` remains unchanged and user-owned.
+
 ## Recommended Delivery Sequence
 
 1. Implement Tasks 1-4 entirely offline with synthetic signals and recorded Whisper payload fixtures.

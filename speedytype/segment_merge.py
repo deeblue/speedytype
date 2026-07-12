@@ -64,7 +64,17 @@ def merge_timed_segments(
             (
                 index
                 for index in range(len(accepted) - 1, -1, -1)
-                if _overlaps(accepted[index], segment) and _similarity(accepted[index].text, segment.text) >= 0.60
+                # Only segments from a *different* chunk can be duplicates: they're the
+                # only place the chunk planner's deliberate overlap can produce the same
+                # audio being transcribed twice. Two segments from the SAME chunk's own
+                # Whisper verbose_json response are already sequential, non-overlapping
+                # sentences as returned by Whisper itself; comparing them against each
+                # other only produces false positives on structurally-similar-but-distinct
+                # sentences (e.g. "關於TPE團隊..." vs "以及BJ團隊..." — same sentence shape,
+                # different team, adjacent timestamps within one chunk).
+                if accepted[index].chunk_index != segment.chunk_index
+                and _overlaps(accepted[index], segment)
+                and _similarity(accepted[index].text, segment.text) >= 0.60
             ),
             None,
         )

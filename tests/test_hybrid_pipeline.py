@@ -96,7 +96,7 @@ def test_request_failure_falls_back_to_batch(tmp_path):
     assert len(batches) == 1
 
 
-def test_prior_chunk_text_is_added_to_next_prompt(tmp_path):
+def test_every_chunk_uses_vocab_bias_without_prior_narrative(tmp_path):
     prompts = []
 
     def verbose(path, *, prompt_override=""):
@@ -109,8 +109,8 @@ def test_prior_chunk_text_is_added_to_next_prompt(tmp_path):
     transcriber = HybridTranscriber(config(), verbose, lambda path: "batch", sample_rate=100, initial_prompt="BIOS, API")
     transcriber.feed(speech(7), 7)
     transcriber.finish(tmp_path / "full.wav")
-    assert prompts[0] == "BIOS, API"
-    assert "內容1" in prompts[1]
+    assert len(prompts) >= 2
+    assert set(prompts) == {"BIOS, API"}
 
 
 def test_feed_does_not_run_slow_vad_on_audio_callback_thread(monkeypatch):

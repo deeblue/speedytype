@@ -51,7 +51,6 @@ class HybridTranscriber:
         self.batch_transcribe = batch_transcribe
         self.sample_rate = sample_rate
         self._initial_prompt = initial_prompt.strip()
-        self._prompt_tail = ""
         self._audio: list[np.ndarray] = []
         self._audio_lock = threading.Lock()
         self._sample_count = 0
@@ -147,10 +146,7 @@ class HybridTranscriber:
         sf.write(path, audio[start:end], self.sample_rate, subtype="PCM_16")
         started = time.perf_counter()
         try:
-            prompt = self._initial_prompt
-            if self._prompt_tail:
-                prompt = f"{prompt}\n{self._prompt_tail}".strip()
-            payload = self.verbose_transcribe(path, prompt_override=prompt)
+            payload = self.verbose_transcribe(path, prompt_override=self._initial_prompt)
             request_seconds = time.perf_counter() - started
             segments = [
                 TimedSegment(
@@ -162,7 +158,6 @@ class HybridTranscriber:
                 for segment in payload.get("segments", []) or []
             ]
             completed = _CompletedChunk(plan, request_seconds, str(payload.get("text", "")).strip(), segments)
-            self._prompt_tail = completed.text[-200:].strip()
             self._consecutive_retryable_failures = 0
         except Exception as exc:
             completed = _CompletedChunk(plan, time.perf_counter() - started, "", [], f"{type(exc).__name__}: {exc}")
