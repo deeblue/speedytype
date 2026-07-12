@@ -1,0 +1,97 @@
+Task 4 benchmark verification
+Generated: 2026-07-12 Asia/Taipei
+Worktree commit before verification: 797748d (fix: harden benchmark runner auditing)
+Raw evidence: local_llm_benchmark_results.jsonl
+Raw evidence SHA-256 before verification: F26405355269CAC762258E1D73BC5191119BA8FA5F2203DE979D6C3E8485A3F3
+
+COMMAND
+$env:QT_QPA_PLATFORM='offscreen'; python -m pytest -q
+EXIT CODE
+0
+OUTPUT
+........................................................................ [ 45%]
+........................................................................ [ 90%]
+...............                                                          [100%]
+159 passed in 3.51s
+
+COMMAND
+ollama list
+EXIT CODE
+0
+OUTPUT
+NAME          ID              SIZE      MODIFIED
+gemma4:12b    4eb23ef187e2    7.6 GB    4 weeks ago
+gemma4:26b    5571076f3d70    17 GB     4 weeks ago
+
+COMMAND
+ollama show gemma4:12b
+EXIT CODE
+0
+OUTPUT (model metadata; license body omitted)
+Model
+  architecture        gemma4
+  parameters          11.9B
+  context length      262144
+  embedding length    3840
+  quantization        Q4_K_M
+  requires            0.30.5
+Capabilities
+  completion
+  vision
+  audio
+  tools
+  thinking
+Projector
+  architecture        clip
+  parameters          52.38M
+  embedding length    3840
+  dimensions          3840
+Parameters
+  top_k                64
+  top_p                0.95
+  temperature          1
+License
+  Apache License, Version 2.0, January 2004
+
+COMMAND
+ollama show gemma4:26b
+EXIT CODE
+0
+OUTPUT (model metadata; license body omitted)
+Model
+  architecture        gemma4
+  parameters          25.8B
+  context length      262144
+  embedding length    2816
+  quantization        Q4_K_M
+  requires            0.20.0
+Capabilities
+  completion
+  vision
+  tools
+  thinking
+Parameters
+  temperature          1
+  top_k                64
+  top_p                0.95
+License
+  Apache License, Version 2.0, January 2004
+
+COMMAND
+python scripts/run_local_llm_benchmark.py --output local_llm_benchmark_results.jsonl --repetitions 3 --summarize-only
+EXIT CODE
+0
+OUTPUT
+records=38 expected=38 unique=38
+parse_errors=0 duplicates=0 missing=0 unexpected=0
+complete=true
+
+NO-PROVIDER-CALL VERIFICATION
+- scripts/run_local_llm_benchmark.py main() returns from summarize_results() before load_config() and run_benchmark().
+- The passing full suite includes test_summarize_only_reports_complete_file_without_loading_config_or_calling_models, which makes API paths fail if invoked.
+- No live benchmark command was run during this verification.
+
+POST-VERIFICATION INTEGRITY
+Raw evidence SHA-256 after verification: F26405355269CAC762258E1D73BC5191119BA8FA5F2203DE979D6C3E8485A3F3
+Raw evidence changed: no
+Summary result: complete (38 expected records, 38 unique records, no parse errors, duplicates, missing identities, or unexpected identities)
