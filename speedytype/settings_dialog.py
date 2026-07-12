@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import sys
+from pathlib import Path
 
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -26,6 +27,7 @@ from speedytype.config import AppConfig
 from speedytype.env_writer import mask_secret, test_gemini_key, test_minimax_key, test_openai_key, update_env_key
 from speedytype.icon import build_app_icon
 from speedytype.hotkey import PlatformPermissionError, capture_hotkey
+from speedytype.paths import default_env_path, default_settings_path
 from speedytype.settings import (
     MAX_MAX_RECORD_SECONDS,
     MIN_MAX_RECORD_SECONDS,
@@ -157,16 +159,22 @@ class SettingsDialog(QDialog):
     # can apply it immediately without a restart.
     vocab_applied = pyqtSignal(str)
 
-    def __init__(self, config: AppConfig, env_path: str, settings_path: str, parent=None) -> None:
+    def __init__(
+        self,
+        config: AppConfig,
+        env_path: str | Path | None,
+        settings_path: str | Path | None,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         self.config = config
-        self.env_path = env_path
-        self.settings_path = settings_path
+        self.env_path = str(env_path or default_env_path())
+        self.settings_path = str(settings_path or default_settings_path())
         self.setWindowTitle("SpeedyType 設定")
         self.setWindowIcon(build_app_icon())
         self.setMinimumWidth(520)
 
-        self._settings = load_settings(settings_path)
+        self._settings = load_settings(self.settings_path)
         self._pending_hotkey_combo = list(self._settings.hotkey_combo)
         self._vocab_terms = list(self._settings.vocab_terms)
         self._hotkey_capture_signal = HotkeyCaptureSignal()

@@ -271,7 +271,7 @@ def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_p
     def open_settings() -> None:
         from speedytype.settings_dialog import SettingsDialog
 
-        dialog = SettingsDialog(controller.config, env_path, settings_path)
+        dialog = SettingsDialog(controller.config, controller.env_path, controller.settings_path)
         dialog.vocab_applied.connect(controller.apply_live_vocab_update)
         settings_dialogs.append(dialog)  # keep a reference so it isn't garbage-collected
         dialog.show()
