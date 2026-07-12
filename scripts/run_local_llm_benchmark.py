@@ -100,6 +100,58 @@ def _identity(candidate: dict[str, str], case: BenchmarkCase, mode: str, repetit
     return candidate["provider"], candidate["model"], case.name, mode, repetition
 
 
+def expected_identities(repetitions: int) -> set[tuple[str, str, str, str, int]]:
+    expected = set()
+    for candidate in CANDIDATES:
+        if candidate["provider"] == "ollama":
+            expected.add(_identity(candidate, CASES[0], "cold", 1))
+        for case in CASES:
+            for repetition in range(1, repetitions + 1):
+                expected.add(_identity(candidate, case, "warm", repetition))
+    return expected
+
+
+def summarize_results(output_path: Path, *, repetitions: int) -> int:
+    expected = expected_identities(repetitions)
+    actual: list[tuple[str, str, str, str, int]] = []
+    parse_errors = 0
+    try:
+        lines = output_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        lines = []
+        parse_errors = 1
+
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+            actual.append(
+                (
+                    record["provider"],
+                    record["model"],
+                    record["case"],
+                    record["mode"],
+                    record["repetition"],
+                )
+            )
+        except (json.JSONDecodeError, KeyError, TypeError):
+            parse_errors += 1
+
+    unique = set(actual)
+    duplicates = len(actual) - len(unique)
+    missing = len(expected - unique)
+    unexpected = len(unique - expected)
+    complete = parse_errors == duplicates == missing == unexpected == 0
+    print(f"records={len(actual)} expected={len(expected)} unique={len(unique)}")
+    print(
+        f"parse_errors={parse_errors} duplicates={duplicates} "
+        f"missing={missing} unexpected={unexpected}"
+    )
+    print(f"complete={str(complete).lower()}")
+    return 0 if complete else 1
+
+
 def stop_ollama_model(model: str) -> None:
     subprocess.run(["ollama", "stop", model], check=True, capture_output=True, text=True)
 
@@ -216,9 +268,9 @@ def run_benchmark(
                     continue
                 record = run_candidate(config, candidate, case, mode, repetition)
                 line = json.dumps(record, ensure_ascii=False)
-                print(line, flush=True)
                 handle.write(line + "\n")
                 handle.flush()
+                print(json.dumps(record, ensure_ascii=True), flush=True)
 
 
 def main() -> int:
@@ -227,7 +279,10 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--rerun", action="store_true")
+    parser.add_argument("--summarize-only", action="store_true")
     args = parser.parse_args()
+    if args.summarize_only:
+        return summarize_results(args.output, repetitions=args.repetitions)
     run_benchmark(
         load_config(args.env),
         args.output,

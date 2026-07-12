@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import io
+import sys
 
 from speedytype.llm import LlmResult, LlmUsage
 
@@ -212,3 +214,101 @@ def test_main_accepts_repetition_count(tmp_path, monkeypatch):
 
     assert benchmark.main() == 0
     assert observed == [(tmp_path / "out.jsonl", False, 2)]
+
+
+def test_summarize_only_reports_complete_file_without_loading_config_or_calling_models(
+    tmp_path, monkeypatch, capsys
+):
+    output = tmp_path / "complete.jsonl"
+    records = []
+    for identity in sorted(benchmark.expected_identities(3)):
+        provider, model, case, mode, repetition = identity
+        records.append(
+            {
+                "provider": provider,
+                "model": model,
+                "case": case,
+                "mode": mode,
+                "repetition": repetition,
+                "ok": True,
+            }
+        )
+    output.write_text(
+        "".join(json.dumps(record) + "\n" for record in records), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        benchmark, "load_config", lambda *args: (_ for _ in ()).throw(AssertionError("API path called"))
+    )
+    monkeypatch.setattr(
+        benchmark, "run_benchmark", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("model path called"))
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_local_llm_benchmark.py",
+            "--output",
+            str(output),
+            "--repetitions",
+            "3",
+            "--summarize-only",
+        ],
+    )
+
+    assert benchmark.main() == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "records=38 expected=38 unique=38",
+        "parse_errors=0 duplicates=0 missing=0 unexpected=0",
+        "complete=true",
+    ]
+
+
+def test_summarize_only_fails_for_parse_duplicate_missing_and_unexpected_identities(
+    tmp_path, capsys
+):
+    output = tmp_path / "broken.jsonl"
+    expected = sorted(benchmark.expected_identities(1))
+    first = expected[0]
+    record = dict(zip(("provider", "model", "case", "mode", "repetition"), first))
+    unexpected = {**record, "case": "not_a_case"}
+    output.write_text(
+        json.dumps(record) + "\n" + json.dumps(record) + "\n" + "not-json\n" + json.dumps(unexpected) + "\n",
+        encoding="utf-8",
+    )
+
+    assert benchmark.summarize_results(output, repetitions=1) == 1
+    assert capsys.readouterr().out.splitlines() == [
+        "records=3 expected=14 unique=2",
+        "parse_errors=1 duplicates=1 missing=13 unexpected=1",
+        "complete=false",
+    ]
+
+
+def test_benchmark_console_is_cp1252_safe_while_jsonl_remains_utf8(
+    tmp_path, monkeypatch
+):
+    output = tmp_path / "unicode.jsonl"
+    record = {
+        "provider": "gemini",
+        "model": "gemini-3.1-flash-lite",
+        "case": "short",
+        "mode": "warm",
+        "repetition": 1,
+        "ok": True,
+        "output": "下週三請同步測試。",
+    }
+    monkeypatch.setattr(benchmark, "CANDIDATES", (benchmark.CANDIDATES[0],))
+    monkeypatch.setattr(benchmark, "CASES", (benchmark.CASES[0],))
+    monkeypatch.setattr(benchmark, "run_candidate", lambda *args, **kwargs: record)
+    raw_stdout = io.BytesIO()
+    cp1252_stdout = io.TextIOWrapper(raw_stdout, encoding="cp1252", errors="strict")
+    monkeypatch.setattr(sys, "stdout", cp1252_stdout)
+
+    benchmark.run_benchmark(object(), output, repetitions=1)
+    cp1252_stdout.flush()
+
+    console = raw_stdout.getvalue().decode("cp1252")
+    assert "下週三" not in console
+    assert "\\u4e0b\\u9031\\u4e09" in console
+    persisted = json.loads(output.read_text(encoding="utf-8"))
+    assert persisted["output"] == "下週三請同步測試。"
