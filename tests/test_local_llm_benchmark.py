@@ -342,6 +342,49 @@ def test_resume_repairs_only_malformed_trailing_fragment(tmp_path):
     assert output.read_text(encoding="utf-8") == json.dumps(first) + "\n" + json.dumps(second) + "\n"
 
 
+def test_resume_terminates_valid_final_record_before_append(tmp_path, monkeypatch):
+    output = tmp_path / "unterminated.jsonl"
+    completed = {
+        "provider": "gemini", "model": "gemini-3.1-flash-lite", "case": "short",
+        "mode": "warm", "repetition": 1, "ok": True,
+    }
+    output.write_text(json.dumps(completed), encoding="utf-8")
+    monkeypatch.setattr(benchmark, "CANDIDATES", (benchmark.CANDIDATES[0],))
+    monkeypatch.setattr(benchmark, "CASES", (benchmark.CASES[0], benchmark.CASES[1]))
+    calls = []
+
+    def fake_run(config, candidate, case, mode, repetition):
+        calls.append((case.name, repetition))
+        return {
+            "provider": candidate["provider"], "model": candidate["model"],
+            "case": case.name, "mode": mode, "repetition": repetition, "ok": True,
+        }
+
+    monkeypatch.setattr(benchmark, "run_candidate", fake_run)
+    benchmark.run_benchmark(object(), output, repetitions=1)
+
+    assert ("short", 1) not in calls
+    records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert records[0] == completed
+    assert records[1]["case"] == "medium"
+    assert output.read_bytes().count(b"\n") == 2
+
+
+def test_resume_does_not_rewrite_well_formed_file(tmp_path, monkeypatch):
+    output = tmp_path / "complete.jsonl"
+    record = {"provider": "gemini", "model": "m", "case": "short", "mode": "warm", "repetition": 1}
+    original = (json.dumps(record) + "\n").encode()
+    output.write_bytes(original)
+    writes = []
+    original_write_text = type(output).write_text
+    monkeypatch.setattr(type(output), "write_text", lambda self, *args, **kwargs: writes.append(self) or original_write_text(self, *args, **kwargs))
+
+    benchmark._completed_identities(output)
+
+    assert writes == []
+    assert output.read_bytes() == original
+
+
 def test_resume_rejects_malformed_non_final_record(tmp_path):
     output = tmp_path / "corrupt.jsonl"
     output.write_text('{"provider":\n{"provider":"gemini"}\n', encoding="utf-8")

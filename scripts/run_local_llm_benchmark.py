@@ -254,6 +254,9 @@ def _completed_identities(output_path: Path) -> set[tuple[str, str, str, str, in
             valid_prefix = "".join(lines[:index])
             output_path.write_text(valid_prefix, encoding="utf-8")
             break
+        if index == len(lines) - 1 and not line.endswith(("\n", "\r")):
+            with output_path.open("a", encoding="utf-8") as handle:
+                handle.write("\n")
         completed.add(
             (
                 record["provider"],
