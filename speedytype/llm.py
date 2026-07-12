@@ -288,7 +288,7 @@ def call_minimax_polisher(text: str, config: AppConfig, *, model: str, thinking_
 
 
 def call_llm_polisher(text: str, config: AppConfig) -> LlmResult:
-    provider = config.llm_provider.lower()
+    provider = config.llm_provider.strip().lower()
     if provider == "ollama":
         return call_ollama_polisher(text, config, model=config.llm_model)
     if provider == "gemini":

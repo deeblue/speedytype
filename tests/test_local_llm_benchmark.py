@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import io
 import sys
+import pytest
 
 from speedytype.llm import LlmResult, LlmUsage
 
@@ -182,7 +183,7 @@ def test_resume_identity_skips_completed_work_and_appends_incrementally(tmp_path
     benchmark.run_benchmark(object(), output)
 
     assert ("gemini", "gemini-3.1-flash-lite", "short", "warm", 1) not in calls
-    assert stops == ["gemma4:12b", "gemma4:26b"]
+    assert stops == ["gemma4:12b", "gemma4:26b", "gemma4:12b", "gemma4:26b"]
     assert calls.index(("ollama", "gemma4:12b", "short", "cold", 1)) < calls.index(
         ("ollama", "gemma4:12b", "short", "warm", 1)
     )
@@ -312,3 +313,58 @@ def test_benchmark_console_is_cp1252_safe_while_jsonl_remains_utf8(
     assert "\\u4e0b\\u9031\\u4e09" in console
     persisted = json.loads(output.read_text(encoding="utf-8"))
     assert persisted["output"] == "下週三請同步測試。"
+
+
+def test_local_cold_trial_stops_all_candidates_before_running(tmp_path, monkeypatch):
+    output = tmp_path / "isolated.jsonl"
+    events = []
+    monkeypatch.setattr(benchmark, "CASES", (benchmark.CASES[0],))
+    monkeypatch.setattr(benchmark, "stop_ollama_model", lambda model: events.append(("stop", model)))
+
+    def fake_run(config, candidate, case, mode, repetition):
+        events.append(("run", candidate["model"], mode))
+        return {"provider": candidate["provider"], "model": candidate["model"], "case": case.name,
+                "mode": mode, "repetition": repetition, "ok": True}
+
+    monkeypatch.setattr(benchmark, "run_candidate", fake_run)
+    benchmark.run_benchmark(object(), output, repetitions=1)
+    for model in ("gemma4:12b", "gemma4:26b"):
+        cold = events.index(("run", model, "cold"))
+        assert events[cold - 2:cold] == [("stop", "gemma4:12b"), ("stop", "gemma4:26b")]
+
+
+def test_resume_repairs_only_malformed_trailing_fragment(tmp_path):
+    output = tmp_path / "partial.jsonl"
+    first = {"provider": "gemini", "model": "m", "case": "short", "mode": "warm", "repetition": 1}
+    second = {**first, "repetition": 2}
+    output.write_bytes((json.dumps(first) + "\n" + json.dumps(second) + "\n{\"provider\":").encode())
+    assert len(benchmark._completed_identities(output)) == 2
+    assert output.read_text(encoding="utf-8") == json.dumps(first) + "\n" + json.dumps(second) + "\n"
+
+
+def test_resume_rejects_malformed_non_final_record(tmp_path):
+    output = tmp_path / "corrupt.jsonl"
+    output.write_text('{"provider":\n{"provider":"gemini"}\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="non-final"):
+        benchmark._completed_identities(output)
+
+
+def test_rerun_recreates_output_instead_of_appending(tmp_path, monkeypatch):
+    output = tmp_path / "rerun.jsonl"
+    output.write_text('{"old":true}\n', encoding="utf-8")
+    monkeypatch.setattr(benchmark, "CANDIDATES", (benchmark.CANDIDATES[0],))
+    monkeypatch.setattr(benchmark, "CASES", (benchmark.CASES[0],))
+    monkeypatch.setattr(benchmark, "run_candidate", lambda *args: {
+        "provider": "gemini", "model": "gemini-3.1-flash-lite", "case": "short",
+        "mode": "warm", "repetition": 1, "ok": True})
+    benchmark.run_benchmark(object(), output, rerun=True, repetitions=1)
+    records = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert len(records) == 1 and "old" not in records[0]
+
+
+def test_ollama_snapshot_rejects_other_resident_candidate(monkeypatch):
+    monkeypatch.setattr(benchmark, "call_ollama_polisher", lambda *args, **kwargs: make_result())
+    monkeypatch.setattr(benchmark, "ollama_ps", lambda: "NAME ID\ngemma4:12b abc\ngemma4:26b def")
+    record = benchmark.run_candidate(object(), benchmark.CANDIDATES[1], benchmark.CASES[0], "cold", 1)
+    assert record["ok"] is False
+    assert "unexpected resident candidate" in record["error"]

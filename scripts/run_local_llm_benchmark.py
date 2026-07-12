@@ -217,6 +217,18 @@ def run_candidate(
             )
             try:
                 record["ollama_ps"] = ollama_ps()
+                other_models = [
+                    item["model"] for item in CANDIDATES
+                    if item["provider"] == "ollama"
+                    and item["model"] != candidate["model"]
+                    and item["model"] in record["ollama_ps"]
+                ]
+                if other_models:
+                    record.update(
+                        ok=False,
+                        error="ollama ps shows unexpected resident candidate(s): "
+                        + ", ".join(other_models),
+                    )
             except Exception as exc:
                 record["ollama_ps_error"] = f"ollama ps failed: {exc}"
     except Exception as exc:
@@ -228,10 +240,20 @@ def _completed_identities(output_path: Path) -> set[tuple[str, str, str, str, in
     completed = set()
     if not output_path.exists():
         return completed
-    for line in output_path.read_text(encoding="utf-8").splitlines():
+    content = output_path.read_text(encoding="utf-8")
+    lines = content.splitlines(keepends=True)
+    for index, line in enumerate(lines):
         if not line.strip():
             continue
-        record = json.loads(line)
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            is_trailing_fragment = index == len(lines) - 1 and not line.endswith(("\n", "\r"))
+            if not is_trailing_fragment:
+                raise ValueError(f"Malformed non-final JSONL record at line {index + 1}") from exc
+            valid_prefix = "".join(lines[:index])
+            output_path.write_text(valid_prefix, encoding="utf-8")
+            break
         completed.add(
             (
                 record["provider"],
@@ -252,13 +274,15 @@ def run_benchmark(
     repetitions: int = 3,
 ) -> None:
     completed = set() if rerun else _completed_identities(output_path)
-    with output_path.open("a", encoding="utf-8") as handle:
+    with output_path.open("w" if rerun else "a", encoding="utf-8") as handle:
         for candidate in CANDIDATES:
             trials: list[tuple[BenchmarkCase, str, int]] = []
             if candidate["provider"] == "ollama":
                 cold_identity = _identity(candidate, CASES[0], "cold", 1)
                 if cold_identity not in completed:
-                    stop_ollama_model(candidate["model"])
+                    for local_candidate in CANDIDATES:
+                        if local_candidate["provider"] == "ollama":
+                            stop_ollama_model(local_candidate["model"])
                     trials.append((CASES[0], "cold", 1))
             for case in CASES:
                 trials.extend((case, "warm", repetition) for repetition in range(1, repetitions + 1))

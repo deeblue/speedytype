@@ -120,3 +120,12 @@ def test_call_llm_polisher_dispatches_to_ollama(monkeypatch):
 
     assert call_llm_polisher("draft", config) is sentinel
     assert received == {"text": "draft", "config": config, "model": "gemma4:12b"}
+
+
+@pytest.mark.parametrize("provider", ["OlLaMa", "GeMiNi", "MiNiMaX"])
+def test_call_llm_polisher_dispatch_is_case_insensitive(monkeypatch, provider):
+    config = make_config(llm_provider=provider)
+    sentinel = object()
+    target = {"ollama": "call_ollama_polisher", "gemini": "call_gemini_polisher", "minimax": "call_minimax_polisher"}[provider.lower()]
+    monkeypatch.setattr(f"speedytype.llm.{target}", lambda *args, **kwargs: sentinel)
+    assert call_llm_polisher("draft", config) is sentinel

@@ -144,3 +144,20 @@ def test_load_config_uses_default_for_empty_ollama_base_url(tmp_path: Path):
 
     assert config.ollama_base_url == "http://127.0.0.1:11434"
     assert config.ollama_keep_alive == "10m"
+
+
+@pytest.mark.parametrize("provider,key", [("GeMiNi", "GEMINI_API_KEY=x"), ("MiNiMaX", "MINIMAX_API_KEY=x"), ("OlLaMa", "")])
+def test_provider_is_normalized_before_key_validation(tmp_path, monkeypatch, provider, key):
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"OPENAI_API_KEY=sk-test\nLLM_PROVIDER={provider}\n{key}\n", encoding="utf-8")
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    config = load_config(env_file, settings_path=tmp_path / "settings.json")
+    assert config.llm_provider == provider.lower()
+
+
+def test_unsupported_provider_is_rejected_early(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=sk-test\nLLM_PROVIDER=unknown\n", encoding="utf-8")
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    with pytest.raises(ConfigError, match="Unsupported LLM_PROVIDER=unknown"):
+        load_config(env_file, settings_path=tmp_path / "settings.json")

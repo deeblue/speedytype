@@ -98,7 +98,10 @@ def load_config(path: str | Path | None = None, settings_path: str | Path | None
     def get(name: str, default: str = "") -> str:
         return os.environ.get(name, file_values.get(name, default)).strip()
 
-    llm_provider = get("LLM_PROVIDER", "gemini") or "gemini"
+    llm_provider = (get("LLM_PROVIDER", "gemini") or "gemini").lower()
+    supported_providers = {"gemini", "minimax", "ollama", "openai"}
+    if llm_provider not in supported_providers:
+        raise ConfigError(f"Unsupported LLM_PROVIDER={llm_provider}")
     openai_api_key = get("OPENAI_API_KEY")
     gemini_api_key = get("GEMINI_API_KEY")
     minimax_api_key = get("MINIMAX_API_KEY")
