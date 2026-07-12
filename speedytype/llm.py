@@ -100,6 +100,23 @@ def _minimax_usage(payload: dict[str, Any]) -> LlmUsage:
     )
 
 
+def _ollama_usage(payload: dict[str, Any]) -> LlmUsage:
+    input_tokens = payload.get("prompt_eval_count")
+    output_tokens = payload.get("eval_count")
+    total_tokens = input_tokens + output_tokens if isinstance(input_tokens, int) and isinstance(output_tokens, int) else None
+    raw = {
+        key: payload[key]
+        for key in ("prompt_eval_count", "eval_count")
+        if key in payload
+    }
+    return LlmUsage(
+        input_tokens=input_tokens if isinstance(input_tokens, int) else None,
+        output_tokens=output_tokens if isinstance(output_tokens, int) else None,
+        total_tokens=total_tokens,
+        raw=raw,
+    )
+
+
 def _strip_minimax_think(text: str) -> str:
     return re.sub(r"(?s)<think>.*?</think>", "", text).strip()
 
@@ -148,6 +165,52 @@ def parse_openai_text(payload: dict[str, Any]) -> str:
     if not chunks:
         raise RuntimeError(f"OpenAI response format unexpected:\n{payload}")
     return "".join(chunks).strip()
+
+
+def parse_ollama_text(payload: dict[str, Any]) -> str:
+    message = payload.get("message")
+    if not isinstance(message, dict):
+        raise RuntimeError(f"Ollama response has malformed message object:\n{payload}")
+    content = message.get("content")
+    if not isinstance(content, str):
+        raise RuntimeError(f"Ollama response message has malformed content:\n{payload}")
+    text = content.strip()
+    if not text:
+        raise RuntimeError(f"Ollama response contains empty assistant content:\n{payload}")
+    return text
+
+
+def call_ollama_polisher(text: str, config: AppConfig, *, model: str, timeout_seconds: int = 120) -> LlmResult:
+    url = f"{config.ollama_base_url}/api/chat"
+    body = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": build_system_prompt(config)},
+            {"role": "user", "content": text},
+        ],
+        "stream": False,
+        "think": False,
+        "keep_alive": config.ollama_keep_alive,
+        "options": {"temperature": 0.1, "num_predict": 512},
+    }
+    start = time.perf_counter()
+    try:
+        response = requests.post(url, json=body, timeout=timeout_seconds)
+        _raise_http_error("Ollama", response)
+        payload = response.json()
+    except (requests.ConnectionError, requests.Timeout) as exc:
+        raise RuntimeError(f"Ollama request failed for URL {url} using model {model}: {exc}") from exc
+    api_seconds = round(time.perf_counter() - start, 12)
+    return LlmResult(
+        text=parse_ollama_text(payload),
+        provider="ollama",
+        model=model,
+        llm_call_seconds=api_seconds,
+        retry_wait_seconds=0.0,
+        retry_count=0,
+        usage=_ollama_usage(payload),
+        raw_response=payload,
+    )
 
 
 def call_openai_polisher(text: str, config: AppConfig, *, model: str, reasoning_effort: str = "", timeout_seconds: int = 120) -> LlmResult:
@@ -226,6 +289,8 @@ def call_minimax_polisher(text: str, config: AppConfig, *, model: str, thinking_
 
 def call_llm_polisher(text: str, config: AppConfig) -> LlmResult:
     provider = config.llm_provider.lower()
+    if provider == "ollama":
+        return call_ollama_polisher(text, config, model=config.llm_model)
     if provider == "gemini":
         return call_gemini_polisher(text, config, model=config.llm_model, thinking_level=config.llm_thinking_level)
     if provider == "openai":
