@@ -1,97 +1,40 @@
-Task 4 benchmark verification
+Final-review controlled benchmark verification
 Generated: 2026-07-12 Asia/Taipei
-Worktree commit before verification: 797748d (fix: harden benchmark runner auditing)
+Code/test commit: 1a03c31 (fix: harden local benchmark isolation and resume)
 Raw evidence: local_llm_benchmark_results.jsonl
-Raw evidence SHA-256 before verification: F26405355269CAC762258E1D73BC5191119BA8FA5F2203DE979D6C3E8485A3F3
+Raw evidence SHA-256: B8466AD25190A800ED4748E617BB38460A0C063004C01188DD9AF70C1AC02019
 
-COMMAND
-$env:QT_QPA_PLATFORM='offscreen'; python -m pytest -q
-EXIT CODE
-0
-OUTPUT
-........................................................................ [ 45%]
-........................................................................ [ 90%]
-...............                                                          [100%]
-159 passed in 3.51s
+PRE-BENCHMARK TESTS
+COMMAND: $env:QT_QPA_PLATFORM='offscreen'; python -m pytest -q
+EXIT CODE: 0
+RESULT: 171 passed in 3.67s
 
-COMMAND
-ollama list
-EXIT CODE
-0
-OUTPUT
-NAME          ID              SIZE      MODIFIED
-gemma4:12b    4eb23ef187e2    7.6 GB    4 weeks ago
-gemma4:26b    5571076f3d70    17 GB     4 weeks ago
+PREREQUISITES
+COMMANDS: ollama list; ollama show gemma4:12b; ollama show gemma4:26b
+EXIT CODE: 0
+RESULT: exact tags installed. gemma4:12b is 11.9B Q4_K_M (7.6 GB package); gemma4:26b is 25.8B Q4_K_M (17 GB package).
 
-COMMAND
-ollama show gemma4:12b
-EXIT CODE
-0
-OUTPUT (model metadata; license body omitted)
-Model
-  architecture        gemma4
-  parameters          11.9B
-  context length      262144
-  embedding length    3840
-  quantization        Q4_K_M
-  requires            0.30.5
-Capabilities
-  completion
-  vision
-  audio
-  tools
-  thinking
-Projector
-  architecture        clip
-  parameters          52.38M
-  embedding length    3840
-  dimensions          3840
-Parameters
-  top_k                64
-  top_p                0.95
-  temperature          1
-License
-  Apache License, Version 2.0, January 2004
+CONTROLLED LIVE RUN
+PREPARATION: selected output was truncated; no other file was removed.
+COMMAND: python scripts/run_local_llm_benchmark.py --env .env --output local_llm_benchmark_results.jsonl --repetitions 3
+EXIT CODE: 0
+WALL TIME: 571.948 seconds
+RESULT: candidates executed serially in fixed order: Gemini, gemma4:12b, gemma4:26b. Before each local cold trial, both local candidate tags were stopped.
 
-COMMAND
-ollama show gemma4:26b
-EXIT CODE
-0
-OUTPUT (model metadata; license body omitted)
-Model
-  architecture        gemma4
-  parameters          25.8B
-  context length      262144
-  embedding length    2816
-  quantization        Q4_K_M
-  requires            0.20.0
-Capabilities
-  completion
-  vision
-  tools
-  thinking
-Parameters
-  temperature          1
-  top_k                64
-  top_p                0.95
-License
-  Apache License, Version 2.0, January 2004
+ISOLATION AUDIT
+Every local record includes an ollama_ps snapshot. All 13 gemma4:12b snapshots list only gemma4:12b; all 13 gemma4:26b snapshots list only gemma4:26b. Snapshots containing both candidates: 0. Cold snapshots show 12B at 8.9 GB / 100% CPU and 26B at 17 GB / 100% CPU.
 
-COMMAND
-python scripts/run_local_llm_benchmark.py --output local_llm_benchmark_results.jsonl --repetitions 3 --summarize-only
-EXIT CODE
-0
-OUTPUT
+COMPLETENESS
+COMMAND: python scripts/run_local_llm_benchmark.py --output local_llm_benchmark_results.jsonl --repetitions 3 --summarize-only
+EXIT CODE: 0
+OUTPUT:
 records=38 expected=38 unique=38
 parse_errors=0 duplicates=0 missing=0 unexpected=0
 complete=true
 
-NO-PROVIDER-CALL VERIFICATION
-- scripts/run_local_llm_benchmark.py main() returns from summarize_results() before load_config() and run_benchmark().
-- The passing full suite includes test_summarize_only_reports_complete_file_without_loading_config_or_calling_models, which makes API paths fail if invoked.
-- No live benchmark command was run during this verification.
+SUMMARY
+Gemini: 12/12 calls, 12/12 warm quality, 0.636s warm mean.
+Gemma 12B: 13/13 calls, 9/12 warm quality, 27.255s warm mean, 38.980s cold call / 12.535s load.
+Gemma 26B: 13/13 calls, 12/12 warm quality, 12.883s warm mean, 37.355s cold call / 24.640s load.
 
-POST-VERIFICATION INTEGRITY
-Raw evidence SHA-256 after verification: F26405355269CAC762258E1D73BC5191119BA8FA5F2203DE979D6C3E8485A3F3
-Raw evidence changed: no
-Summary result: complete (38 expected records, 38 unique records, no parse errors, duplicates, missing identities, or unexpected identities)
+No provider calls occur in summarize-only mode; automated coverage fails if config/model paths are invoked. No `.env` value or secret is included here.
