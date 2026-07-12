@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 from typing import Any
@@ -61,6 +62,8 @@ def quality_flags(case: BenchmarkCase, output: str) -> dict[str, bool]:
 
     if case.name == "numbers_repeated_english":
         terms_ok = "123" in output and ("test" in output.lower() or "測試" in output)
+        residual = re.sub(r"123|測試|\btest\b", "", output, flags=re.IGNORECASE)
+        extra_ok = extra_ok and re.search(r"\w", residual) is None
         correction_ok = True
         bullets_ok = True
     elif case.name == "short":
@@ -159,8 +162,11 @@ def run_candidate(
                 prompt_tokens=raw.get("prompt_eval_count", result.usage.input_tokens),
                 output_tokens=output_tokens,
                 output_tokens_per_second=(output_tokens / eval_seconds if output_tokens is not None and eval_seconds else None),
-                ollama_ps=ollama_ps(),
             )
+            try:
+                record["ollama_ps"] = ollama_ps()
+            except Exception as exc:
+                record["ollama_ps_error"] = f"ollama ps failed: {exc}"
     except Exception as exc:
         record.update(ok=False, error=str(exc))
     return record

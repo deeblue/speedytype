@@ -79,6 +79,17 @@ def test_quality_flags_preserve_phase2_rules_and_number_regression():
     assert not benchmark.quality_flags(numbers, "以下是清理結果：123 test")['overall_ok']
 
 
+def test_number_quality_rejects_unrecognized_explanatory_wrapper():
+    numbers = benchmark.CASES[-1]
+
+    flags = benchmark.quality_flags(
+        numbers, "I changed the transcript for you: 123 test"
+    )
+
+    assert flags["extra_ok"] is False
+    assert flags["overall_ok"] is False
+
+
 def test_run_candidate_converts_native_durations_and_calculates_throughput(monkeypatch):
     monkeypatch.setattr(benchmark, "call_ollama_polisher", lambda *args, **kwargs: make_result())
     monkeypatch.setattr(benchmark, "ollama_ps", lambda: "NAME ID SIZE PROCESSOR")
@@ -113,6 +124,29 @@ def test_run_candidate_retains_failures_without_semantic_quality(monkeypatch):
     assert record["ok"] is False
     assert record["error"] == "service unavailable"
     assert "quality" not in record
+
+
+def test_ollama_ps_failure_does_not_discard_successful_model_result(monkeypatch):
+    monkeypatch.setattr(
+        benchmark,
+        "call_ollama_polisher",
+        lambda *args, **kwargs: make_result(output="下週三請 TPE 團隊同步 BIOS 狀態。"),
+    )
+
+    def fail_ps():
+        raise RuntimeError("ollama executable not found")
+
+    monkeypatch.setattr(benchmark, "ollama_ps", fail_ps)
+
+    record = benchmark.run_candidate(
+        object(), benchmark.CANDIDATES[1], benchmark.CASES[0], "warm", 1
+    )
+
+    assert record["ok"] is True
+    assert record["output"] == "下週三請 TPE 團隊同步 BIOS 狀態。"
+    assert record["quality"]["overall_ok"] is True
+    assert record["llm_call_seconds"] == 3.25
+    assert record["ollama_ps_error"] == "ollama ps failed: ollama executable not found"
 
 
 def test_resume_identity_skips_completed_work_and_appends_incrementally(tmp_path, monkeypatch):
