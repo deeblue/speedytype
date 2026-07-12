@@ -2,6 +2,7 @@
 bad.env
 __pycache__/
 .pytest_cache/
+.worktrees/
 *.pyc
 test_silence.wav
 settings.json
