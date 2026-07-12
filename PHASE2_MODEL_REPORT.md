@@ -161,8 +161,8 @@ Subjective Chinese fluency:
 Commands:
 
 ```powershell
-python -m speedytype --env phase2_selected.env run-once test_audio_phase2\short_16k.wav --no-paste
-python -m speedytype --env phase2_selected.env run-once test_audio_phase2\short_minimax_16k.wav --no-paste
+python -m speedytype --env .env run-once test_audio_phase2\short_16k.wav --no-paste
+python -m speedytype --env .env run-once test_audio_phase2\short_minimax_16k.wav --no-paste
 ```
 
 Observed outputs:
@@ -218,7 +218,7 @@ Applied defaults:
 Benchmark command:
 
 ```powershell
-$env:PYTHONIOENCODING='utf-8'; python scripts/run_full_paste_benchmark.py --env phase2_selected.env --audio-dir test_audio --runs 10
+$env:PYTHONIOENCODING='utf-8'; python scripts/run_full_paste_benchmark.py --env .env --audio-dir test_audio --runs 10
 ```
 
 Actual summary:
