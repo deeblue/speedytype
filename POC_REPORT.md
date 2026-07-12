@@ -403,7 +403,7 @@ This round intentionally implemented only the platform abstraction layer and mac
 
 ## External API investigations
 
-- Gemini prompt follow-up: current prompt produced 4/4 valid number-preserving samples; 4 current and 8 candidate attempts returned HTTP 429. The candidate remains unapplied because it received zero new valid samples.
+- Gemini prompt follow-up (historical 2026-07-11 state): current prompt produced 4/4 valid number-preserving samples; quota errors prevented new candidate evidence at that time. This conclusion was superseded by the completed 2026-07-12 investigation below.
 - Long recordings: the initial 262s composite was rejected as decisive evidence because its two source recordings discuss overlapping meeting topics. A replacement 294.792s continuous, non-repeating TTS narrative measured 18.098s batch tail versus 1.874s for the 30s/5s-overlap quasi simulation (89.6% improvement). This confirms the latency trend is not a splice artifact, while transcript omissions/boundary errors still block production enablement.
 
 ## macOS handoff
@@ -413,3 +413,9 @@ Code and Windows-runnable contracts exist for text-only clipboard preservation, 
 ## Hybrid v2 follow-up
 
 The silence-aware hybrid plan was implemented behind a disabled-by-default feature flag. Offline and integration coverage reached 122 passing tests, and a Windows daemon smoke exercised the real hybrid record/transcribe/polish/paste path. The final three-run benchmark showed 72.3% complete-tail improvement on the 295-second continuous file with 1.83x Whisper request work. Quality was split into source accuracy and same-run batch-relative hybrid regression so baseline Whisper errors are not blamed on hybrid code; the hybrid regression gate nevertheless passed 0/3 for every case. Cases A-C were recovered; Case D remained an extra hybrid lexical corruption inside a distinct segment. Because the batch-relative content gate failed and real Mac/paste benchmark gates remain incomplete, production stays on batch transcription.
+
+## Combined LLM polishing investigation (2026-07-12)
+
+The candidate number/repeated-content prompt rule was adopted after reaching 6/6 valid candidate samples preserving `123`, reproducing current-prompt loss versus candidate preservation on the production Gemini model, and confirming no regression in self-correction, filler removal, key-term preservation, list formatting, natural-stutter cleanup, or Chinese-number preservation. The production prompt now keeps numbers, identifiers, and real content while consolidating garbled repetition, with an explicit exception for genuine self-correction.
+
+The separate `API` / `BJ 團隊` over-correction hypothesis was rejected after 17 raw-Whisper-versus-polished comparisons. The old 71.4% / 83.3% figures used an invalid denominator that counted corrected-away terms as required final output. The only observed final-intent failures were two raw-STT `API` substitutions (`NPI` and `AVM`); Gemini introduced no target-term error. The corpus is too small to publish a replacement real-world percentage. Full quota accounting, six-dimension prompt results, and every sentence-level pair are in [COMBINED_LLM_INVESTIGATION_REPORT.md](COMBINED_LLM_INVESTIGATION_REPORT.md).
