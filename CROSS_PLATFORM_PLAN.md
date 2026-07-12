@@ -1,6 +1,6 @@
 # SpeedyType: Cross-Platform (Windows + macOS) Port and Installer Packaging Plan
 
-Status: **planned, not started**. No Phase 1-4 implementation work below has been approved or begun yet — this document exists so the plan survives beyond any single session. Approval for Phase 1 (or any phase) should be sought explicitly before starting code changes against this plan.
+Status (2026-07-11): **Phase 1 implemented and Windows-verified; Phase 2 code implemented, real-Mac verification pending.** Phase 3 packaging/signing and Phase 4 CI are explicitly deferred and were not prepared or executed.
 
 ## Context
 

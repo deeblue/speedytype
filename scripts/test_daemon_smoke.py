@@ -11,8 +11,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import keyboard
 from pywinauto import Desktop
+from speedytype.paths import default_pid_path
 
-PID_FILE = Path("speedytype_daemon.pid")
+PID_FILE = default_pid_path()
 
 
 def pythonw_path() -> str:

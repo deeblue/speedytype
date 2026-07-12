@@ -40,6 +40,22 @@ def test_slider_bounds_are_locked(qapp, tmp_path):
     assert dialog.slider.value() == 540
 
 
+def test_save_max_record_time_uses_default_path_when_cli_omits_settings(qapp, tmp_path, monkeypatch):
+    settings_path = tmp_path / "settings.json"
+    env_path = tmp_path / ".env"
+    env_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr("speedytype.settings.default_settings_path", lambda: settings_path)
+    monkeypatch.setattr("speedytype.settings_dialog.default_settings_path", lambda: settings_path, raising=False)
+    monkeypatch.setattr("speedytype.settings_dialog.default_env_path", lambda: env_path, raising=False)
+
+    dialog = SettingsDialog(make_config(), None, None)
+    dialog.slider.setValue(540)
+    dialog._save()
+
+    saved = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert saved["max_record_seconds"] == 540.0
+
+
 def test_vocab_add_remove_reset(qapp, tmp_path):
     settings_path = tmp_path / "settings.json"
     save_settings(settings_path, AppSettings(vocab_terms=["BIOS", "API"]))
@@ -159,6 +175,27 @@ def test_cancel_writes_nothing(qapp, tmp_path):
 
     assert settings_path.read_text(encoding="utf-8") == before_settings
     assert env_path.read_text(encoding="utf-8") == before_env
+
+
+def test_autostart_checkbox_installs_when_enabled_on_save(qapp, tmp_path, monkeypatch):
+    settings_path = tmp_path / "settings.json"
+    env_path = tmp_path / ".env"
+    save_settings(settings_path, AppSettings())
+    calls = []
+    monkeypatch.setattr("speedytype.settings_dialog.query_autostart", lambda: (False, "disabled"))
+    monkeypatch.setattr(
+        "speedytype.settings_dialog.install_autostart",
+        lambda path: calls.append(path) or (True, "installed"),
+    )
+    monkeypatch.setattr("speedytype.settings_dialog.uninstall_autostart", lambda: (True, "removed"))
+
+    dialog = SettingsDialog(make_config(), str(env_path), str(settings_path))
+    assert dialog.autostart_checkbox.isChecked() is False
+    dialog.autostart_checkbox.setChecked(True)
+    dialog._save()
+
+    assert calls == [str(env_path)]
+    assert "installed" in dialog.status_label.text()
 
 
 def make_config_with_warning(warning=""):

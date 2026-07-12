@@ -1,0 +1,31 @@
+=== Case D prompt-fix isolation: mirror of group J ===
+audio=test_audio_long\continuous_tts_295s.wav
+window=50.88-75.24s
+triggering_tail_chars=200
+actual_prompt='BIOS, Firmware, NPI, QA, API, TPE 團隊, BJ 團隊, USB, Thunderbolt'
+
+=== fixed_vocab_only_trial_1 ===
+correct=True corrupt_1trillion=False
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序
+
+=== fixed_vocab_only_trial_2 ===
+correct=True corrupt_1trillion=False
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序
+
+=== fixed_vocab_only_trial_3 ===
+correct=True corrupt_1trillion=False
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序
+
+=== fixed_vocab_only_trial_4 ===
+correct=True corrupt_1trillion=False
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序
+
+=== fixed_vocab_only_trial_5 ===
+correct=True corrupt_1trillion=False
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序
+
+=== fixed_vocab_only_trial_6 ===
+correct=True corrupt_1trillion=False
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序
+
+SUMMARY: correct=6/6 corrupt_1trillion=0/6 gate_ok=True

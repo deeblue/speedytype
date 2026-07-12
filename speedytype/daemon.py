@@ -8,21 +8,25 @@ import sys
 import threading
 import time
 
-import keyboard
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 from speedytype.audio import Recorder, temp_wav_path
+from speedytype.api import transcribe_audio, transcribe_audio_verbose
+from speedytype.chunking import ChunkingConfig
 from speedytype.config import AppConfig
 from speedytype.console import safe_print
-from speedytype.hotkey import wait_until_hotkey_released
+from speedytype.hotkey import PlatformPermissionError, register_hold_hotkey, remove_hotkey, wait_until_hotkey_released
 from speedytype.icon import build_app_icon
+from speedytype.hybrid_pipeline import HybridTranscriber
 from speedytype.overlay import AudioLevelEmitter, RecordingPill
 from speedytype.pipeline import process_wav
+from speedytype.paths import default_daemon_log_path, default_env_path, default_pid_path, default_settings_path
+from speedytype.platform.process import is_process_running, terminate_process
 
 
-PID_FILE = Path("speedytype_daemon.pid")
+PID_FILE = default_pid_path()
 COUNTDOWN_WARNING_SECONDS = 60.0
 
 
@@ -38,12 +42,12 @@ class DaemonController(QObject):
     show_countdown_signal = pyqtSignal(int)
     hide_signal = pyqtSignal()
 
-    def __init__(self, config: AppConfig, env_path: str = ".env", settings_path: str = "settings.json",
+    def __init__(self, config: AppConfig, env_path: str | Path | None = None, settings_path: str | Path | None = None,
                  countdown_warning_seconds: float = COUNTDOWN_WARNING_SECONDS) -> None:
         super().__init__()
         self.config = config
-        self.env_path = env_path
-        self.settings_path = settings_path
+        self.env_path = str(env_path or default_env_path())
+        self.settings_path = str(settings_path or default_settings_path())
         self.countdown_warning_seconds = countdown_warning_seconds
         self.pill = RecordingPill()
         self.level_emitter = AudioLevelEmitter()
@@ -60,6 +64,7 @@ class DaemonController(QObject):
         self._countdown_thread: threading.Thread | None = None
         self._active_path: Path | None = None
         self._hotkey_handle = None
+        self._hybrid_transcriber: HybridTranscriber | None = None
 
     def apply_live_vocab_update(self, vocab_bias_string: str) -> None:
         """Vocabulary bias is read fresh on every Whisper call, so it can be
@@ -69,10 +74,10 @@ class DaemonController(QObject):
     def register_hotkey(self) -> None:
         if self._hotkey_handle is not None:
             try:
-                keyboard.remove_hotkey(self._hotkey_handle)
+                remove_hotkey(self._hotkey_handle)
             except Exception:
                 pass
-        self._hotkey_handle = keyboard.add_hotkey(self.config.hotkey, self.on_press, suppress=False)
+        self._hotkey_handle = register_hold_hotkey(self.config.hotkey, self.on_press)
 
     def on_press(self) -> None:
         if self._active_thread and self._active_thread.is_alive():
@@ -82,11 +87,25 @@ class DaemonController(QObject):
         self.show_recording_signal.emit()
 
         record_started = time.perf_counter()
+        if self.config.hybrid_transcription_enabled:
+            chunk_config = ChunkingConfig(hybrid_threshold_seconds=self.config.hybrid_threshold_seconds)
+            self._hybrid_transcriber = HybridTranscriber(
+                chunk_config,
+                lambda path, prompt_override="": transcribe_audio_verbose(
+                    path, self.config, prompt_override=prompt_override
+                ),
+                lambda path: transcribe_audio(path, self.config),
+                sample_rate=self.recorder.sample_rate,
+                initial_prompt=self.config.whisper_vocab_bias,
+            )
+        else:
+            self._hybrid_transcriber = None
 
         def record() -> None:
             self.recorder.record_until_stop(
                 self._active_path,
                 on_level=lambda rms: self.level_emitter.level_changed.emit(rms),
+                on_audio=None if self._hybrid_transcriber is None else self._hybrid_transcriber.feed,
             )
 
         self._active_thread = threading.Thread(target=record, daemon=False)
@@ -121,7 +140,23 @@ class DaemonController(QObject):
 
         def process() -> None:
             try:
-                process_wav(active_path, self.config, do_paste=True)
+                if self._hybrid_transcriber is None:
+                    process_wav(active_path, self.config, do_paste=True)
+                else:
+                    hybrid = self._hybrid_transcriber.finish(active_path)
+                    process_wav(
+                        active_path,
+                        self.config,
+                        do_paste=True,
+                        raw_transcript_override=hybrid.raw_text,
+                        whisper_seconds_override=hybrid.tail_seconds,
+                        run_label="hybrid_fallback" if hybrid.fallback_used else "hybrid",
+                        hybrid_request_count=hybrid.request_count,
+                        hybrid_request_seconds=hybrid.request_seconds,
+                        hybrid_fallback_used=hybrid.fallback_used,
+                        hybrid_validation_reasons=" | ".join(hybrid.diagnostics.get("validation_reasons", [])),
+                        precomputed_tail_seconds=hybrid.tail_seconds,
+                    )
             finally:
                 self.hide_signal.emit()
 
@@ -129,16 +164,12 @@ class DaemonController(QObject):
 
 
 def _write_pid_file() -> None:
+    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
     PID_FILE.write_text(str(os.getpid()), encoding="utf-8")
 
 
 def _is_pid_running(pid: int) -> bool:
-    result = subprocess.run(
-        ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
-        capture_output=True,
-        text=True,
-    )
-    return str(pid) in result.stdout
+    return is_process_running(pid)
 
 
 def check_existing_daemon(pid_file: Path = PID_FILE) -> tuple[bool, str]:
@@ -185,13 +216,18 @@ def _remove_pid_file_if_mine() -> None:
 
 
 def _relaunch_daemon(env_path: str) -> None:
-    pythonw = Path(sys.executable).with_name("pythonw.exe")
-    interpreter = str(pythonw) if pythonw.exists() else sys.executable
-    creationflags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+    if sys.platform == "win32":
+        pythonw = Path(sys.executable).with_name("pythonw.exe")
+        interpreter = str(pythonw) if pythonw.exists() else sys.executable
+        creationflags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+    else:
+        interpreter = sys.executable
+        creationflags = 0
     # pythonw.exe has no console, so sys.stdout/sys.stderr are None unless
     # explicitly redirected here; safe_print() tolerates that, but redirecting
     # to a real log file keeps restart/autostart diagnostics visible.
-    log_path = Path("speedytype_daemon.log")
+    log_path = default_daemon_log_path()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     log_file = open(log_path, "a", encoding="utf-8")
     child_env = dict(os.environ)
     child_env["PYTHONIOENCODING"] = "utf-8"
@@ -205,7 +241,7 @@ def _relaunch_daemon(env_path: str) -> None:
     )
 
 
-def run_daemon(config: AppConfig, env_path: str = ".env", settings_path: str = "settings.json") -> int:
+def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_path: str | Path | None = None) -> int:
     should_start, message = check_existing_daemon()
     if message:
         safe_print(message, flush=True)
@@ -215,7 +251,15 @@ def run_daemon(config: AppConfig, env_path: str = ".env", settings_path: str = "
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     controller = DaemonController(config, env_path=env_path, settings_path=settings_path)
-    controller.register_hotkey()
+    try:
+        controller.register_hotkey()
+    except PlatformPermissionError:
+        QMessageBox.critical(
+            None,
+            "SpeedyType 權限不足",
+            "請到 macOS 系統設定 > 隱私權與安全性，允許 SpeedyType（或目前使用的 Python）使用 Accessibility 與 Input Monitoring，然後重新啟動。",
+        )
+        return 2
 
     tray = QSystemTrayIcon(build_app_icon())
     tray.setToolTip("SpeedyType")
@@ -227,7 +271,7 @@ def run_daemon(config: AppConfig, env_path: str = ".env", settings_path: str = "
     def open_settings() -> None:
         from speedytype.settings_dialog import SettingsDialog
 
-        dialog = SettingsDialog(controller.config, env_path, settings_path)
+        dialog = SettingsDialog(controller.config, controller.env_path, controller.settings_path)
         dialog.vocab_applied.connect(controller.apply_live_vocab_update)
         settings_dialogs.append(dialog)  # keep a reference so it isn't garbage-collected
         dialog.show()
@@ -290,16 +334,10 @@ def stop_daemon(pid_file: Path = PID_FILE) -> tuple[bool, str]:
         return False, f"PID file content is invalid: {pid_text!r}"
     pid = int(pid_text)
 
-    result = subprocess.run(
-        ["taskkill", "/PID", str(pid), "/F"],
-        capture_output=True,
-        text=True,
-    )
+    ok, message = terminate_process(pid)
     try:
         pid_file.unlink()
     except Exception:
         pass
 
-    if result.returncode == 0:
-        return True, f"Stopped daemon PID {pid}."
-    return False, f"taskkill failed (code={result.returncode}): {(result.stderr or result.stdout).strip()}"
+    return ok, message

@@ -1,0 +1,98 @@
+=== A_baseline_exact_chunk (window 50.88-75.24s, 24.36s long) ===
+contains_correct_phrase=True contains_corrupt_1trillion=False
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序
+
+=== B_extra_leading_context (window 40.88-75.24s, 34.36s long) ===
+contains_correct_phrase=True contains_corrupt_1trillion=False
+TEXT: 抵達火車站後,我在自動售票機領取預定車票,再到月台旁的商店買了一瓶礦泉水。 列車準時出發。 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵。 窗外偶爾可以看到白鷺斯亭在水田邊。 同行的朋友傳來訊息,提醒我在下一站轉乘區間車。 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序。
+
+=== C_extra_trailing_context (window 50.88-85.24s, 34.36s long) ===
+contains_correct_phrase=True contains_corrupt_1trillion=False
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵。 窗外偶爾可以看到白鷺斯亭在水田邊。 同行的朋友傳來訊息,提醒我在下一站轉乘區間車。 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序。 9點40分,我抵達第一個目的地。 地方博物館正在展出早期航海工具,入口處有一艘縮小比例的木造帆船。
+
+=== D_wide_both_directions (window 30.00-100.00s, 70.00s long) ===
+contains_correct_phrase=True contains_corrupt_1trillion=False
+TEXT: 車上乘客不多,有人看新聞,有人戴著耳機聽音樂 經過河堤時,雨勢逐漸變小,雲層之間露出一小片藍天 抵達火車站後,我在自動售票機領取預定車票 再到月台旁的商店買了一瓶礦泉水 列車準時出發 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程 把博物館、市場、舊城街道和海邊步道依照距離重新排序 9點40分,我抵達第一個目的地 地方博物館正在展出早期航海工具,入口處有一艘縮小比例的木造帆船 展廳裡陳列羅盤、六分儀、手繪海圖和船員日誌 導覽員解釋,過去的水手必須觀察星象、風向與潮汐 才能在缺乏電子設備的年代判斷位置
+
+=== E_full_context_from_start (window 0.00-100.00s, 100.00s long) ===
+contains_correct_phrase=True contains_corrupt_1trillion=False
+TEXT: 今天早上六點半,窗外剛開始下小雨 我先查看氣象預報,決定帶一把折疊傘 然後把昨晚充電的相機、行動電源和筆記本放進背包 早餐是一杯無糖豆漿、兩片烤吐司和一顆水煮蛋 出門前,我關閉瓦斯,確認陽台窗戶已經鎖好 並替門口的植物澆了一點水 七點十五分,我走到附近車站搭乘公車 車上乘客不多,有人看新聞,有人戴著耳機聽音樂 經過河堤時,雨勢逐漸變小,雲層之間露出一小片藍天 抵達火車站後,我在自動售票機領取預定車票 再到月台旁的商店買了一瓶礦泉水 列車準時出發 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程 把博物館、市場、舊城街道和海邊步道依照距離重新排序 九點四十分,我抵達第一個目的地 地方博物館正在展出早期航海工具 入口處有一艘縮小比例的木造帆船 展廳裡陳列羅盤、六分儀、手繪海圖和船員日誌 導覽員解釋,過去的水手必須觀察星象、風向與潮汐 才能在缺乏電子設備的年代判斷位置
+
+
+=== Repeated baseline trials (exact chunk-3 boundaries 50.88-75.24s), 6x ===
+trial 1/6: correct=True corrupt_1trillion=False
+  TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序
+trial 2/6: correct=True corrupt_1trillion=False
+  TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序
+trial 3/6: correct=True corrupt_1trillion=False
+  TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序
+trial 4/6: correct=True corrupt_1trillion=False
+  TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序
+trial 5/6: correct=True corrupt_1trillion=False
+  TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序
+trial 6/6: correct=True corrupt_1trillion=False
+  TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序
+
+SUMMARY: correct=6/6 corrupt_1trillion=0/6 other=0/6
+=== EXACT production replay, trial 1 (verbose_json + real prompt_override chain 1->2->3) ===
+correct=False corrupt_1trillion=True
+chunk3 TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊不到一兆距離重新排序
+
+=== EXACT production replay, trial 2 (verbose_json + real prompt_override chain 1->2->3) ===
+correct=False corrupt_1trillion=True
+chunk3 TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊不到一兆距離重新排序
+
+=== EXACT production replay, trial 3 (verbose_json + real prompt_override chain 1->2->3) ===
+correct=False corrupt_1trillion=True
+chunk3 TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊不到一兆距離重新排序
+
+=== EXACT production replay, trial 4 (verbose_json + real prompt_override chain 1->2->3) ===
+correct=False corrupt_1trillion=True
+chunk3 TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊不到一兆距離重新排序
+
+EXACT REPLAY SUMMARY: correct=0/4 corrupt_1trillion=4/4
+
+--- Isolation experiments ---
+Captured real prompt_override: 'BIOS, Firmware, NPI, QA, API, TPE 團隊, BJ 團隊, USB, Thunderbolt\n報,決定帶一把折疊傘 然後把昨晚充電的相機、行動電源和筆記本放進背包 早餐是一杯無糖豆漿、兩片烤吐司和一顆水煮蛋 出門前,我關閉瓦斯,確認陽台窗戶已經鎖好 並替門口的植物澆了一點水 七點十五分,我走到附近車站搭乘公車 車上乘客不多,有人看新聞,有人戴著耳機聽音樂 經過河堤時,雨勢逐漸變小,雲層之間露出一小片藍天 抵達火車站後,我在自動售票機領取預定車票,再到月台旁的商店買了一瓶礦泉水 列車準時出發'
+
+=== F_verbose_no_prompt_trial1 ===
+correct=True corrupt=False
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵。 窗外偶爾可以看到白鷺斯亭在水田邊。 同行的朋友傳來訊息,提醒我在下一站轉乘區間車。 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序。
+
+=== F_verbose_no_prompt_trial2 ===
+correct=True corrupt=False
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵。 窗外偶爾可以看到白鷺斯亭在水田邊。 同行的朋友傳來訊息,提醒我在下一站轉乘區間車。 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序。
+
+=== G_verbose_with_real_prompt_trial1 ===
+correct=False corrupt=True
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊不到一兆距離重新排序
+=== G_verbose_with_real_prompt_trial2 ===
+correct=False corrupt=True
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊不到一兆距離重新排序
+=== H_plain_json_with_real_prompt_trial1 ===
+correct=False corrupt=True
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊不到一兆距離重新排序
+
+=== H_plain_json_with_real_prompt_trial2 ===
+correct=False corrupt=True
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊不到一兆距離重新排序
+
+
+--- Isolation experiments part 2: which half of the prompt triggers it? ---
+
+=== I_vocab_bias_only_no_tail_trial1 ===
+correct=True corrupt=False
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序
+
+=== I_vocab_bias_only_no_tail_trial2 ===
+correct=True corrupt=False
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊步道依照距離重新排序
+
+=== J_tail_text_only_no_vocab_trial1 ===
+correct=False corrupt=True
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊不到一兆距離重新排序
+
+=== J_tail_text_only_no_vocab_trial2 ===
+correct=False corrupt=True
+TEXT: 前半段路程穿過密集的住宅區,接著進入稻田和低矮丘陵 窗外偶爾可以看到白鷺斯亭在水田邊 同行的朋友傳來訊息,提醒我在下一站轉乘區間車 我利用這段時間整理今天的行程,把博物館、市場、舊城街道和海邊不到一兆距離重新排序
+ISOLATION SUMMARY: vocab_only_correct=2/2 tail_only_corrupt=2/2

@@ -76,6 +76,7 @@ class Recorder:
         self,
         output_path: Path,
         on_level: Callable[[float], None] | None = None,
+        on_audio: Callable[[np.ndarray, float], None] | None = None,
         level_interval_seconds: float = 0.12,
     ) -> float:
         """Record until `stop()` is called.
@@ -95,6 +96,8 @@ class Recorder:
                 if status:
                     print(f"Recording warning: {status}", flush=True)
                 wav_file.write(indata.copy())
+                if on_audio is not None:
+                    on_audio(indata.copy(), time.perf_counter() - started)
                 if on_level is not None:
                     now = time.perf_counter()
                     if now - last_level_emit >= level_interval_seconds:

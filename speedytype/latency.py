@@ -24,6 +24,10 @@ LATENCY_FIELDS = [
     "paste_verification_seconds",
     "paste_seconds",
     "total_tail_latency_seconds",
+    "hybrid_request_count",
+    "hybrid_request_seconds",
+    "hybrid_fallback_used",
+    "hybrid_validation_reasons",
 ]
 
 
@@ -46,6 +50,10 @@ class LatencyRecord:
     paste_verification_seconds: float
     paste_seconds: float
     total_tail_latency_seconds: float
+    hybrid_request_count: int = 0
+    hybrid_request_seconds: float = 0.0
+    hybrid_fallback_used: bool = False
+    hybrid_validation_reasons: str = ""
 
     @classmethod
     def create(
@@ -66,6 +74,10 @@ class LatencyRecord:
         key_send_seconds: float = 0.0,
         post_paste_wait_seconds: float = 0.0,
         paste_verification_seconds: float = 0.0,
+        hybrid_request_count: int = 0,
+        hybrid_request_seconds: float = 0.0,
+        hybrid_fallback_used: bool = False,
+        hybrid_validation_reasons: str = "",
     ) -> "LatencyRecord":
         return cls(
             timestamp=datetime.now(timezone.utc).isoformat(),
@@ -85,6 +97,10 @@ class LatencyRecord:
             paste_verification_seconds=paste_verification_seconds,
             paste_seconds=paste_seconds,
             total_tail_latency_seconds=total_tail_latency_seconds,
+            hybrid_request_count=hybrid_request_count,
+            hybrid_request_seconds=hybrid_request_seconds,
+            hybrid_fallback_used=hybrid_fallback_used,
+            hybrid_validation_reasons=hybrid_validation_reasons,
         )
 
 
@@ -126,5 +142,9 @@ def append_latency_record(path: Path, record: LatencyRecord) -> None:
                 "paste_verification_seconds": f"{record.paste_verification_seconds:.6f}",
                 "paste_seconds": f"{record.paste_seconds:.6f}",
                 "total_tail_latency_seconds": f"{record.total_tail_latency_seconds:.6f}",
+                "hybrid_request_count": record.hybrid_request_count,
+                "hybrid_request_seconds": f"{record.hybrid_request_seconds:.6f}",
+                "hybrid_fallback_used": str(record.hybrid_fallback_used).lower(),
+                "hybrid_validation_reasons": record.hybrid_validation_reasons,
             }
         )

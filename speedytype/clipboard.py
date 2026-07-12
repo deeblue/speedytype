@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 import threading
 import time
 
-import keyboard
 import pyperclip
-import win32clipboard
+
+from speedytype.platform.clipboard import ClipboardSnapshot, restore_clipboard, send_paste_shortcut, snapshot_clipboard
 
 
 @dataclass(frozen=True)
@@ -32,86 +32,6 @@ class PasteResult:
         )
 
 
-@dataclass(frozen=True)
-class ClipboardSnapshot:
-    ok: bool
-    formats: dict[int, object] = field(default_factory=dict)
-    error: str = ""
-
-
-def _open_clipboard(max_attempts: int = 5, retry_delay_seconds: float = 0.05) -> bool:
-    for attempt in range(max_attempts):
-        try:
-            win32clipboard.OpenClipboard()
-            return True
-        except Exception:
-            if attempt == max_attempts - 1:
-                return False
-            time.sleep(retry_delay_seconds)
-    return False
-
-
-def snapshot_clipboard() -> ClipboardSnapshot:
-    """Capture the current clipboard content across all present formats.
-
-    Best-effort: an individual format that fails to read is skipped rather
-    than aborting the whole snapshot, since the clipboard may hold formats
-    (images, file drops, app-specific data) that are not always readable.
-    """
-    if not _open_clipboard():
-        return ClipboardSnapshot(ok=False, error="Could not open clipboard for snapshot.")
-
-    formats: dict[int, object] = {}
-    try:
-        fmt = 0
-        while True:
-            try:
-                fmt = win32clipboard.EnumClipboardFormats(fmt)
-            except Exception:
-                break
-            if fmt == 0:
-                break
-            try:
-                formats[fmt] = win32clipboard.GetClipboardData(fmt)
-            except Exception:
-                continue
-    finally:
-        win32clipboard.CloseClipboard()
-
-    return ClipboardSnapshot(ok=True, formats=formats)
-
-
-def restore_clipboard(snapshot: ClipboardSnapshot) -> tuple[bool, str]:
-    """Restore a previously captured clipboard snapshot.
-
-    Returns (ok, message). Never raises: an unsupported/unwritable format is
-    skipped individually so one bad format does not block restoring the rest.
-    """
-    if not snapshot.ok:
-        return False, f"Skipped restore: snapshot was not captured ({snapshot.error})."
-
-    if not _open_clipboard():
-        return False, "Could not open clipboard for restore."
-
-    restored = 0
-    try:
-        win32clipboard.EmptyClipboard()
-        if not snapshot.formats:
-            return True, "Original clipboard was empty; cleared clipboard to match."
-        for fmt, data in snapshot.formats.items():
-            try:
-                win32clipboard.SetClipboardData(fmt, data)
-                restored += 1
-            except Exception:
-                continue
-    finally:
-        win32clipboard.CloseClipboard()
-
-    if restored == 0:
-        return False, "Clipboard restore attempted but no formats could be written back."
-    return True, f"Clipboard restored ({restored}/{len(snapshot.formats)} formats)."
-
-
 def paste_text(text: str, delay_seconds: float = 0.12, post_send_wait_seconds: float = 0.05) -> PasteResult:
     copy_started = time.perf_counter()
     pyperclip.copy(text)
@@ -123,7 +43,7 @@ def paste_text(text: str, delay_seconds: float = 0.12, post_send_wait_seconds: f
 
     send_started = time.perf_counter()
     try:
-        keyboard.send("ctrl+v")
+        send_paste_shortcut()
     except Exception as exc:
         key_send_seconds = time.perf_counter() - send_started
         return PasteResult(

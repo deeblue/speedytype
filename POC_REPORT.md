@@ -388,3 +388,34 @@ The raw Whisper transcript already contains only one instance of the phrase — 
 Conclusion: **no latency regression detected** from Phases 5-6's UI/feature additions (tray icon, Settings/About dialogs, settings.json loading, clipboard protection). This round's short-sentence real-voice numbers are as good as or better than every prior benchmark, including the very first Phase 2/4 TTS-based ones. The long-form number is a new data point with no prior baseline, not a regression by definition, and is itself reassuringly modest for 2+ minutes of continuous dictation.
 
 Full suite after all Phase 8 changes: `python -m pytest -q` → `59 passed`, confirmed stable across 3 consecutive full runs (this also includes the clipboard-flake fix noted in Part A above).
+# Cross-Platform Core Follow-up (2026-07-11)
+
+This round intentionally implemented only the platform abstraction layer and macOS source backends. Packaging, signing/notarization, installers, icons, `pyproject.toml`, and CI were not created.
+
+## Windows evidence
+
+- Pre-change baseline: `59 passed in 6.30s`.
+- Post-change suite: `72 passed` before final documentation/script tests; final count is recorded by the closing verification command.
+- Clean environment: a new `.venv-clean` installed `requirements.txt` successfully and printed `CLEAN_IMPORT_OK` after importing numpy, PyQt6, platformdirs, psutil, CLI, and daemon modules.
+- Startup integration: the real Startup-folder script was installed, queried as present, removed, and queried as absent.
+- Daemon smoke: the updated app-data PID path was observed with a live `pythonw` process; one hotkey record/process/paste run returned `PASS_WITH_TEXT`, then daemon-stop succeeded.
+- Full paste latency: one valid run measured `3.732907s` total tail (`2.024753s` Whisper, `0.612778s` Gemini, `1.095331s` paste), consistent with the historical approximately 3.5-second baseline.
+
+## External API investigations
+
+- Gemini prompt follow-up (historical 2026-07-11 state): current prompt produced 4/4 valid number-preserving samples; quota errors prevented new candidate evidence at that time. This conclusion was superseded by the completed 2026-07-12 investigation below.
+- Long recordings: the initial 262s composite was rejected as decisive evidence because its two source recordings discuss overlapping meeting topics. A replacement 294.792s continuous, non-repeating TTS narrative measured 18.098s batch tail versus 1.874s for the 30s/5s-overlap quasi simulation (89.6% improvement). This confirms the latency trend is not a splice artifact, while transcript omissions/boundary errors still block production enablement.
+
+## macOS handoff
+
+Code and Windows-runnable contracts exist for text-only clipboard preservation, pynput hold/release and capture, canonical hotkey tokens, LaunchAgent plist management, reserved shortcut warnings, and permission guidance. These are not claimed as operationally verified until the exact real-Mac checklist in `KNOWN_LIMITATIONS.md` item 18 is completed.
+
+## Hybrid v2 follow-up
+
+The silence-aware hybrid plan was implemented behind a disabled-by-default feature flag. Offline and integration coverage reached 122 passing tests, and a Windows daemon smoke exercised the real hybrid record/transcribe/polish/paste path. The final three-run benchmark showed 72.3% complete-tail improvement on the 295-second continuous file with 1.83x Whisper request work. Quality was split into source accuracy and same-run batch-relative hybrid regression so baseline Whisper errors are not blamed on hybrid code; the hybrid regression gate nevertheless passed 0/3 for every case. Cases A-C were recovered; Case D remained an extra hybrid lexical corruption inside a distinct segment. Because the batch-relative content gate failed and real Mac/paste benchmark gates remain incomplete, production stays on batch transcription.
+
+## Combined LLM polishing investigation (2026-07-12)
+
+The candidate number/repeated-content prompt rule was adopted after reaching 6/6 valid candidate samples preserving `123`, reproducing current-prompt loss versus candidate preservation on the production Gemini model, and confirming no regression in self-correction, filler removal, key-term preservation, list formatting, natural-stutter cleanup, or Chinese-number preservation. The production prompt now keeps numbers, identifiers, and real content while consolidating garbled repetition, with an explicit exception for genuine self-correction.
+
+The separate `API` / `BJ 團隊` over-correction hypothesis was rejected after 17 raw-Whisper-versus-polished comparisons. The old 71.4% / 83.3% figures used an invalid denominator that counted corrected-away terms as required final output. The only observed final-intent failures were two raw-STT `API` substitutions (`NPI` and `AVM`); Gemini introduced no target-term error. The corpus is too small to publish a replacement real-world percentage. Full quota accounting, six-dimension prompt results, and every sentence-level pair are in [COMBINED_LLM_INVESTIGATION_REPORT.md](COMBINED_LLM_INVESTIGATION_REPORT.md).
