@@ -7,7 +7,9 @@ import re
 import unicodedata
 
 
-_SENTENCE_SPLIT = re.compile(r"[。！？!?；;\n]+")
+_SENTENCE_SPLIT = re.compile(
+    r"[。！？!?；;：:\n]+|(?<=[\u3400-\u9fff\d%])[,，、]\s*|(?<=[\u3400-\u9fff])\s+(?=[\u3400-\u9fff])"
+)
 _NUMBER = re.compile(r"(?:\d+(?:\.\d+)?)|(?:[零〇一二兩三四五六七八九十百千萬億]+)")
 _DIGITS = {"零": 0, "〇": 0, "一": 1, "二": 2, "兩": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
 _UNITS = {"十": 10, "百": 100, "千": 1000, "萬": 10000, "億": 100000000}
@@ -85,7 +87,10 @@ class TranscriptQuality:
         reference_sentences = _sentences(reference)
         candidate_sentences = _sentences(candidate)
         missing_sentences = tuple(
-            sentence for sentence in reference_sentences if not _sentence_is_present(sentence, candidate_sentences)
+            sentence
+            for sentence in reference_sentences
+            if normalize_transcript(sentence) not in candidate_normalized
+            and not _sentence_is_present(sentence, candidate_sentences)
         )
 
         reference_counts = Counter(normalize_transcript(sentence) for sentence in reference_sentences)

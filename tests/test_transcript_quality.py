@@ -1,4 +1,4 @@
-from speedytype.transcript_quality import TranscriptQuality, normalize_transcript, passes_quality_gate
+from speedytype.transcript_quality import TranscriptQuality, _sentences, normalize_transcript, passes_quality_gate
 from scripts.run_long_recording_benchmark import case_resolution, named_quality_payload, quality_payload
 
 
@@ -45,6 +45,47 @@ def test_key_terms_absent_from_reference_are_not_required():
 def test_unchanged_transcript_passes():
     metrics = TranscriptQuality.compare("列車準時出發。API 版本 123。", "列車準時出發。API 版本 123。", ["API"])
     assert passes_quality_gate(metrics) == (True, [])
+
+
+def test_continuous_tts_space_delimited_transcript_is_split_into_real_units():
+    reference = (
+        "今天早上六點半,窗外剛開始下小雨 "
+        "我先查看氣象預報,決定帶一把折疊傘 "
+        "然後把昨晚充電的相機、行動電源和筆記本放進背包"
+    )
+    candidate = (
+        "今天早上六點半，窗外剛開始下小雨。"
+        "我先查看氣象預報，決定帶一把折疊傘。"
+        "然後把昨晚充電的相機、行動電源和筆記本放進背包。"
+    )
+
+    assert _sentences(reference) == [
+        "今天早上六點半",
+        "窗外剛開始下小雨",
+        "我先查看氣象預報",
+        "決定帶一把折疊傘",
+        "然後把昨晚充電的相機",
+        "行動電源和筆記本放進背包",
+    ]
+    assert TranscriptQuality.compare(reference, candidate).missing_sentences == ()
+
+
+def test_real_134s_clause_split_does_not_hide_contiguous_content():
+    reference = "第一個的話 它本身算是一個數列排序的一個做法 那就對我來說比較熟悉"
+    candidate = "第一個的話,它本身算是一個 數列排序的一個做法 那就比較對我來說是比較熟悉"
+
+    metrics = TranscriptQuality.compare(reference, candidate)
+
+    assert "它本身算是一個數列排序的一個做法" not in metrics.missing_sentences
+
+
+def test_continuous_tts_compound_list_uses_punctuation_as_clause_boundaries():
+    reference = "接著我寫下三項待辦事項：查證航海儀器的名稱、確認市場茶葉的產地，以及挑選十張照片製作旅行紀錄"
+    candidate = "接著我寫下三項待辦事項 查證航海儀器的名稱 確認市場茶葉的產地 以及挑選十張照片製作旅行記錄"
+
+    metrics = TranscriptQuality.compare(reference, candidate)
+
+    assert metrics.missing_sentences == ()
 
 
 def test_case_a_missing_departure_sentence_regression():
