@@ -12,6 +12,7 @@ from speedytype.settings import SETTINGS_FILE_NAME, load_settings
 
 DEFAULT_VOCAB_BIAS = "BIOS, Firmware, NPI, QA, API, PD, USB, Thunderbolt, TPE 團隊, BJ 團隊"
 DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
+DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 
 
 class ConfigError(RuntimeError):
@@ -34,6 +35,8 @@ class AppConfig:
     llm_thinking_level: str = ""
     llm_thinking_type: str = ""
     llm_disambiguation_hints: str = "on"
+    ollama_base_url: str = DEFAULT_OLLAMA_BASE_URL
+    ollama_keep_alive: str = "10m"
     max_record_seconds: float = 60.0
     latency_log_path: Path = field(default_factory=default_latency_log_path)
     clipboard_restore_delay_seconds: float = 0.3
@@ -95,9 +98,16 @@ def load_config(path: str | Path | None = None, settings_path: str | Path | None
     def get(name: str, default: str = "") -> str:
         return os.environ.get(name, file_values.get(name, default)).strip()
 
+    llm_provider = get("LLM_PROVIDER", "gemini") or "gemini"
     openai_api_key = get("OPENAI_API_KEY")
     gemini_api_key = get("GEMINI_API_KEY")
-    missing = [name for name, value in (("OPENAI_API_KEY", openai_api_key), ("GEMINI_API_KEY", gemini_api_key)) if not value]
+    minimax_api_key = get("MINIMAX_API_KEY")
+    required = [("OPENAI_API_KEY", openai_api_key)]
+    if llm_provider == "gemini":
+        required.append(("GEMINI_API_KEY", gemini_api_key))
+    elif llm_provider == "minimax":
+        required.append(("MINIMAX_API_KEY", minimax_api_key))
+    missing = [name for name, value in required if not value]
     if missing:
         raise ConfigError(
             "Missing required configuration: "
@@ -116,18 +126,20 @@ def load_config(path: str | Path | None = None, settings_path: str | Path | None
     return AppConfig(
         openai_api_key=openai_api_key,
         gemini_api_key=gemini_api_key,
-        minimax_api_key=get("MINIMAX_API_KEY"),
+        minimax_api_key=minimax_api_key,
         mic_device=mic_device_value,
         mic_device_warning=mic_device_warning,
         whisper_vocab_bias=settings.vocab_bias_string,
         hotkey=settings.hotkey_string,
         gemini_model=get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL) or DEFAULT_GEMINI_MODEL,
-        llm_provider=get("LLM_PROVIDER", "gemini") or "gemini",
+        llm_provider=llm_provider,
         llm_model=get("LLM_MODEL", get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL) or DEFAULT_GEMINI_MODEL),
         llm_reasoning_effort=get("LLM_REASONING_EFFORT"),
         llm_thinking_level=get("LLM_THINKING_LEVEL"),
         llm_thinking_type=get("LLM_THINKING_TYPE"),
         llm_disambiguation_hints=get("LLM_DISAMBIGUATION_HINTS", "on") or "on",
+        ollama_base_url=get("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL).rstrip("/") or DEFAULT_OLLAMA_BASE_URL,
+        ollama_keep_alive=get("OLLAMA_KEEP_ALIVE", "10m") or "10m",
         max_record_seconds=settings.max_record_seconds,
         latency_log_path=Path(get("LATENCY_LOG_PATH", str(default_latency_log_path())) or default_latency_log_path()),
         clipboard_restore_delay_seconds=float(get("CLIPBOARD_RESTORE_DELAY_SECONDS", "0.3") or "0.3"),

@@ -87,3 +87,60 @@ def test_load_config_reports_missing_required_keys(tmp_path: Path):
     assert "Missing required configuration: OPENAI_API_KEY, GEMINI_API_KEY" in message
     assert str(env_file) in message
     assert "Copy .env.example to .env" in message
+
+
+def test_load_config_reads_ollama_settings_without_gemini_key(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "OPENAI_API_KEY=sk-test\n"
+        "LLM_PROVIDER=ollama\n"
+        "LLM_MODEL=gemma4:12b\n"
+        "OLLAMA_BASE_URL=http://localhost:11435/\n"
+        "OLLAMA_KEEP_ALIVE=15m\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(env_file, settings_path=tmp_path / "settings.json")
+
+    assert config.llm_provider == "ollama"
+    assert config.llm_model == "gemma4:12b"
+    assert config.ollama_base_url == "http://localhost:11435"
+    assert config.ollama_keep_alive == "15m"
+    assert config.gemini_api_key == ""
+
+
+def test_load_config_requires_openai_key_for_ollama(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("LLM_PROVIDER=ollama\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="OPENAI_API_KEY"):
+        load_config(env_file, settings_path=tmp_path / "settings.json")
+
+
+def test_load_config_requires_gemini_key_for_gemini_provider(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=sk-test\nLLM_PROVIDER=gemini\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="GEMINI_API_KEY"):
+        load_config(env_file, settings_path=tmp_path / "settings.json")
+
+
+def test_load_config_requires_minimax_key_for_minimax_provider(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=sk-test\nLLM_PROVIDER=minimax\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="MINIMAX_API_KEY"):
+        load_config(env_file, settings_path=tmp_path / "settings.json")
+
+
+def test_load_config_uses_default_for_empty_ollama_base_url(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "OPENAI_API_KEY=sk-test\nLLM_PROVIDER=ollama\nOLLAMA_BASE_URL=///\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(env_file, settings_path=tmp_path / "settings.json")
+
+    assert config.ollama_base_url == "http://127.0.0.1:11434"
+    assert config.ollama_keep_alive == "10m"
