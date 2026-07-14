@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+import os
 from pathlib import Path
 
 import pytest
@@ -180,3 +181,30 @@ def test_env_rewrite_occurs_while_exclusive_lock_is_held(tmp_path, monkeypatch):
     assert result.warnings == ()
     assert lock_state["held"] is False
     assert env_path.read_bytes() == b"LLM_PROVIDER=gemini\r\n"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows locking contract")
+def test_windows_lock_covers_fixed_range_beyond_eof(tmp_path, monkeypatch):
+    import msvcrt
+
+    env_path = tmp_path / ".env"
+    env_path.write_bytes(b"KEY=x\n")
+    file_size = env_path.stat().st_size
+    locking_calls = []
+    monkeypatch.setattr(
+        msvcrt,
+        "locking",
+        lambda file_descriptor, mode, byte_count: locking_calls.append((mode, byte_count)),
+    )
+
+    with env_path.open("r+", encoding="utf-8", newline="") as env_file:
+        with secrets_store._exclusive_file_lock(env_file):
+            pass
+
+    expected_range = 0x7FFFFFFF
+    assert locking_calls == [
+        (msvcrt.LK_LOCK, expected_range),
+        (msvcrt.LK_UNLCK, expected_range),
+    ]
+    assert expected_range > file_size
+    assert getattr(secrets_store, "ENV_LOCK_RANGE_BYTES", None) == expected_range

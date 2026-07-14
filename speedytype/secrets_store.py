@@ -16,6 +16,7 @@ from keyring import set_password as _set_password
 
 
 SERVICE_NAME = "SpeedyType"
+ENV_LOCK_RANGE_BYTES = 0x7FFFFFFF
 SECRET_KEY_NAMES = {
     "OPENAI_API_KEY": "openai_api_key",
     "GEMINI_API_KEY": "gemini_api_key",
@@ -166,13 +167,12 @@ def _exclusive_file_lock(env_file: TextIO) -> Iterator[None]:
         import msvcrt
 
         env_file.seek(0)
-        lock_size = max(1, os.fstat(file_descriptor).st_size)
-        msvcrt.locking(file_descriptor, msvcrt.LK_LOCK, lock_size)
+        msvcrt.locking(file_descriptor, msvcrt.LK_LOCK, ENV_LOCK_RANGE_BYTES)
         try:
             yield
         finally:
             env_file.seek(0)
-            msvcrt.locking(file_descriptor, msvcrt.LK_UNLCK, lock_size)
+            msvcrt.locking(file_descriptor, msvcrt.LK_UNLCK, ENV_LOCK_RANGE_BYTES)
     else:
         import fcntl
 
