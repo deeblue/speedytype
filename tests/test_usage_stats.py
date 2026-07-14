@@ -11,6 +11,7 @@ from speedytype.usage_stats import calculate_usage, load_pricing
 
 
 CSV_FIELDS = [
+    "timestamp",
     "usage_scope",
     "run_label",
     "recording_seconds",
@@ -137,6 +138,95 @@ def test_calculate_usage_matches_known_fixture_and_excludes_non_daily_rows(tmp_p
     assert summary.llm_cost == Decimal("0.000825")
     assert summary.total_cost == Decimal("0.012825")
     assert summary.legacy_inferred_rows == 1
+    assert summary.usage_available is True
+
+
+@pytest.mark.parametrize(
+    ("header", "row"),
+    [
+        (["timestamp", "run_label", "recording_seconds"], ["legacy", "hybrid", "60"]),
+        (
+            ["timestamp", "run_label", "recording_seconds", "usage_scope"],
+            ["current", "real_voice", "60", "daily"],
+        ),
+    ],
+)
+def test_minimal_supported_old_and_new_latency_schemas_are_accepted(
+    tmp_path: Path, header: list[str], row: list[str]
+) -> None:
+    csv_path = tmp_path / "latency.csv"
+    pricing_path = tmp_path / "pricing.json"
+    write_pricing(pricing_path)
+    with csv_path.open("w", encoding="utf-8", newline="") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(header)
+        writer.writerow(row)
+
+    summary = calculate_usage(csv_path, pricing_path)
+
+    assert summary.usage_available is True
+    assert summary.stt_calls == 1
+    assert summary.stt_minutes == Decimal("1")
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        b"",
+        b"garbage,other\n1,2\n",
+        b"timestamp,recording_seconds\nnow,60\n",
+        b"run_label,recording_seconds\nhybrid,60\n",
+    ],
+)
+def test_invalid_or_missing_latency_schema_is_unavailable_not_legacy_usage(
+    tmp_path: Path, contents: bytes
+) -> None:
+    csv_path = tmp_path / "latency.csv"
+    pricing_path = tmp_path / "pricing.json"
+    write_pricing(pricing_path)
+    csv_path.write_bytes(contents)
+
+    summary = calculate_usage(csv_path, pricing_path)
+
+    assert summary.usage_available is False
+    assert summary.stt_calls == 0
+    assert summary.stt_cost is None
+    assert summary.total_cost is None
+    assert any("Invalid latency CSV schema" in warning for warning in summary.warnings)
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        b"\xff\xfe\x80",
+        (
+            b"timestamp,run_label,recording_seconds,usage_scope\n"
+            b"ok,real_voice,60,daily\n"
+            b"\xff,real_voice,60,daily\n"
+        ),
+        (
+            b"timestamp,run_label,recording_seconds,usage_scope\n"
+            + b"ok,real_voice,60,daily\n" * 500
+            + b"\xff,real_voice,60,daily\n"
+        ),
+    ],
+)
+def test_invalid_utf8_anywhere_in_latency_csv_is_safely_unavailable(
+    tmp_path: Path, contents: bytes
+) -> None:
+    csv_path = tmp_path / "latency.csv"
+    pricing_path = tmp_path / "pricing.json"
+    write_pricing(pricing_path)
+    csv_path.write_bytes(contents)
+
+    summary = calculate_usage(csv_path, pricing_path)
+
+    assert summary.usage_available is False
+    assert summary.stt_calls == 0
+    assert summary.stt_minutes == Decimal("0")
+    assert summary.stt_cost is None
+    assert summary.total_cost is None
+    assert any("Usage data unavailable" in warning for warning in summary.warnings)
 
 
 @pytest.mark.parametrize("pricing_contents", [None, "{not-json"])
@@ -277,8 +367,8 @@ def test_structurally_truncated_row_is_skipped_with_one_warning(tmp_path: Path) 
     with csv_path.open("w", encoding="utf-8", newline="") as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(CSV_FIELDS)
-        writer.writerow(["daily"])
-        writer.writerow(["daily", "", "60", "", "whisper-1", "0", "", "", ""])
+        writer.writerow(["truncated"])
+        writer.writerow(["valid", "daily", "", "60", "", "whisper-1", "0", "", "", ""])
 
     with pytest.warns(UserWarning) as caught:
         summary = calculate_usage(csv_path, pricing_path)

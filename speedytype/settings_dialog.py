@@ -284,24 +284,27 @@ class SettingsDialog(QDialog):
             warnings.simplefilter("ignore", UserWarning)
             summary = calculate_usage(self.config.latency_log_path, self.pricing_path)
 
-        stt_models = ", ".join(summary.stt_models) or "無紀錄"
-        llm_models = ", ".join(summary.llm_models) or "無紀錄"
-        self.usage_models_label.setText(f"目前使用模型：STT {stt_models}；LLM {llm_models}")
-        usage_unavailable = any(
-            message.startswith("Usage data unavailable:") for message in summary.warnings
-        )
+        usage_unavailable = not summary.usage_available
         stt_cost = None if usage_unavailable else summary.stt_cost
         llm_cost = None if usage_unavailable else summary.llm_cost
         total_cost = None if usage_unavailable else summary.total_cost
-        self.usage_stt_label.setText(
-            f"STT：{summary.stt_calls:,} 次呼叫，{summary.stt_minutes:.2f} 分鐘，"
-            f"估算費用 {self._format_usage_cost(stt_cost, summary.currency)}"
-        )
-        self.usage_llm_label.setText(
-            f"LLM：{summary.llm_calls:,} 次呼叫，輸入 {summary.llm_input_tokens:,} tokens，"
-            f"輸出 {summary.llm_output_tokens:,} tokens，"
-            f"估算費用 {self._format_usage_cost(llm_cost, summary.currency)}"
-        )
+        if usage_unavailable:
+            self.usage_models_label.setText("目前使用模型：用量無法取得")
+            self.usage_stt_label.setText("STT：用量無法取得，估算費用 無法估算")
+            self.usage_llm_label.setText("LLM：用量無法取得，估算費用 無法估算")
+        else:
+            stt_models = ", ".join(summary.stt_models) or "無紀錄"
+            llm_models = ", ".join(summary.llm_models) or "無紀錄"
+            self.usage_models_label.setText(f"目前使用模型：STT {stt_models}；LLM {llm_models}")
+            self.usage_stt_label.setText(
+                f"STT：{summary.stt_calls:,} 次呼叫，{summary.stt_minutes:.2f} 分鐘，"
+                f"估算費用 {self._format_usage_cost(stt_cost, summary.currency)}"
+            )
+            self.usage_llm_label.setText(
+                f"LLM：{summary.llm_calls:,} 次呼叫，輸入 {summary.llm_input_tokens:,} tokens，"
+                f"輸出 {summary.llm_output_tokens:,} tokens，"
+                f"估算費用 {self._format_usage_cost(llm_cost, summary.currency)}"
+            )
         self.usage_total_label.setText(
             f"總估算費用：{self._format_usage_cost(total_cost, summary.currency)}"
         )
@@ -312,7 +315,9 @@ class SettingsDialog(QDialog):
         )
 
         warning_messages = []
-        if summary.stt_cost is None or summary.llm_cost is None or summary.total_cost is None:
+        if not usage_unavailable and (
+            summary.stt_cost is None or summary.llm_cost is None or summary.total_cost is None
+        ):
             warning_messages.append("價格資料缺失，無法估算費用")
         if summary.legacy_inferred_rows:
             warning_messages.append(

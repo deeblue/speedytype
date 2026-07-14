@@ -4,8 +4,7 @@ from dataclasses import replace
 
 import pytest
 import sounddevice as sd
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QScrollArea
+from PyQt6.QtWidgets import QApplication, QPushButton, QScrollArea
 
 from speedytype.audio import list_input_devices
 from speedytype.settings import AppSettings, DEFAULT_VOCAB_TERMS, save_settings
@@ -25,6 +24,7 @@ def make_config():
 
 
 USAGE_CSV_FIELDS = [
+    "timestamp",
     "usage_scope",
     "run_label",
     "recording_seconds",
@@ -95,6 +95,26 @@ def known_usage_dialog(tmp_path, pricing_path=None):
                 "recording_seconds": 30,
                 "stt_model": "",
             },
+            {
+                "usage_scope": "development",
+                "run_label": "",
+                "recording_seconds": 6000,
+                "stt_model": "whisper-1",
+                "gemini_seconds": 100,
+                "llm_model": "gemini-3.1-flash-lite",
+                "llm_input_tokens": 9999999,
+                "llm_output_tokens": 9999999,
+            },
+            {
+                "usage_scope": "",
+                "run_label": "real_voice",
+                "recording_seconds": 6000,
+                "stt_model": "whisper-1",
+                "gemini_seconds": 100,
+                "llm_model": "gemini-3.1-flash-lite",
+                "llm_input_tokens": 9999999,
+                "llm_output_tokens": 9999999,
+            },
         ],
     )
     save_settings(settings_path, AppSettings())
@@ -129,6 +149,27 @@ def test_usage_group_shows_known_totals_models_price_date_and_disclaimer(qapp, t
     assert "推定" in dialog.usage_warning_label.text()
 
 
+def test_usage_is_calculated_exactly_once_when_settings_dialog_is_constructed(
+    qapp, tmp_path, monkeypatch
+):
+    from speedytype.usage_stats import calculate_usage as real_calculate_usage
+
+    pricing_path = tmp_path / "pricing.json"
+    write_test_pricing(pricing_path)
+    calls = []
+
+    def calculate_once_spy(csv_path, selected_pricing_path):
+        calls.append((csv_path, selected_pricing_path))
+        return real_calculate_usage(csv_path, selected_pricing_path)
+
+    monkeypatch.setattr("speedytype.settings_dialog.calculate_usage", calculate_once_spy)
+
+    dialog = known_usage_dialog(tmp_path, pricing_path)
+
+    assert dialog.usage_total_label.text()
+    assert len(calls) == 1
+
+
 @pytest.mark.parametrize("pricing_contents", [None, "{not-json"])
 def test_usage_group_keeps_usage_visible_when_pricing_is_unavailable(
     qapp, tmp_path, pricing_contents
@@ -147,13 +188,47 @@ def test_usage_group_keeps_usage_visible_when_pricing_is_unavailable(
     assert "$0.000000" not in dialog.usage_total_label.text()
 
 
-@pytest.mark.parametrize("csv_contents", [None, "usage_scope,recording_seconds\ndaily,broken\n"])
-def test_usage_group_handles_missing_or_malformed_latency_csv(qapp, tmp_path, csv_contents):
+@pytest.mark.parametrize(
+    "csv_contents",
+    [None, b"", b"\xff\xfe\x80", b"garbage,other\n1,2\n"],
+)
+def test_usage_group_handles_unavailable_latency_csv(qapp, tmp_path, csv_contents):
     csv_path = tmp_path / "latency.csv"
     settings_path = tmp_path / "settings.json"
     pricing_path = tmp_path / "pricing.json"
     if csv_contents is not None:
-        csv_path.write_text(csv_contents, encoding="utf-8")
+        csv_path.write_bytes(csv_contents)
+    write_test_pricing(pricing_path)
+    save_settings(settings_path, AppSettings())
+
+    dialog = SettingsDialog(
+        replace(make_config(), latency_log_path=csv_path),
+        tmp_path / ".env",
+        settings_path,
+        pricing_path=pricing_path,
+    )
+
+    assert "用量無法取得" in dialog.usage_stt_label.text()
+    assert "用量無法取得" in dialog.usage_llm_label.text()
+    assert "用量資料缺失，無法確認實際用量與費用" in dialog.usage_warning_label.text()
+    assert "$0.000000" not in dialog.usage_total_label.text()
+
+
+def test_usage_group_skips_malformed_numeric_row_but_keeps_file_available(qapp, tmp_path):
+    csv_path = tmp_path / "latency.csv"
+    settings_path = tmp_path / "settings.json"
+    pricing_path = tmp_path / "pricing.json"
+    write_usage_csv(
+        csv_path,
+        [
+            {
+                "timestamp": "broken",
+                "usage_scope": "daily",
+                "run_label": "real_voice",
+                "recording_seconds": "not-a-number",
+            }
+        ],
+    )
     write_test_pricing(pricing_path)
     save_settings(settings_path, AppSettings())
 
@@ -165,26 +240,41 @@ def test_usage_group_handles_missing_or_malformed_latency_csv(qapp, tmp_path, cs
     )
 
     assert "0" in dialog.usage_stt_label.text()
-    assert "0" in dialog.usage_llm_label.text()
-    if csv_contents is None:
-        assert "用量資料缺失，無法確認實際用量與費用" in dialog.usage_warning_label.text()
-        assert "$0.000000" not in dialog.usage_total_label.text()
-    else:
-        assert "已略過 1 筆格式錯誤的用量紀錄" in dialog.usage_warning_label.text()
+    assert "$0.000000" in dialog.usage_total_label.text()
+    assert "已略過 1 筆格式錯誤的用量紀錄" in dialog.usage_warning_label.text()
 
 
-def test_settings_content_scrolls_to_keep_actions_reachable_on_short_screens(qapp, tmp_path):
+def test_settings_content_scrolls_to_keep_actions_reachable_on_short_screens(
+    qapp, tmp_path, monkeypatch
+):
     settings_path = tmp_path / "settings.json"
     save_settings(settings_path, AppSettings())
+    monkeypatch.setattr(
+        "speedytype.settings_dialog.list_input_devices",
+        lambda: [{"name": "Very long audio input device " + "X" * 300}],
+    )
 
     dialog = SettingsDialog(make_config(), tmp_path / ".env", settings_path)
+    dialog.resize(520, 420)
+    dialog.show()
+    qapp.processEvents()
+
+    save_button = next(
+        button for button in dialog.findChildren(QPushButton) if button.text() == "儲存"
+    )
+    cancel_button = next(
+        button for button in dialog.findChildren(QPushButton) if button.text() == "取消"
+    )
 
     assert dialog.findChild(QScrollArea) is not None
     assert dialog.minimumSizeHint().height() <= qapp.primaryScreen().availableGeometry().height()
-    assert (
-        dialog.settings_scroll_area.horizontalScrollBarPolicy()
-        == Qt.ScrollBarPolicy.ScrollBarAsNeeded
-    )
+    assert dialog.settings_scroll_area.verticalScrollBar().maximum() > 0
+    assert dialog.settings_scroll_area.horizontalScrollBar().maximum() > 0
+    assert not dialog.settings_scroll_area.isAncestorOf(save_button)
+    assert not dialog.settings_scroll_area.isAncestorOf(cancel_button)
+    assert save_button.isVisible()
+    assert cancel_button.isVisible()
+    dialog.close()
 
 
 def test_format_seconds_readable():

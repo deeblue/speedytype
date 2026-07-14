@@ -4,13 +4,14 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping
+from typing import Iterator, Mapping, TextIO
 import csv
 import json
 import warnings as runtime_warnings
 
 
 MILLION = Decimal("1000000")
+MINIMUM_LATENCY_FIELDS = frozenset({"timestamp", "run_label", "recording_seconds"})
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,7 @@ class UsageSummary:
     pricing_updated_date: str
     currency: str
     warnings: tuple[str, ...] = ()
+    usage_available: bool = True
 
 
 def _price(value: object, label: str, warning_messages: list[str]) -> Decimal | None:
@@ -140,6 +142,31 @@ def _integer_field(row: Mapping[str, object], name: str) -> int:
     return int(value)
 
 
+def _usage_rows(
+    csv_file: TextIO,
+    warning_messages: list[str],
+    availability: list[bool],
+) -> Iterator[tuple[int, dict[str, str | None]]]:
+    try:
+        reader = csv.DictReader(csv_file)
+        fieldnames = reader.fieldnames
+    except (UnicodeError, csv.Error, OSError) as exc:
+        availability[0] = False
+        warning_messages.append(f"Usage data unavailable: {exc}")
+        return
+
+    if fieldnames is None or not MINIMUM_LATENCY_FIELDS.issubset(fieldnames):
+        availability[0] = False
+        warning_messages.append("Usage data unavailable: Invalid latency CSV schema.")
+        return
+
+    try:
+        yield from enumerate(reader, start=2)
+    except (UnicodeError, csv.Error, OSError) as exc:
+        availability[0] = False
+        warning_messages.append(f"Usage data unavailable: {exc}")
+
+
 def calculate_usage(csv_path: str | Path, pricing_path: str | Path) -> UsageSummary:
     warning_messages: list[str] = []
     try:
@@ -160,15 +187,17 @@ def calculate_usage(csv_path: str | Path, pricing_path: str | Path) -> UsageSumm
     stt_models: set[str] = set()
     llm_models: set[str] = set()
     legacy_inferred_rows = 0
+    availability = [True]
 
     latency_path = Path(csv_path)
     try:
         csv_file = latency_path.open("r", encoding="utf-8", newline="")
     except OSError as exc:
+        availability[0] = False
         warning_messages.append(f"Usage data unavailable: {exc}")
     else:
         with csv_file:
-            for line_number, row in enumerate(csv.DictReader(csv_file), start=2):
+            for line_number, row in _usage_rows(csv_file, warning_messages, availability):
                 try:
                     is_daily, inferred = _is_daily_row(row)
                     if not is_daily:
@@ -223,6 +252,17 @@ def calculate_usage(csv_path: str | Path, pricing_path: str | Path) -> UsageSumm
                             + Decimal(output_tokens) * (price.output_per_million or Decimal("0"))
                         ) / MILLION
 
+    if not availability[0]:
+        stt_calls = 0
+        stt_minutes = Decimal("0")
+        llm_calls = 0
+        llm_input_tokens = 0
+        llm_output_tokens = 0
+        stt_cost = None
+        llm_cost = None
+        stt_models.clear()
+        llm_models.clear()
+        legacy_inferred_rows = 0
     total_cost = stt_cost + llm_cost if stt_cost is not None and llm_cost is not None else None
     return UsageSummary(
         stt_calls=stt_calls,
@@ -239,4 +279,5 @@ def calculate_usage(csv_path: str | Path, pricing_path: str | Path) -> UsageSumm
         pricing_updated_date=pricing.updated_date if pricing is not None else "",
         currency=pricing.currency if pricing is not None else "",
         warnings=tuple(warning_messages),
+        usage_available=availability[0],
     )
