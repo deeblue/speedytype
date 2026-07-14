@@ -1,10 +1,30 @@
 import pytest
 
+from speedytype import api
 from speedytype.api import ApiResponseFormatError, parse_gemini_text, parse_whisper_text
+from speedytype.config import AppConfig
 
 
 def test_parse_whisper_text_reads_text_field():
     assert parse_whisper_text({"text": "我們下週三要開會"}) == "我們下週三要開會"
+
+
+def test_transcribe_audio_forwards_selected_model_to_request(tmp_path, monkeypatch):
+    captured = []
+    monkeypatch.setattr(
+        api,
+        "transcribe_audio_request",
+        lambda path, config, **kwargs: captured.append(kwargs) or {"text": "ok"},
+    )
+
+    result = api.transcribe_audio(
+        tmp_path / "audio.wav",
+        AppConfig(openai_api_key="x", gemini_api_key="y"),
+        model="whisper-selected",
+    )
+
+    assert result == "ok"
+    assert captured == [{"timeout_seconds": 120, "model": "whisper-selected"}]
 
 
 def test_parse_whisper_text_rejects_missing_text_with_raw_response():

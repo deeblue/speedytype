@@ -38,6 +38,7 @@ def test_repeated_throttling_opens_circuit_and_falls_back(tmp_path):
     assert outcome.fallback_used
     assert batches == [tmp_path / "full.wav"]
     assert outcome.diagnostics["circuit_open"] is True
+    assert outcome.request_count == len(calls) + len(batches)
 
 
 def test_worker_never_runs_requests_concurrently(tmp_path):

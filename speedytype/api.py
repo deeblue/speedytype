@@ -116,8 +116,14 @@ def transcribe_audio_request(
     return response.json()
 
 
-def transcribe_audio(audio_path: Path, config: AppConfig, timeout_seconds: int = 120) -> str:
-    payload = transcribe_audio_request(audio_path, config, timeout_seconds=timeout_seconds)
+def transcribe_audio(
+    audio_path: Path,
+    config: AppConfig,
+    timeout_seconds: int = 120,
+    *,
+    model: str = "whisper-1",
+) -> str:
+    payload = transcribe_audio_request(audio_path, config, timeout_seconds=timeout_seconds, model=model)
     return parse_whisper_text(payload)
 
 

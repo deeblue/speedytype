@@ -12,6 +12,8 @@ import pytest
 from speedytype.config import AppConfig
 from speedytype.llm import LlmResult, LlmUsage
 from speedytype.pipeline import process_wav
+from speedytype.paths import default_pricing_path
+from speedytype.usage_stats import calculate_usage
 
 
 def _write_wav(path: Path) -> None:
@@ -67,31 +69,70 @@ def test_process_wav_propagates_authoritative_llm_usage(tmp_path, monkeypatch) -
     assert row["llm_total_tokens"] == "150"
 
 
+def test_normal_transcription_sends_and_records_selected_stt_model(tmp_path, monkeypatch) -> None:
+    wav_path = tmp_path / "audio.wav"
+    _write_wav(wav_path)
+    sent_models = []
+
+    def fake_transcribe(path, config, *, model):
+        sent_models.append(model)
+        return "raw"
+
+    monkeypatch.setattr("speedytype.pipeline.transcribe_audio", fake_transcribe)
+    monkeypatch.setattr(
+        "speedytype.pipeline.call_llm_polisher",
+        lambda text, config: LlmResult(
+            text="polished",
+            provider="gemini",
+            model="gemini-test",
+            llm_call_seconds=0.25,
+            retry_wait_seconds=0.0,
+            retry_count=0,
+            usage=LlmUsage(),
+            raw_response={},
+        ),
+    )
+    config = _config(tmp_path)
+
+    result = process_wav(wav_path, config, do_paste=False, stt_model="whisper-selected")
+
+    assert sent_models == ["whisper-selected"]
+    assert result.latency.stt_model == "whisper-selected"
+    with config.latency_log_path.open("r", encoding="utf-8", newline="") as csv_file:
+        assert next(csv.DictReader(csv_file))["stt_model"] == "whisper-selected"
+
+
 def test_process_wav_rejects_invalid_usage_scope(tmp_path) -> None:
     with pytest.raises(ValueError, match="usage_scope"):
         process_wav(tmp_path / "missing.wav", _config(tmp_path), usage_scope="benchmark")
 
 
-def test_empty_transcript_leaves_llm_usage_missing(tmp_path, monkeypatch) -> None:
+def test_daily_empty_transcript_does_not_record_an_llm_call(tmp_path, monkeypatch) -> None:
     wav_path = tmp_path / "audio.wav"
     _write_wav(wav_path)
     monkeypatch.setattr(
         "speedytype.pipeline.call_llm_polisher",
         lambda *args: (_ for _ in ()).throw(AssertionError("empty transcript must skip the LLM")),
     )
+    monkeypatch.setattr("speedytype.pipeline.transcribe_audio", lambda path, config, *, model: "   ")
+    config = _config(tmp_path)
 
     result = process_wav(
         wav_path,
-        _config(tmp_path),
+        config,
         do_paste=False,
-        raw_transcript_override="   ",
+        usage_scope="daily",
     )
 
-    assert result.latency.usage_scope == "development"
+    assert result.latency.usage_scope == "daily"
     assert result.latency.stt_model == "whisper-1"
+    assert result.latency.llm_provider == ""
+    assert result.latency.llm_model == ""
     assert result.latency.llm_input_tokens is None
     assert result.latency.llm_output_tokens is None
     assert result.latency.llm_total_tokens is None
+    summary = calculate_usage(config.latency_log_path, default_pricing_path())
+    assert summary.llm_calls == 0
 
 
 @pytest.mark.parametrize("hybrid_enabled", [False, True])

@@ -34,6 +34,7 @@ class _CompletedChunk:
     text: str
     segments: list[TimedSegment]
     error: str = ""
+    request_attempted: bool = False
 
 
 class HybridTranscriber:
@@ -157,10 +158,23 @@ class HybridTranscriber:
                 )
                 for segment in payload.get("segments", []) or []
             ]
-            completed = _CompletedChunk(plan, request_seconds, str(payload.get("text", "")).strip(), segments)
+            completed = _CompletedChunk(
+                plan,
+                request_seconds,
+                str(payload.get("text", "")).strip(),
+                segments,
+                request_attempted=True,
+            )
             self._consecutive_retryable_failures = 0
         except Exception as exc:
-            completed = _CompletedChunk(plan, time.perf_counter() - started, "", [], f"{type(exc).__name__}: {exc}")
+            completed = _CompletedChunk(
+                plan,
+                time.perf_counter() - started,
+                "",
+                [],
+                f"{type(exc).__name__}: {exc}",
+                request_attempted=True,
+            )
             message = str(exc).lower()
             if "429" in message or re.search(r"\b5\d\d\b", message):
                 self._consecutive_retryable_failures += 1
@@ -187,7 +201,7 @@ class HybridTranscriber:
         tail_started = time.perf_counter()
         if not self._active:
             text = self.batch_transcribe(final_path)
-            return HybridOutcome(text, time.perf_counter() - tail_started, 0.0, 0, False, {"mode": "batch"})
+            return HybridOutcome(text, time.perf_counter() - tail_started, 0.0, 1, False, {"mode": "batch"})
 
         self._planner_stop.set()
         self._planner_event.set()
@@ -222,11 +236,12 @@ class HybridTranscriber:
         )
         resolved = resolve_with_batch_fallback(validation, merge.text, lambda: self.batch_transcribe(final_path))
         request_seconds = sum(item.request_seconds for item in completed)
+        request_count = sum(item.request_attempted for item in completed) + int(resolved.fallback_used)
         return HybridOutcome(
             resolved.text,
             time.perf_counter() - tail_started,
             request_seconds,
-            len(completed),
+            request_count,
             resolved.fallback_used,
             {
                 "mode": "hybrid",

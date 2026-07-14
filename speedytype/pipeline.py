@@ -53,7 +53,7 @@ def process_wav(
 
     if raw_transcript_override is None:
         whisper_start = time.perf_counter()
-        raw = transcribe_audio(audio_path, config)
+        raw = transcribe_audio(audio_path, config, model=stt_model)
         whisper_seconds = time.perf_counter() - whisper_start
     else:
         raw = raw_transcript_override
@@ -68,8 +68,8 @@ def process_wav(
             paste_seconds=0.0,
             total_tail_latency_seconds=precomputed_tail_seconds + time.perf_counter() - tail_start,
             run_label=run_label,
-            llm_provider=config.llm_provider,
-            llm_model=config.llm_model,
+            llm_provider="",
+            llm_model="",
             llm_call_seconds=0.0,
             retry_wait_seconds=0.0,
             hybrid_request_count=hybrid_request_count,

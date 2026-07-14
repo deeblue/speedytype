@@ -44,12 +44,17 @@ def fake_verbose(calls, fail_at=None, blocker=None):
 
 def test_under_threshold_uses_batch_without_chunk_requests(tmp_path):
     calls = []
-    transcriber = HybridTranscriber(config(), fake_verbose(calls), lambda path: "batch text", sample_rate=100)
+    batches = []
+    transcriber = HybridTranscriber(
+        config(), fake_verbose(calls), lambda path: batches.append(path) or "batch text", sample_rate=100
+    )
     transcriber.feed(speech(1.5), 1.5)
     outcome = transcriber.finish(tmp_path / "full.wav")
     assert outcome.raw_text == "batch text"
     assert outcome.fallback_used is False
     assert calls == []
+    assert batches == [tmp_path / "full.wav"]
+    assert outcome.request_count == 1
 
 
 def test_natural_silence_closes_chunk(tmp_path):
@@ -94,6 +99,7 @@ def test_request_failure_falls_back_to_batch(tmp_path):
     assert outcome.raw_text == "safe batch"
     assert outcome.fallback_used is True
     assert len(batches) == 1
+    assert outcome.request_count == len(calls) + len(batches)
 
 
 def test_every_chunk_uses_vocab_bias_without_prior_narrative(tmp_path):
