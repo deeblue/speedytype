@@ -444,3 +444,58 @@ The separate `API` / `BJ 團隊` over-correction hypothesis was rejected after 1
 - Daemon API evidence: the first smoke run started PID `6324`; its daemon log contained `whisper_success_markers=1`, `llm_success_markers=1`, and `failure_markers=0`. The smoke harness then hit a local `cp1252` `UnicodeEncodeError` while printing pasted Chinese text, after the daemon API work had succeeded. PID `6324` was explicitly stopped successfully.
 - UTF-8 harness rerun: with `PYTHONIOENCODING=utf-8`, the smoke started and stopped PID `38744` cleanly and reported `SUMMARY total=1 empty_handled=1 crashed=False`. Its silent input produced no API call, so the first run's log markers—not this silent rerun—are the successful daemon API evidence.
 - Latency isolation: neither smoke used the production latency log; the harness pointed to ignored `.superpowers/sdd/daemon-smoke-latency.csv`.
+
+## Part B: Daily usage and estimated costs (2026-07-15)
+
+### Recorded data and scope policy
+
+- The latency CSV appends `usage_scope`, `stt_model`, `llm_input_tokens`, `llm_output_tokens`, and `llm_total_tokens`. Old headers are migrated with existing values preserved and new cells blank. Missing provider token metadata is written as blank, never manufactured as zero-valued provider usage.
+- `process_wav()` defaults to `usage_scope="development"`. The daemon normal/hybrid paths and CLI `run-once`/`listen` explicitly pass `daily`; benchmark, real-voice, and other programmatic callers remain excluded unless they explicitly opt in.
+- For older rows without `usage_scope`, only blank, `hybrid`, and `hybrid_fallback` `run_label` values are inferred as daily. Other non-empty legacy labels, including `real_voice`, are excluded. The Settings warning reports how many rows were inferred.
+- STT calls use a positive `hybrid_request_count` when present, otherwise one call per accepted row. STT minutes are recorded audio seconds divided by 60. LLM calls are recognized from a recorded model, with the old `gemini_seconds > 0` fallback limited to accepted inferred-legacy rows. LLM input/output totals use only provider-reported `LlmUsage`; absent tokens are not estimated.
+
+### Fixed known-data proof
+
+The fixed fixture contains two explicit daily rows (60s and 30s), one explicit development row, one excluded legacy `real_voice` row, and one accepted blank-label 30s legacy row. The development and excluded legacy rows carry deliberately large values so accidental inclusion fails visibly.
+
+- STT: `60 + 30 + 30 = 120` seconds = `2.0` minutes and `3` calls. At `whisper-1` `$0.006/minute`, the estimate is exactly `$0.012`.
+- LLM: only the two new daily rows provide authoritative usage, totaling `1,500` input and `300` output tokens. At `$0.25`/`$1.50` per million, the estimate is exactly `(1500 × 0.25 + 300 × 1.50) / 1,000,000 = $0.000825`.
+- Total: exactly `$0.012 + $0.000825 = $0.012825`.
+
+### Pricing and Settings behavior
+
+- Root `pricing.json` is the only price source. Its bundled `updated_date` is `2026-07-14`, currency is USD, and it contains the approved Whisper, Gemini, OpenAI, and MiniMax model rows. Python contains schema/formula constants but no fallback price amounts. These are dated local estimates: no provider usage/billing endpoint is queried and no invoice reconciliation occurs.
+- Missing, unreadable, malformed, structurally invalid, or unknown-used-model price data makes the affected cost unavailable, never an implicit zero. Missing/invalid latency input makes usage and costs unavailable and clears partial totals; isolated malformed CSV rows are skipped with an explicit count while the remaining readable rows stay usable.
+- Settings displays models, STT calls/minutes, LLM calls and authoritative input/output tokens, six-decimal component/total estimates, `updated_date`, legacy inference, and the exact disclaimer `估算費用，非實際帳單，價格可能已變動`. Usage remains visible when pricing alone is unavailable.
+- `PriceEditorDialog` edits numeric prices for existing models only. Controls accept `0..1,000,000` with eight decimal places; model add/delete remains manual JSON work. A successful save validates the complete schema, serializes exact Decimal JSON numbers to a unique exclusively-created sibling temp, flushes and `fsync`s it, then atomically replaces the destination and refreshes Settings exactly once. Validation/write/replace failures preserve the original bytes; missing/corrupt inputs expose no editable controls. The remaining stat/unlink cleanup interval is only a theoretical hostile-process race on the unique failed-temp path, not a loss of atomic destination replacement.
+
+### Fresh Task 5 automated evidence
+
+- Full retry, required first: `QT_QPA_PLATFORM=offscreen python -m pytest -q` → `243 passed, 5 failed in 7.31s`. All five failures were in `tests/test_clipboard.py`; every failing path exhausted its retry loop at `win32clipboard.OpenClipboard()` with Windows error 5, `Access is denied`. No separate clipboard probe, clipboard mutation workaround, or process termination was performed.
+- Required targeted proof: `QT_QPA_PLATFORM=offscreen python -m pytest tests/test_usage_stats.py tests/test_pipeline_usage.py tests/test_settings_dialog.py tests/test_pricing_dialog.py -v` → `100 passed in 2.25s`. This includes exact fixed-fixture costs, explicit development exclusion, authoritative token propagation, daily entry-point scope, pricing tolerance, Settings copy/date, and atomic editor behavior.
+- Full suite excluding only the externally blocked real-clipboard module: `QT_QPA_PLATFORM=offscreen python -m pytest -q --ignore=tests/test_clipboard.py` → `242 passed in 4.62s`.
+- Static/syntax check: `python -m compileall -q speedytype scripts` → exit `0`, no output.
+- Documentation diff check: `git diff --check` → exit `0`; Git printed only the checkout's LF-to-CRLF notices for the two edited Markdown files.
+
+### Part A Windows evidence retained without rerunning live operations
+
+- Three Windows Generic Credential targets were observed exactly as `openai_api_key@SpeedyType`, `gemini_api_key@SpeedyType`, and `minimax_api_key@SpeedyType`; values were not exposed.
+- The guarded verifier recorded production `exists=PASS` and `matches_resolved=PASS` for all three resolved credentials and OpenAI, Gemini, and MiniMax provider probes all returned `PASS`. The successful migration scrub left zero effective plaintext assignments for the three key names in the selected parent `.env`, while preserving unrelated content.
+- The daemon smoke log recorded `whisper_success_markers=1`, `llm_success_markers=1`, and `failure_markers=0`. Its later console encoding failure occurred after API success; the daemon PID was explicitly stopped, and the UTF-8 silent-input rerun then started/stopped cleanly.
+- The fallback exercise mutated and deleted only the dedicated `fallback_test_api_key` with a known fake value and temporary `.env`/settings paths. Production usernames were read-only in this exercise. No real key was deleted, overwritten, substituted, or printed. Normal resolution remains keyring first, then process environment/`.env` compatibility fallback when no stored credential is available; failed migration leaves the source value intact.
+- Task 5 did not rerun the live verifier, provider probes, keyring inspection, or daemon smoke. The bullets above are the reviewed Part A observations already captured in this report and the ignored Part A task report.
+
+### Completion matrix
+
+| Checklist line | Status | Evidence boundary |
+|---|---|---|
+| Three real Windows credential entries | **PASS** | `cmdkey /list` previously showed the three exact Generic target names; values were not exposed. |
+| Daemon/API resolves stored credentials | **PASS** | Prior guarded verifier: three provider probes PASS; prior daemon log: one Whisper and one LLM success marker, zero failure markers. Not rerun in Task 5. |
+| Missing required keys fail cleanly | **PASS** | Automated config coverage verifies the missing-key error names required keys and directs the user to Settings or `.env`; no destructive live missing-key exercise was performed. |
+| Settings masked/reveal/test/save/delete/retry/cancel key UX | **PASS** | Automated Settings tests passed in the fresh targeted/full non-clipboard runs. Save/retry semantics were not repeated as a manual live edit cycle. |
+| Fallback is isolated to a fake credential | **PASS** | Prior live fallback used only `fallback_test_api_key`, a known fake value, and temporary files; production entries were read-only and were never deleted. |
+| Fixed usage/cost math | **PASS** | Fresh targeted proof asserts `$0.012`, `$0.000825`, and `$0.012825` exactly with Decimal arithmetic. |
+| Development and excluded legacy calls do not count | **PASS** | Fresh fixture and call-site tests verify default development exclusion, explicit daily user paths, and legacy-label policy. |
+| Pricing date and estimate disclaimer shown | **PASS** | Fresh Settings tests verify `2026-07-14` and `估算費用，非實際帳單，價格可能已變動`; provider billing reconciliation remains out of scope. |
+| Documentation records architecture, limits, tests, and live/automated distinction | **PASS** | `KNOWN_LIMITATIONS.md` items 4/10 and this Part B section record the implemented policy, residuals, exact evidence, and non-rerun live boundary. |
+| Complete suite including real Windows clipboard tests | **NOT_VERIFIED** | Fresh run was blocked only by five `OpenClipboard` access-denied failures; all other `242` tests passed. |
