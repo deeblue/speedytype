@@ -117,7 +117,8 @@ def test_failed_write_keeps_env_exactly(tmp_path, monkeypatch):
     result = secrets_store.resolve_api_keys(env_path, {"OPENAI_API_KEY": "sk-fake"}, environment={})
     assert result.values["OPENAI_API_KEY"] == "sk-fake"
     assert result.migrated == ()
-    assert result.warnings and "backend locked" in result.warnings[0]
+    assert result.warnings and "RuntimeError" in result.warnings[0]
+    assert "backend locked" not in result.warnings[0]
     assert env_path.read_text(encoding="utf-8") == original
 ```
 
@@ -129,7 +130,7 @@ Expected: collection fails with `ImportError: cannot import name 'secrets_store'
 
 - [ ] **Step 3: Implement the minimal adapter and resolver**
 
-Implement constants, dataclass, wrapper functions, and a `_remove_env_keys()` helper. Convert every backend exception into `SecretStoreError`; `resolve_api_keys()` catches it per key, retains fallback, and scrubs only successfully migrated file-sourced keys. Environment values override file fallback but are not migrated.
+Implement constants, dataclass, wrapper functions, and a `_remove_env_keys()` helper. Convert every backend exception into a sanitized `SecretStoreError` that contains only the environment/provider name, operation, and exception class; never include raw exception text. `resolve_api_keys()` catches it per key, retains fallback, and scrubs only the effective active assignment whose normalized value still matches the successfully migrated file value. Environment values override file fallback but are not migrated.
 
 ```python
 SERVICE_NAME = "SpeedyType"
@@ -150,15 +151,21 @@ def set_api_key(env_name: str, value: str, *, service_name: str = SERVICE_NAME,
     username = key_names[env_name]
     try:
         _set_password(service_name, username, value)
-        if _get_password(service_name, username) != value:
-            raise SecretStoreError(f"Credential verification failed for {env_name}")
-    except SecretStoreError:
-        raise
     except Exception as exc:
-        raise SecretStoreError(f"Credential store failed for {env_name}: {exc}") from exc
+        raise SecretStoreError(
+            f"Credential store set failed for {env_name} ({type(exc).__name__})"
+        ) from None
+    try:
+        stored_value = _get_password(service_name, username)
+    except Exception as exc:
+        raise SecretStoreError(
+            f"Credential store verify failed for {env_name} ({type(exc).__name__})"
+        ) from None
+    if stored_value != value:
+        raise SecretStoreError(f"Credential verification failed for {env_name}")
 ```
 
-Use `splitlines(keepends=True)` when removing active `KEY=...` lines so comments, blank lines, newline style, and all unrelated bytes remain unchanged.
+Use `splitlines(keepends=True)` when removing the effective active `KEY=...` line so comments, duplicate assignments, blank lines, newline style, and all unrelated bytes remain unchanged. Before scrubbing, normalize and compare its current value to the verified file value; if it changed after parsing, remove nothing and emit a sanitized warning.
 
 - [ ] **Step 4: Run adapter tests and the existing env-writer tests**
 

@@ -47,5 +47,84 @@ def test_failed_write_keeps_env_exactly(tmp_path, monkeypatch):
     result = secrets_store.resolve_api_keys(env_path, {"OPENAI_API_KEY": "sk-fake"}, environment={})
     assert result.values["OPENAI_API_KEY"] == "sk-fake"
     assert result.migrated == ()
-    assert result.warnings and "backend locked" in result.warnings[0]
+    assert result.warnings and "RuntimeError" in result.warnings[0]
+    assert "backend locked" not in result.warnings[0]
     assert env_path.read_text(encoding="utf-8") == original
+
+
+def test_read_back_mismatch_keeps_env_exactly(tmp_path, monkeypatch):
+    written = False
+
+    def get_password(service, user):
+        return "wrong-value" if written else None
+
+    def set_password(service, user, value):
+        nonlocal written
+        written = True
+
+    monkeypatch.setattr(secrets_store, "_get_password", get_password)
+    monkeypatch.setattr(secrets_store, "_set_password", set_password)
+    env_path = tmp_path / ".env"
+    original = "OPENAI_API_KEY=sk-fake\n"
+    env_path.write_text(original, encoding="utf-8")
+
+    result = secrets_store.resolve_api_keys(env_path, {"OPENAI_API_KEY": "sk-fake"}, environment={})
+
+    assert result.migrated == ()
+    assert result.warnings == ("Credential verification failed for OPENAI_API_KEY",)
+    assert env_path.read_text(encoding="utf-8") == original
+
+
+def test_migration_removes_only_effective_matching_duplicate(tmp_path, monkeypatch):
+    install_fake_backend(monkeypatch)
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "OPENAI_API_KEY=sk-old\nOPENAI_API_KEY='sk-fake'\nLLM_PROVIDER=gemini\n",
+        encoding="utf-8",
+    )
+
+    result = secrets_store.resolve_api_keys(env_path, {"OPENAI_API_KEY": "sk-fake"}, environment={})
+
+    assert result.migrated == ("OPENAI_API_KEY",)
+    assert result.warnings == ()
+    assert env_path.read_text(encoding="utf-8") == "OPENAI_API_KEY=sk-old\nLLM_PROVIDER=gemini\n"
+
+
+def test_changed_env_value_is_not_scrubbed_after_verified_write(tmp_path, monkeypatch):
+    values = {}
+    env_path = tmp_path / ".env"
+    env_path.write_text("OPENAI_API_KEY=sk-parsed\n", encoding="utf-8")
+    monkeypatch.setattr(secrets_store, "_get_password", lambda service, user: values.get((service, user)))
+
+    def set_password(service, user, value):
+        values[(service, user)] = value
+        env_path.write_text("OPENAI_API_KEY=sk-changed\n", encoding="utf-8")
+
+    monkeypatch.setattr(secrets_store, "_set_password", set_password)
+
+    result = secrets_store.resolve_api_keys(env_path, {"OPENAI_API_KEY": "sk-parsed"}, environment={})
+
+    assert result.migrated == ("OPENAI_API_KEY",)
+    assert result.warnings == ("Environment file scrub skipped for OPENAI_API_KEY: source changed",)
+    assert env_path.read_text(encoding="utf-8") == "OPENAI_API_KEY=sk-changed\n"
+
+
+def test_backend_exception_text_is_redacted_from_error_and_warning(tmp_path, monkeypatch):
+    credential = "sk-secret-in-backend-error"
+    monkeypatch.setattr(secrets_store, "_get_password", lambda service, user: None)
+
+    def set_password(service, user, value):
+        raise RuntimeError(f"could not store {value}")
+
+    monkeypatch.setattr(secrets_store, "_set_password", set_password)
+
+    with pytest.raises(secrets_store.SecretStoreError) as caught:
+        secrets_store.set_api_key("OPENAI_API_KEY", credential)
+    assert str(caught.value) == "Credential store set failed for OPENAI_API_KEY (RuntimeError)"
+    assert credential not in str(caught.value)
+
+    env_path = tmp_path / ".env"
+    env_path.write_text(f"OPENAI_API_KEY={credential}\n", encoding="utf-8")
+    result = secrets_store.resolve_api_keys(env_path, {"OPENAI_API_KEY": credential}, environment={})
+    assert result.warnings == ("Credential store set failed for OPENAI_API_KEY (RuntimeError)",)
+    assert all(credential not in warning for warning in result.warnings)

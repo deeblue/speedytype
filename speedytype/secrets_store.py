@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 import os
 from pathlib import Path
-import re
+import shlex
 
 from keyring import delete_password as _delete_password
 from keyring import get_password as _get_password
@@ -32,6 +32,12 @@ class SecretResolution:
     warnings: tuple[str, ...] = ()
 
 
+def _backend_error(env_name: str, operation: str, exc: Exception) -> SecretStoreError:
+    return SecretStoreError(
+        f"Credential store {operation} failed for {env_name} ({type(exc).__name__})"
+    )
+
+
 def get_api_key(
     env_name: str,
     *,
@@ -42,7 +48,7 @@ def get_api_key(
     try:
         return _get_password(service_name, username)
     except Exception as exc:
-        raise SecretStoreError(f"Credential store failed for {env_name}: {exc}") from exc
+        raise _backend_error(env_name, "get", exc) from None
 
 
 def set_api_key(
@@ -55,12 +61,14 @@ def set_api_key(
     username = key_names[env_name]
     try:
         _set_password(service_name, username, value)
-        if _get_password(service_name, username) != value:
-            raise SecretStoreError(f"Credential verification failed for {env_name}")
-    except SecretStoreError:
-        raise
     except Exception as exc:
-        raise SecretStoreError(f"Credential store failed for {env_name}: {exc}") from exc
+        raise _backend_error(env_name, "set", exc) from None
+    try:
+        stored_value = _get_password(service_name, username)
+    except Exception as exc:
+        raise _backend_error(env_name, "verify", exc) from None
+    if stored_value != value:
+        raise SecretStoreError(f"Credential verification failed for {env_name}")
 
 
 def delete_api_key(
@@ -73,7 +81,7 @@ def delete_api_key(
     try:
         _delete_password(service_name, username)
     except Exception as exc:
-        raise SecretStoreError(f"Credential store failed for {env_name}: {exc}") from exc
+        raise _backend_error(env_name, "delete", exc) from None
 
 
 def resolve_api_keys(
@@ -88,7 +96,7 @@ def resolve_api_keys(
         environment = os.environ
 
     values: dict[str, str] = {}
-    migrated: list[str] = []
+    migrated_values: dict[str, str] = {}
     warnings: list[str] = []
 
     for env_name in key_names:
@@ -116,22 +124,68 @@ def resolve_api_keys(
         except SecretStoreError as exc:
             warnings.append(str(exc))
         else:
-            migrated.append(env_name)
+            migrated_values[env_name] = file_value
 
-    if migrated:
-        _remove_env_keys(Path(env_path), migrated)
+    if migrated_values:
+        warnings.extend(_remove_env_keys(Path(env_path), migrated_values))
 
-    return SecretResolution(values, tuple(migrated), tuple(warnings))
+    return SecretResolution(values, tuple(migrated_values), tuple(warnings))
 
 
-def _remove_env_keys(env_path: Path, env_names: list[str]) -> None:
+def _normalize_env_value(value: str) -> str:
+    value = value.strip()
+    if value:
+        try:
+            parsed = shlex.split(value, posix=False)
+            if len(parsed) == 1:
+                value = parsed[0].strip('"').strip("'")
+        except ValueError:
+            value = value.strip('"').strip("'")
+    return value
+
+
+def _parse_env_assignment(line: str) -> tuple[str, str] | None:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#") or "=" not in stripped:
+        return None
+    key, value = stripped.split("=", 1)
+    return key.strip(), _normalize_env_value(value)
+
+
+def _scrub_warning(env_name: str) -> str:
+    return f"Environment file scrub skipped for {env_name}: source changed"
+
+
+def _remove_env_keys(env_path: Path, migrated_values: Mapping[str, str]) -> list[str]:
     if not env_path.exists():
-        return
+        return [_scrub_warning(env_name) for env_name in migrated_values]
 
-    key_pattern = "|".join(re.escape(name) for name in env_names)
-    active_key = re.compile(rf"^[ \t]*(?:export[ \t]+)?(?:{key_pattern})[ \t]*=")
     with env_path.open("r", encoding="utf-8", newline="") as env_file:
-        lines = env_file.read().splitlines(keepends=True)
-    retained = [line for line in lines if not active_key.match(line)]
+        snapshot = env_file.read()
+    lines = snapshot.splitlines(keepends=True)
+    effective: dict[str, tuple[int, str]] = {}
+    for index, line in enumerate(lines):
+        assignment = _parse_env_assignment(line)
+        if assignment is not None and assignment[0] in migrated_values:
+            effective[assignment[0]] = (index, assignment[1])
+
+    remove_indices: set[int] = set()
+    warnings: list[str] = []
+    for env_name, verified_value in migrated_values.items():
+        current = effective.get(env_name)
+        if current is None or current[1] != verified_value:
+            warnings.append(_scrub_warning(env_name))
+        else:
+            remove_indices.add(current[0])
+
+    if not remove_indices:
+        return warnings
+
+    with env_path.open("r", encoding="utf-8", newline="") as env_file:
+        if env_file.read() != snapshot:
+            return [_scrub_warning(env_name) for env_name in migrated_values]
+
+    retained = [line for index, line in enumerate(lines) if index not in remove_indices]
     with env_path.open("w", encoding="utf-8", newline="") as env_file:
         env_file.write("".join(retained))
+    return warnings
