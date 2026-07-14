@@ -315,14 +315,27 @@ class SettingsDialog(QDialog):
         )
 
         warning_messages = []
-        if not usage_unavailable and (
-            summary.stt_cost is None or summary.llm_cost is None or summary.total_cost is None
+        pricing_warning_prefixes = (
+            "Pricing data unavailable:",
+            "Invalid price for ",
+            "STT price unavailable for used model ",
+            "LLM price unavailable for used model ",
+        )
+        pricing_warning_count = sum(
+            message.startswith(pricing_warning_prefixes) for message in summary.warnings
+        )
+        if pricing_warning_count or (
+            not usage_unavailable
+            and (summary.stt_cost is None or summary.llm_cost is None or summary.total_cost is None)
         ):
             warning_messages.append("價格資料缺失，無法估算費用")
         if summary.legacy_inferred_rows:
             warning_messages.append(
                 f"有 {summary.legacy_inferred_rows:,} 筆舊版紀錄依標籤推定為每日用量"
             )
+        usage_unavailable_warning_count = sum(
+            message.startswith("Usage data unavailable:") for message in summary.warnings
+        )
         if usage_unavailable:
             warning_messages.append("用量資料缺失，無法確認實際用量與費用")
         skipped_rows = sum(
@@ -330,7 +343,12 @@ class SettingsDialog(QDialog):
         )
         if skipped_rows:
             warning_messages.append(f"已略過 {skipped_rows:,} 筆格式錯誤的用量紀錄")
-        uncategorized_warnings = len(summary.warnings) - int(usage_unavailable) - skipped_rows
+        uncategorized_warnings = (
+            len(summary.warnings)
+            - pricing_warning_count
+            - usage_unavailable_warning_count
+            - skipped_rows
+        )
         if uncategorized_warnings > 0:
             warning_messages.append(f"其他用量或價格資料警告：{uncategorized_warnings:,} 筆")
         self.usage_warning_label.setText("；".join(warning_messages))

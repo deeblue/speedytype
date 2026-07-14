@@ -214,6 +214,40 @@ def test_usage_group_handles_unavailable_latency_csv(qapp, tmp_path, csv_content
     assert "$0.000000" not in dialog.usage_total_label.text()
 
 
+@pytest.mark.parametrize(
+    ("latency_contents", "pricing_contents"),
+    [
+        (None, None),
+        (None, "{not-json"),
+        (b"\xff\xfe\x80", None),
+        (b"garbage,other\n1,2\n", "{not-json"),
+    ],
+)
+def test_usage_group_reports_usage_and_pricing_failures_independently_without_generic_count(
+    qapp, tmp_path, latency_contents, pricing_contents
+):
+    csv_path = tmp_path / "latency.csv"
+    settings_path = tmp_path / "settings.json"
+    pricing_path = tmp_path / "pricing.json"
+    if latency_contents is not None:
+        csv_path.write_bytes(latency_contents)
+    if pricing_contents is not None:
+        pricing_path.write_text(pricing_contents, encoding="utf-8")
+    save_settings(settings_path, AppSettings())
+
+    dialog = SettingsDialog(
+        replace(make_config(), latency_log_path=csv_path),
+        tmp_path / ".env",
+        settings_path,
+        pricing_path=pricing_path,
+    )
+
+    warning = dialog.usage_warning_label.text()
+    assert warning.count("用量資料缺失，無法確認實際用量與費用") == 1
+    assert warning.count("價格資料缺失，無法估算費用") == 1
+    assert "其他用量或價格資料警告" not in warning
+
+
 def test_usage_group_skips_malformed_numeric_row_but_keeps_file_available(qapp, tmp_path):
     csv_path = tmp_path / "latency.csv"
     settings_path = tmp_path / "settings.json"
