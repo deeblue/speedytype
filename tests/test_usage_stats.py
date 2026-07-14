@@ -7,6 +7,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
+import threading
 
 import pytest
 
@@ -75,6 +76,10 @@ def editable_pricing(*, stt_price: Decimal = Decimal("0.006")) -> PricingData:
     )
 
 
+def generated_temp_paths(pricing_path: Path) -> list[Path]:
+    return list(pricing_path.parent.glob(f"{pricing_path.name}.*.tmp"))
+
+
 def test_save_pricing_rejects_negative_price_without_changing_exact_bytes(tmp_path: Path) -> None:
     pricing_path = tmp_path / "pricing.json"
     original = b'{\r\n  "keep": "these exact bytes"\r\n}\r\n'
@@ -84,7 +89,7 @@ def test_save_pricing_rejects_negative_price_without_changing_exact_bytes(tmp_pa
         save_pricing(pricing_path, editable_pricing(stt_price=Decimal("-0.001")))
 
     assert pricing_path.read_bytes() == original
-    assert not pricing_path.with_suffix(".json.tmp").exists()
+    assert generated_temp_paths(pricing_path) == []
 
 
 def test_save_pricing_updates_date_from_injected_today(tmp_path: Path) -> None:
@@ -115,7 +120,7 @@ def test_save_pricing_cleans_partial_temp_and_preserves_original_on_write_failur
         save_pricing(pricing_path, editable_pricing())
 
     assert pricing_path.read_bytes() == original
-    assert not pricing_path.with_suffix(".json.tmp").exists()
+    assert generated_temp_paths(pricing_path) == []
 
 
 def test_save_pricing_cleans_temp_and_preserves_original_on_replace_failure(
@@ -125,9 +130,11 @@ def test_save_pricing_cleans_temp_and_preserves_original_on_replace_failure(
     original = b'{"original":true}\n'
     pricing_path.write_bytes(original)
     real_replace = Path.replace
+    attempted_temps = []
 
     def fail_owned_temp_replace(source: Path, target: Path):
-        if source == pricing_path.with_suffix(".json.tmp"):
+        if target == pricing_path:
+            attempted_temps.append(source)
             raise OSError("replace denied")
         return real_replace(source, target)
 
@@ -137,19 +144,23 @@ def test_save_pricing_cleans_temp_and_preserves_original_on_replace_failure(
         save_pricing(pricing_path, editable_pricing())
 
     assert pricing_path.read_bytes() == original
-    assert not pricing_path.with_suffix(".json.tmp").exists()
+    assert len(attempted_temps) == 1
+    assert attempted_temps[0].parent == pricing_path.parent
+    assert attempted_temps[0].suffix == ".tmp"
+    assert not attempted_temps[0].exists()
 
 
 def test_save_pricing_does_not_delete_foreign_temp_swapped_before_cleanup(
     tmp_path: Path, monkeypatch
 ) -> None:
     pricing_path = tmp_path / "pricing.json"
-    temp_path = pricing_path.with_suffix(".json.tmp")
     original = b'{"original":true}\n'
     foreign = b'{"foreign":true}\n'
     pricing_path.write_bytes(original)
+    swapped_paths = []
 
     def swap_before_failure(source: Path, target: Path):
+        swapped_paths.append(source)
         source.unlink()
         source.write_bytes(foreign)
         raise OSError("replace raced")
@@ -160,7 +171,8 @@ def test_save_pricing_does_not_delete_foreign_temp_swapped_before_cleanup(
         save_pricing(pricing_path, editable_pricing())
 
     assert pricing_path.read_bytes() == original
-    assert temp_path.read_bytes() == foreign
+    assert len(swapped_paths) == 1
+    assert swapped_paths[0].read_bytes() == foreign
 
 
 def test_save_pricing_preserves_preexisting_temp_it_does_not_own(tmp_path: Path) -> None:
@@ -170,10 +182,51 @@ def test_save_pricing_preserves_preexisting_temp_it_does_not_own(tmp_path: Path)
     write_pricing(pricing_path)
     temp_path.write_bytes(foreign)
 
-    with pytest.raises(FileExistsError):
-        save_pricing(pricing_path, editable_pricing())
+    save_pricing(pricing_path, editable_pricing(), today=date(2030, 2, 3))
 
     assert temp_path.read_bytes() == foreign
+    assert load_pricing(pricing_path).updated_date == "2030-02-03"
+
+
+def test_concurrent_saves_use_distinct_sibling_temp_paths(tmp_path: Path, monkeypatch) -> None:
+    from speedytype import usage_stats
+
+    pricing_path = tmp_path / "pricing.json"
+    write_pricing(pricing_path)
+    real_write = usage_stats._write_pricing_json
+    lock = threading.Lock()
+    both_writers_entered = threading.Event()
+    temp_paths = []
+    errors = []
+
+    def synchronized_write(file, data):
+        with lock:
+            temp_paths.append(Path(file.name))
+            if len(temp_paths) == 2:
+                both_writers_entered.set()
+        if not both_writers_entered.wait(timeout=2):
+            raise AssertionError("concurrent save never obtained a distinct temp file")
+        real_write(file, data)
+
+    def save_in_thread():
+        try:
+            save_pricing(pricing_path, editable_pricing())
+        except Exception as exc:
+            errors.append(exc)
+
+    monkeypatch.setattr(usage_stats, "_write_pricing_json", synchronized_write)
+    threads = [threading.Thread(target=save_in_thread) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert errors == []
+    assert len(temp_paths) == 2
+    assert temp_paths[0] != temp_paths[1]
+    assert all(path.parent == pricing_path.parent and path.suffix == ".tmp" for path in temp_paths)
+    assert all(not path.exists() for path in temp_paths)
 
 
 def test_save_pricing_roundtrips_long_decimal_without_binary_float_loss(tmp_path: Path) -> None:
@@ -184,6 +237,66 @@ def test_save_pricing_roundtrips_long_decimal_without_binary_float_loss(tmp_path
 
     assert precise.to_eng_string() in pricing_path.read_text(encoding="utf-8")
     assert load_pricing(pricing_path).stt["whisper-1"] == precise
+
+
+@pytest.mark.parametrize(
+    "price",
+    [
+        Decimal("1E+12"),
+        Decimal("1.23456789E-12"),
+        Decimal("9.99E+999999"),
+        Decimal("1E-999999"),
+        Decimal("-0"),
+        Decimal("123456789012345678901234567890.12345678901234567890"),
+    ],
+)
+def test_save_pricing_serializer_roundtrips_decimal_notation_extremes(
+    tmp_path: Path, price: Decimal
+) -> None:
+    pricing_path = tmp_path / "pricing.json"
+
+    save_pricing(pricing_path, editable_pricing(stt_price=price), today=date(2030, 2, 3))
+
+    text = pricing_path.read_text(encoding="utf-8")
+    raw = json.loads(text, parse_float=Decimal, parse_int=Decimal)
+    parsed = raw["stt"]["whisper-1"]["per_minute"]
+    loaded = load_pricing(pricing_path).stt["whisper-1"]
+    assert isinstance(parsed, Decimal)
+    assert parsed.as_tuple() == price.as_tuple()
+    assert loaded.as_tuple() == price.as_tuple()
+
+
+def test_save_pricing_serializer_escapes_and_roundtrips_json_strings(tmp_path: Path) -> None:
+    pricing_path = tmp_path / "pricing.json"
+    stt_model = 'stt"\\line\n\t\x01中文'
+    llm_model = 'llm"\\line\r\b模型'
+    currency = 'U"S\\D\n\t\x02幣'
+    data = PricingData(
+        updated_date="2026-07-14",
+        currency=currency,
+        stt=MappingProxyType({stt_model: Decimal("1E+3")}),
+        llm=MappingProxyType(
+            {
+                llm_model: LlmPricing(
+                    input_per_million=Decimal("1E-3"),
+                    output_per_million=Decimal("2.5E+9"),
+                )
+            }
+        ),
+    )
+
+    save_pricing(pricing_path, data, today=date(2030, 2, 3))
+
+    text = pricing_path.read_text(encoding="utf-8")
+    raw = json.loads(text, parse_float=Decimal, parse_int=Decimal)
+    loaded = load_pricing(pricing_path)
+    assert raw["currency"] == currency
+    assert list(raw["stt"]) == [stt_model]
+    assert list(raw["llm"]) == [llm_model]
+    assert loaded.currency == currency
+    assert loaded.stt[stt_model] == Decimal("1E+3")
+    assert loaded.llm[llm_model].input_per_million == Decimal("1E-3")
+    assert loaded.llm[llm_model].output_per_million == Decimal("2.5E+9")
 
 
 def test_save_pricing_rejects_datetime_today_without_changing_original(tmp_path: Path) -> None:

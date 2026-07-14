@@ -9,6 +9,7 @@ from typing import Iterator, Mapping, TextIO
 import csv
 import json
 import os
+import secrets
 import warnings as runtime_warnings
 
 
@@ -219,7 +220,9 @@ def save_pricing(
     )
 
     pricing_path = Path(path)
-    temp_path = pricing_path.with_suffix(pricing_path.suffix + ".tmp")
+    temp_path = pricing_path.with_name(
+        f"{pricing_path.name}.{secrets.token_hex(16)}.tmp"
+    )
     owned_identity: tuple[int, int, int] | None = None
     try:
         with temp_path.open("x", encoding="utf-8", newline="\n") as temp_file:
