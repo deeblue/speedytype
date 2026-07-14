@@ -1,0 +1,35 @@
+{
+  "updated_date": "2026-07-14",
+  "currency": "USD",
+  "stt": {
+    "whisper-1": {
+      "per_minute": 0.006
+    }
+  },
+  "llm": {
+    "gemini-3.1-flash-lite": {
+      "input_per_million": 0.25,
+      "output_per_million": 1.50
+    },
+    "gemini-3.5-flash": {
+      "input_per_million": 1.50,
+      "output_per_million": 9
+    },
+    "gpt-5.5": {
+      "input_per_million": 5,
+      "output_per_million": 30
+    },
+    "gpt-5.4-mini": {
+      "input_per_million": 0.75,
+      "output_per_million": 4.5
+    },
+    "gpt-5.4-nano": {
+      "input_per_million": 0.20,
+      "output_per_million": 1.25
+    },
+    "MiniMax-M3": {
+      "input_per_million": 0.3,
+      "output_per_million": 1.2
+    }
+  }
+}

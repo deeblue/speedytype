@@ -21,3 +21,9 @@ def test_path_lookup_does_not_create_directory(monkeypatch, tmp_path):
 
     assert paths.app_data_dir() == expected
     assert not expected.exists()
+
+
+def test_default_pricing_path_points_to_repository_root():
+    expected = Path(paths.__file__).resolve().parent.parent / "pricing.json"
+
+    assert paths.default_pricing_path() == expected
