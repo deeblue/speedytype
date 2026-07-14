@@ -125,38 +125,84 @@ def test_masked_key_field_reveal_toggle_and_edit(qapp, tmp_path):
     assert field.current_value() == "sk-brand-new-value"
 
 
-def test_save_writes_settings_and_only_changed_keys(qapp, tmp_path):
+def test_masked_key_field_test_connection_uses_currently_edited_value(qapp, tmp_path):
+    settings_path = tmp_path / "settings.json"
+    save_settings(settings_path, AppSettings())
+    dialog = SettingsDialog(make_config(), tmp_path / ".env", settings_path)
+    tested_values = []
+    dialog.openai_field._test_func = lambda value: tested_values.append(value) or (True, "connected")
+
+    dialog.openai_field.toggle_button.click()
+    dialog.openai_field.line_edit.setText("sk-currently-edited")
+    dialog.openai_field.test_button.click()
+
+    assert tested_values == ["sk-currently-edited"]
+    assert dialog.openai_field.status_label.text() == "OK: connected"
+
+
+def test_save_writes_only_changed_secret_to_keyring(qapp, tmp_path, monkeypatch):
     settings_path = tmp_path / "settings.json"
     env_path = tmp_path / ".env"
-    env_path.write_text(
-        "OPENAI_API_KEY=sk-test-key-1234\nGEMINI_API_KEY=gem-test-key-5678\nMINIMAX_API_KEY=mm-test-key-9999\n# a comment\nHOTKEY=f9\n",
-        encoding="utf-8",
-    )
-    save_settings(settings_path, AppSettings(max_record_seconds=90.0))
-    dialog = SettingsDialog(make_config(), str(env_path), str(settings_path))
-
-    dialog.slider.setValue(200)
-    dialog.vocab_input.setText("NewTerm")
-    dialog._add_vocab_term()
-
-    # Reveal + change only the Gemini key.
+    original_env = "GEMINI_API_KEY=legacy-fallback\n# keep\n"
+    env_path.write_text(original_env, encoding="utf-8")
+    save_settings(settings_path, AppSettings())
+    writes = []
+    monkeypatch.setattr("speedytype.settings_dialog.set_api_key", lambda name, value: writes.append((name, value)))
+    monkeypatch.setattr("speedytype.settings_dialog.delete_api_key", lambda name: None)
+    dialog = SettingsDialog(make_config(), env_path, settings_path)
     dialog.gemini_field.toggle_button.click()
-    dialog.gemini_field.line_edit.setText("gem-changed-value")
+    dialog.gemini_field.line_edit.setText("gem-new-fake")
     dialog.gemini_field.toggle_button.click()
+    dialog._save()
+    assert writes == [("GEMINI_API_KEY", "gem-new-fake")]
+    assert env_path.read_text(encoding="utf-8") == original_env
+
+
+def test_save_empty_changed_secret_deletes_keyring_entry(qapp, tmp_path, monkeypatch):
+    deleted = []
+    monkeypatch.setattr("speedytype.settings_dialog.set_api_key", lambda *a: None)
+    monkeypatch.setattr("speedytype.settings_dialog.delete_api_key", lambda name: deleted.append(name))
+    dialog = SettingsDialog(make_config(), tmp_path / ".env", tmp_path / "settings.json")
+    dialog.minimax_field.toggle_button.click()
+    dialog.minimax_field.line_edit.clear()
+    dialog._save()
+    assert deleted == ["MINIMAX_API_KEY"]
+
+
+def test_save_reports_secret_errors_independently_and_retries_only_failed_keys(qapp, tmp_path, monkeypatch):
+    from speedytype.secrets_store import SecretStoreError
+
+    writes = []
+
+    def fake_set(name, value):
+        writes.append((name, value))
+        if name == "OPENAI_API_KEY":
+            raise SecretStoreError("credential manager unavailable")
+
+    monkeypatch.setattr("speedytype.settings_dialog.set_api_key", fake_set)
+    monkeypatch.setattr("speedytype.settings_dialog.delete_api_key", lambda name: None)
+    dialog = SettingsDialog(make_config(), tmp_path / ".env", tmp_path / "settings.json")
+    dialog.openai_field.toggle_button.click()
+    dialog.openai_field.line_edit.setText("sk-new-fake")
+    dialog.gemini_field.toggle_button.click()
+    dialog.gemini_field.line_edit.setText("gem-new-fake")
 
     dialog._save()
 
-    saved = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert saved["max_record_seconds"] == 200.0
-    assert "NewTerm" in saved["vocab_terms"]
+    assert writes == [
+        ("OPENAI_API_KEY", "sk-new-fake"),
+        ("GEMINI_API_KEY", "gem-new-fake"),
+    ]
+    assert "金鑰儲存失敗（OPENAI_API_KEY）：credential manager unavailable" in dialog.status_label.text()
+    assert "金鑰已更新（GEMINI_API_KEY）" in dialog.status_label.text()
 
-    env_text = env_path.read_text(encoding="utf-8")
-    assert "GEMINI_API_KEY=gem-changed-value" in env_text
-    assert "OPENAI_API_KEY=sk-test-key-1234" in env_text  # untouched
-    assert "# a comment" in env_text  # preserved
-    assert "已儲存" in dialog.status_label.text()
-    assert "GEMINI_API_KEY" in dialog.status_label.text()
-    assert "OPENAI_API_KEY" not in dialog.status_label.text()
+    dialog._save()
+
+    assert writes == [
+        ("OPENAI_API_KEY", "sk-new-fake"),
+        ("GEMINI_API_KEY", "gem-new-fake"),
+        ("OPENAI_API_KEY", "sk-new-fake"),
+    ]
 
 
 def test_cancel_writes_nothing(qapp, tmp_path):
