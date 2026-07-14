@@ -141,13 +141,14 @@ class DaemonController(QObject):
         def process() -> None:
             try:
                 if self._hybrid_transcriber is None:
-                    process_wav(active_path, self.config, do_paste=True)
+                    process_wav(active_path, self.config, do_paste=True, usage_scope="daily")
                 else:
                     hybrid = self._hybrid_transcriber.finish(active_path)
                     process_wav(
                         active_path,
                         self.config,
                         do_paste=True,
+                        usage_scope="daily",
                         raw_transcript_override=hybrid.raw_text,
                         whisper_seconds_override=hybrid.tail_seconds,
                         run_label="hybrid_fallback" if hybrid.fallback_used else "hybrid",

@@ -61,7 +61,7 @@ def command_run_once(args: argparse.Namespace) -> int:
     if config is None:
         return 2
     try:
-        process_wav(Path(args.wav), config, do_paste=not args.no_paste)
+        process_wav(Path(args.wav), config, do_paste=not args.no_paste, usage_scope="daily")
     except Exception as exc:
         print(f"Pipeline failed: {exc}", file=sys.stderr)
         return 1
@@ -99,7 +99,7 @@ def command_listen(args: argparse.Namespace) -> int:
         print("Processing...", flush=True)
         recorder.stop()
         active_thread.join()
-        process_wav(active_path, config, do_paste=True)
+        process_wav(active_path, config, do_paste=True, usage_scope="daily")
 
     hotkey_handle = register_hold_hotkey(config.hotkey, on_press)
     print(f"SpeedyType listening. Hold {config.hotkey.upper()} to record. Press Ctrl+C to exit.", flush=True)

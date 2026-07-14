@@ -28,6 +28,11 @@ LATENCY_FIELDS = [
     "hybrid_request_seconds",
     "hybrid_fallback_used",
     "hybrid_validation_reasons",
+    "usage_scope",
+    "stt_model",
+    "llm_input_tokens",
+    "llm_output_tokens",
+    "llm_total_tokens",
 ]
 
 
@@ -54,6 +59,11 @@ class LatencyRecord:
     hybrid_request_seconds: float = 0.0
     hybrid_fallback_used: bool = False
     hybrid_validation_reasons: str = ""
+    usage_scope: str = "development"
+    stt_model: str = "whisper-1"
+    llm_input_tokens: int | None = None
+    llm_output_tokens: int | None = None
+    llm_total_tokens: int | None = None
 
     @classmethod
     def create(
@@ -78,6 +88,11 @@ class LatencyRecord:
         hybrid_request_seconds: float = 0.0,
         hybrid_fallback_used: bool = False,
         hybrid_validation_reasons: str = "",
+        usage_scope: str = "development",
+        stt_model: str = "whisper-1",
+        llm_input_tokens: int | None = None,
+        llm_output_tokens: int | None = None,
+        llm_total_tokens: int | None = None,
     ) -> "LatencyRecord":
         return cls(
             timestamp=datetime.now(timezone.utc).isoformat(),
@@ -101,6 +116,11 @@ class LatencyRecord:
             hybrid_request_seconds=hybrid_request_seconds,
             hybrid_fallback_used=hybrid_fallback_used,
             hybrid_validation_reasons=hybrid_validation_reasons,
+            usage_scope=usage_scope,
+            stt_model=stt_model,
+            llm_input_tokens=llm_input_tokens,
+            llm_output_tokens=llm_output_tokens,
+            llm_total_tokens=llm_total_tokens,
         )
 
 
@@ -146,5 +166,10 @@ def append_latency_record(path: Path, record: LatencyRecord) -> None:
                 "hybrid_request_seconds": f"{record.hybrid_request_seconds:.6f}",
                 "hybrid_fallback_used": str(record.hybrid_fallback_used).lower(),
                 "hybrid_validation_reasons": record.hybrid_validation_reasons,
+                "usage_scope": record.usage_scope,
+                "stt_model": record.stt_model,
+                "llm_input_tokens": "" if record.llm_input_tokens is None else record.llm_input_tokens,
+                "llm_output_tokens": "" if record.llm_output_tokens is None else record.llm_output_tokens,
+                "llm_total_tokens": "" if record.llm_total_tokens is None else record.llm_total_tokens,
             }
         )

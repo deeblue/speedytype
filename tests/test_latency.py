@@ -1,0 +1,73 @@
+from __future__ import annotations
+
+import csv
+
+from speedytype.latency import LATENCY_FIELDS, LatencyRecord, append_latency_record
+
+
+NEW_USAGE_FIELDS = [
+    "usage_scope",
+    "stt_model",
+    "llm_input_tokens",
+    "llm_output_tokens",
+    "llm_total_tokens",
+]
+
+
+def _record(**overrides) -> LatencyRecord:
+    values = {
+        "recording_seconds": 1.0,
+        "whisper_seconds": 0.2,
+        "gemini_seconds": 0.3,
+        "paste_seconds": 0.0,
+        "total_tail_latency_seconds": 0.5,
+    }
+    values.update(overrides)
+    return LatencyRecord.create(**values)
+
+
+def test_append_migrates_old_header_and_preserves_old_values(tmp_path) -> None:
+    path = tmp_path / "latency.csv"
+    old_fields = [field for field in LATENCY_FIELDS if field not in NEW_USAGE_FIELDS]
+    old_row = {field: "" for field in old_fields}
+    old_row.update({"timestamp": "legacy-time", "run_label": "hybrid", "recording_seconds": "12.5"})
+    with path.open("w", encoding="utf-8", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=old_fields)
+        writer.writeheader()
+        writer.writerow(old_row)
+
+    append_latency_record(
+        path,
+        _record(
+            usage_scope="daily",
+            stt_model="whisper-1",
+            llm_input_tokens=120,
+            llm_output_tokens=30,
+            llm_total_tokens=150,
+        ),
+    )
+
+    with path.open("r", encoding="utf-8", newline="") as csv_file:
+        reader = csv.DictReader(csv_file)
+        rows = list(reader)
+        assert reader.fieldnames == LATENCY_FIELDS
+    assert rows[0]["timestamp"] == "legacy-time"
+    assert rows[0]["recording_seconds"] == "12.5"
+    assert all(rows[0][field] == "" for field in NEW_USAGE_FIELDS)
+    assert rows[1]["usage_scope"] == "daily"
+    assert rows[1]["stt_model"] == "whisper-1"
+    assert rows[1]["llm_input_tokens"] == "120"
+    assert rows[1]["llm_output_tokens"] == "30"
+    assert rows[1]["llm_total_tokens"] == "150"
+
+
+def test_optional_token_counts_are_written_as_blank(tmp_path) -> None:
+    path = tmp_path / "latency.csv"
+
+    append_latency_record(path, _record())
+
+    with path.open("r", encoding="utf-8", newline="") as csv_file:
+        row = next(csv.DictReader(csv_file))
+    assert row["llm_input_tokens"] == ""
+    assert row["llm_output_tokens"] == ""
+    assert row["llm_total_tokens"] == ""

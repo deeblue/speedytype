@@ -2,6 +2,7 @@ from pathlib import Path
 import wave
 
 from speedytype.config import AppConfig, load_config
+from speedytype.llm import LlmUsage
 from speedytype.pipeline import process_wav
 
 
@@ -38,6 +39,7 @@ def test_pipeline_override_does_not_call_whisper(tmp_path, monkeypatch):
         "model": "fake",
         "llm_call_seconds": 0.0,
         "retry_wait_seconds": 0.0,
+        "usage": LlmUsage(),
     })())
     config = AppConfig(openai_api_key="x", gemini_api_key="y", latency_log_path=tmp_path / "latency.csv")
     result = process_wav(
@@ -56,6 +58,7 @@ def test_latency_records_hybrid_diagnostics(tmp_path, monkeypatch):
     write_empty_wav(wav)
     monkeypatch.setattr("speedytype.pipeline.call_llm_polisher", lambda text, config: type("R", (), {
         "text": text, "provider": "fake", "model": "fake", "llm_call_seconds": 0.0, "retry_wait_seconds": 0.0,
+        "usage": LlmUsage(),
     })())
     config = AppConfig(openai_api_key="x", gemini_api_key="y", latency_log_path=tmp_path / "latency.csv")
     result = process_wav(
