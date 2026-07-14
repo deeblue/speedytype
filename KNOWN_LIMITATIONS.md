@@ -27,12 +27,12 @@ Each item lists: current state, known impact, why it was not addressed, and the 
 - **Why not addressed**: Automating a UAC prompt interaction safely was judged unsafe/unreliable to script, and out of scope for this round.
 - **Trigger to re-evaluate**: The user's daily workflow starts to regularly include elevated windows as a dictation target.
 
-## 4. API keys are stored in plaintext in `.env`
+## 4. OS credential storage is primary; `.env` remains a compatibility fallback
 
-- **Current state**: `OPENAI_API_KEY`, `GEMINI_API_KEY`, and `MINIMAX_API_KEY` are read from a local `.env` file with no OS-level secret protection.
-- **Known impact**: Anyone with filesystem read access to this machine/user profile can read the keys directly.
-- **Why not addressed**: This is a personal single-user POC; the risk is judged acceptable at this stage, and adding e.g. Windows Credential Manager integration was explicitly out of scope for this round.
-- **Trigger to re-evaluate**: The tool moves beyond personal POC use (shared machine, other users, longer-term production use) or the keys' billing scope increases.
+- **Current state**: `OPENAI_API_KEY`, `GEMINI_API_KEY`, and optional `MINIMAX_API_KEY` resolve from the OS credential store under the `SpeedyType` service first. A file-sourced key is migrated only after a verified credential-store write/read round trip; the matching effective plaintext assignment is then scrubbed while unrelated `.env` content is preserved. Process-environment and `.env` values remain compatibility fallbacks when no stored credential is available.
+- **Known impact**: Normal Settings and daemon use no longer requires API keys to remain in plaintext. A user who deliberately relies on the compatibility fallback still accepts the filesystem-read risk for those fallback values, and a failed credential-store operation leaves the original `.env` value intact rather than risking credential loss.
+- **Verification state**: Automated migration, round-trip verification, selective scrubbing, source-change protection, redacted backend errors, and fallback behavior are covered by the Part A test suite. Real Windows Credential Manager inspection and the guarded live verifier are `NOT_VERIFIED` pending the phase safety review.
+- **Trigger to re-evaluate**: Remove the plaintext fallback if the product moves beyond personal/single-user use or policy requires credentials never to exist in `.env`; also re-evaluate if a supported platform lacks a reliable keyring backend.
 
 ## 5. Disambiguation hints show no measurable benefit on the Round 2 dataset
 
@@ -69,12 +69,12 @@ Each item lists: current state, known impact, why it was not addressed, and the 
 - **Why not addressed**: Real-time conflict probing against arbitrary other software was explicitly out of scope ("不需要解決所有可能衝突，但至少要能偵測並提示使用者"); the static list satisfies the "at least detect the obvious/common cases" bar.
 - **Trigger to re-evaluate**: A user reports a hotkey that silently doesn't work or double-triggers another app; add that combo to the static list and/or investigate a more general detection approach.
 
-## 10. Settings-dialog API key editing is a convenience layer only; storage security is unchanged
+## 10. (Resolved) Settings API key editing uses the OS credential store
 
-- **Current state**: This round added masked key fields, a reveal toggle, and a "測試連線" button to the Settings dialog, plus a line-preserving `.env` writer (`speedytype/env_writer.py`) so editing a key no longer requires manually opening `.env` in a text editor.
-- **Known impact**: None beyond convenience. The keys are still written to and read from a plaintext `.env` file (see limitation 4); this round did not add any encryption, OS credential-store integration, or access control.
-- **Why not addressed**: Out of scope for this round, same reasoning as limitation 4.
-- **Trigger to re-evaluate**: Same trigger as limitation 4.
+- **Current state**: Masked key fields, reveal controls, connection tests, and save/delete actions now resolve and mutate the `SpeedyType` OS credential-store entries. Saving writes only changed secrets, verifies each write, reports failures independently, and lets a failed key be retried without rewriting successful keys. Cancel writes nothing. Startup and Settings both consume the same keyring-backed resolution behavior described in limitation 4.
+- **Compatibility behavior**: Existing `.env` keys can still be resolved and safely migrated; the fallback is retained for keyring-unavailable environments. The line-preserving non-secret `.env` writer remains available for ordinary configuration values, but Settings no longer treats plaintext `.env` storage as the primary secret path.
+- **Verification state**: Automated Settings, configuration, migration, deletion, retry, and cancellation contracts pass. Live Windows UI/keyring inspection is `NOT_VERIFIED` pending the phase safety review.
+- **Trigger to re-evaluate**: A supported keyring backend behaves inconsistently in live use, or product policy requires removing the compatibility fallback entirely.
 
 ## 11. (Resolved, but note the retroactive impact) Phase 5's Startup-folder autostart likely never actually kept the daemon running
 

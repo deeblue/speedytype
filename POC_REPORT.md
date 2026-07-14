@@ -419,3 +419,26 @@ The silence-aware hybrid plan was implemented behind a disabled-by-default featu
 The candidate number/repeated-content prompt rule was adopted after reaching 6/6 valid candidate samples preserving `123`, reproducing current-prompt loss versus candidate preservation on the production Gemini model, and confirming no regression in self-correction, filler removal, key-term preservation, list formatting, natural-stutter cleanup, or Chinese-number preservation. The production prompt now keeps numbers, identifiers, and real content while consolidating garbled repetition, with an explicit exception for genuine self-correction.
 
 The separate `API` / `BJ 團隊` over-correction hypothesis was rejected after 17 raw-Whisper-versus-polished comparisons. The old 71.4% / 83.3% figures used an invalid denominator that counted corrected-away terms as required final output. The only observed final-intent failures were two raw-STT `API` substitutions (`NPI` and `AVM`); Gemini introduced no target-term error. The corpus is too small to publish a replacement real-world percentage. Full quota accounting, six-dimension prompt results, and every sentence-level pair are in [COMBINED_LLM_INVESTIGATION_REPORT.md](COMBINED_LLM_INVESTIGATION_REPORT.md).
+
+## Part A: Keyring-backed API keys — phase 1 safety staging (2026-07-14)
+
+### Architecture
+
+- `load_config(real_env_path)` delegates secret resolution to `resolve_api_keys()`. For each configured provider, the resolution order is OS keyring (`SpeedyType` service), process environment, then `.env` compatibility fallback.
+- File-sourced values migrate only after a successful keyring write and exact read-back. Only the effective `.env` assignment whose parsed value still matches the verified migrated value is scrubbed; unrelated lines and changed source values are preserved.
+- The Settings dialog uses the same keyring-backed store for changed-key writes and deletes. Production usernames are `openai_api_key`, `gemini_api_key`, and `minimax_api_key` and are read-only in the fallback verifier.
+- `scripts/verify_keyring_live.py` performs production migration/readback and provider status checks without printing complete key values. Its isolated fallback exercise can mutate only the fixed `fallback_test_api_key` username, confines its `.env` to a supplied temporary directory, and hard-asserts that username immediately before every delete.
+
+### Automated evidence
+
+- RED: `python -m pytest tests/test_keyring_live_script.py -v` failed during collection because `scripts.verify_keyring_live` did not yet exist, which was the expected missing-feature failure.
+- GREEN verifier safety tests: `python -m pytest tests/test_keyring_live_script.py -q` → `5 passed in 0.78s`. Coverage includes mutation-username isolation, temporary `.env` confinement, the pre-delete production-username rejection guard, cleanup-failure propagation, production read-only lookup, real env-path forwarding, complete-secret redaction from printed provider messages, and optional MiniMax absence.
+- Focused Part A regression set: `python -m pytest tests/test_keyring_live_script.py tests/test_secrets_store.py tests/test_config.py tests/test_settings_dialog.py -q` → `40 passed in 1.68s`.
+- Full suite: `python -m pytest -q` → `154 passed in 3.90s`.
+
+### Live evidence
+
+- Guarded verifier (`python scripts/verify_keyring_live.py`): `NOT_VERIFIED` — intentionally not executed in phase 1 pending safety review.
+- Windows Credential Manager inspection: `NOT_VERIFIED` — intentionally not inspected in phase 1.
+- Real daemon cycle using a temporary non-secret env and isolated latency CSV: `NOT_VERIFIED` — intentionally not executed in phase 1; no running daemon was stopped or replaced.
+- Real credentials mutated: none. No production credential was written or deleted, and no real credential value was printed during phase 1.
