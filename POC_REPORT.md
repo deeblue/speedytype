@@ -420,7 +420,7 @@ The candidate number/repeated-content prompt rule was adopted after reaching 6/6
 
 The separate `API` / `BJ 團隊` over-correction hypothesis was rejected after 17 raw-Whisper-versus-polished comparisons. The old 71.4% / 83.3% figures used an invalid denominator that counted corrected-away terms as required final output. The only observed final-intent failures were two raw-STT `API` substitutions (`NPI` and `AVM`); Gemini introduced no target-term error. The corpus is too small to publish a replacement real-world percentage. Full quota accounting, six-dimension prompt results, and every sentence-level pair are in [COMBINED_LLM_INVESTIGATION_REPORT.md](COMBINED_LLM_INVESTIGATION_REPORT.md).
 
-## Part A: Keyring-backed API keys — phase 1 safety staging (2026-07-14)
+## Part A: Keyring-backed API keys (2026-07-14)
 
 ### Architecture
 
@@ -438,7 +438,9 @@ The separate `API` / `BJ 團隊` over-correction hypothesis was rejected after 1
 
 ### Live evidence
 
-- Guarded verifier (`python scripts/verify_keyring_live.py --env C:/WORK/Claude/poc/speedytype/.env`): `NOT_VERIFIED`. Two earlier attempts without this final command stopped before credential operations: first on the missing project import path, then on missing keys at the app-data default `.env`. The real POC file was not copied or moved, and the corrected command has not been run.
-- Windows Credential Manager inspection: `NOT_VERIFIED` — intentionally not inspected in phase 1.
-- Real daemon cycle using a temporary non-secret env and isolated latency CSV: `NOT_VERIFIED` — intentionally not executed in phase 1; no running daemon was stopped or replaced.
-- Real credentials mutated: none. No production credential was written or deleted, and no real credential value was printed during phase 1.
+- Guarded verifier: `python scripts/verify_keyring_live.py --env C:/WORK/Claude/poc/speedytype/.env` exited `0`. It reported migration of `OPENAI_API_KEY`, `GEMINI_API_KEY`, and `MINIMAX_API_KEY`; every production entry reported `exists=PASS` and `matches_resolved=PASS`; OpenAI, Gemini, and MiniMax provider checks all reported `PASS`; isolated keyring round-trip, temporary `.env` fallback, and cleanup all reported `PASS`; final status was `live keyring verification: PASS`.
+- Plaintext scrub post-check: `remaining_env_lines=0` for each of `OPENAI_API_KEY`, `GEMINI_API_KEY`, and `MINIMAX_API_KEY` in the parent POC `.env`.
+- Windows Credential Manager inspection: `cmdkey /list` showed Generic targets `openai_api_key@SpeedyType`, `gemini_api_key@SpeedyType`, and `minimax_api_key@SpeedyType`. No credential values were exposed.
+- Daemon API evidence: the first smoke run started PID `6324`; its daemon log contained `whisper_success_markers=1`, `llm_success_markers=1`, and `failure_markers=0`. The smoke harness then hit a local `cp1252` `UnicodeEncodeError` while printing pasted Chinese text, after the daemon API work had succeeded. PID `6324` was explicitly stopped successfully.
+- UTF-8 harness rerun: with `PYTHONIOENCODING=utf-8`, the smoke started and stopped PID `38744` cleanly and reported `SUMMARY total=1 empty_handled=1 crashed=False`. Its silent input produced no API call, so the first run's log markers—not this silent rerun—are the successful daemon API evidence.
+- Latency isolation: neither smoke used the production latency log; the harness pointed to ignored `.superpowers/sdd/daemon-smoke-latency.csv`.
