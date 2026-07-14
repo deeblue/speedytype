@@ -181,7 +181,7 @@ def calculate_usage(csv_path: str | Path, pricing_path: str | Path) -> UsageSumm
                     stt_model = _text_field(row, "stt_model") or "whisper-1"
                     llm_model = _text_field(row, "llm_model")
                 except (InvalidOperation, ValueError):
-                    message = f"Skipped malformed numeric CSV row {line_number}."
+                    message = f"Skipped malformed CSV row {line_number}."
                     warning_messages.append(message)
                     runtime_warnings.warn(message, UserWarning, stacklevel=2)
                     continue

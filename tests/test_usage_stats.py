@@ -284,6 +284,7 @@ def test_structurally_truncated_row_is_skipped_with_one_warning(tmp_path: Path) 
         summary = calculate_usage(csv_path, pricing_path)
 
     assert len(caught) == 1
+    assert str(caught[0].message) == "Skipped malformed CSV row 2."
     assert summary.stt_calls == 1
     assert summary.stt_minutes == Decimal("1")
     assert len(summary.warnings) == 1
@@ -313,6 +314,7 @@ def test_malformed_numeric_row_is_skipped_with_one_warning(tmp_path: Path) -> No
         summary = calculate_usage(csv_path, pricing_path)
 
     assert len(caught) == 1
+    assert str(caught[0].message) == "Skipped malformed CSV row 2."
     assert summary.stt_calls == 1
     assert summary.stt_minutes == Decimal("1")
     assert len(summary.warnings) == 1
