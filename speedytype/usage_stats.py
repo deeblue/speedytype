@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from types import MappingProxyType
 from typing import Iterator, Mapping, TextIO
 import csv
 import json
+import os
 import warnings as runtime_warnings
 
 
@@ -109,6 +111,82 @@ def load_pricing(path: str | Path) -> PricingData:
         llm=MappingProxyType(llm),
         warnings=tuple(warning_messages),
     )
+
+
+def _validated_saved_price(value: object, label: str) -> Decimal:
+    if not isinstance(value, Decimal) or not value.is_finite() or value < 0:
+        raise ValueError(f"{label} must be a finite, non-negative Decimal.")
+    return value
+
+
+def _json_number(value: Decimal) -> int | float:
+    if value == value.to_integral_value():
+        return int(value)
+    return float(value)
+
+
+def save_pricing(
+    path: str | Path,
+    data: PricingData,
+    today: date | None = None,
+) -> None:
+    if not isinstance(data, PricingData):
+        raise ValueError("Pricing data must be PricingData.")
+    if not isinstance(data.currency, str) or not data.currency.strip():
+        raise ValueError("Pricing currency must be a non-empty string.")
+    if data.warnings:
+        raise ValueError("Pricing data contains invalid prices.")
+    if not isinstance(data.stt, Mapping) or not isinstance(data.llm, Mapping):
+        raise ValueError("Pricing stt and llm fields must be mappings.")
+
+    stt: dict[str, dict[str, int | float]] = {}
+    for model, price in data.stt.items():
+        if not isinstance(model, str) or not model.strip():
+            raise ValueError("Each STT pricing entry must have a non-empty model name.")
+        validated = _validated_saved_price(price, f"STT model {model} price")
+        stt[model] = {"per_minute": _json_number(validated)}
+
+    llm: dict[str, dict[str, int | float]] = {}
+    for model, prices in data.llm.items():
+        if not isinstance(model, str) or not model.strip() or not isinstance(prices, LlmPricing):
+            raise ValueError("Each LLM pricing entry must have a non-empty model name and prices.")
+        input_price = _validated_saved_price(
+            prices.input_per_million, f"LLM model {model} input price"
+        )
+        output_price = _validated_saved_price(
+            prices.output_per_million, f"LLM model {model} output price"
+        )
+        llm[model] = {
+            "input_per_million": _json_number(input_price),
+            "output_per_million": _json_number(output_price),
+        }
+
+    selected_date = date.today() if today is None else today
+    if not isinstance(selected_date, date):
+        raise ValueError("today must be a date.")
+    serialized = {
+        "updated_date": selected_date.isoformat(),
+        "currency": data.currency.strip(),
+        "stt": stt,
+        "llm": llm,
+    }
+
+    pricing_path = Path(path)
+    temp_path = pricing_path.with_suffix(pricing_path.suffix + ".tmp")
+    owns_temp = False
+    try:
+        with temp_path.open("x", encoding="utf-8", newline="\n") as temp_file:
+            owns_temp = True
+            json.dump(serialized, temp_file, ensure_ascii=False, indent=2)
+            temp_file.write("\n")
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+        temp_path.replace(pricing_path)
+        owns_temp = False
+    except Exception:
+        if owns_temp:
+            temp_path.unlink(missing_ok=True)
+        raise
 
 
 def _text_field(row: Mapping[str, object], name: str) -> str:

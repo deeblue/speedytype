@@ -2,12 +2,20 @@ from __future__ import annotations
 
 import csv
 import json
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from types import MappingProxyType
 
 import pytest
 
-from speedytype.usage_stats import calculate_usage, load_pricing
+from speedytype.usage_stats import (
+    LlmPricing,
+    PricingData,
+    calculate_usage,
+    load_pricing,
+    save_pricing,
+)
 
 
 CSV_FIELDS = [
@@ -48,6 +56,87 @@ def write_pricing(path: Path) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def editable_pricing(*, stt_price: Decimal = Decimal("0.006")) -> PricingData:
+    return PricingData(
+        updated_date="2026-07-14",
+        currency="USD",
+        stt=MappingProxyType({"whisper-1": stt_price}),
+        llm=MappingProxyType(
+            {
+                "gemini-3.1-flash-lite": LlmPricing(
+                    input_per_million=Decimal("0.25"),
+                    output_per_million=Decimal("1.50"),
+                )
+            }
+        ),
+    )
+
+
+def test_save_pricing_rejects_negative_price_without_changing_exact_bytes(tmp_path: Path) -> None:
+    pricing_path = tmp_path / "pricing.json"
+    original = b'{\r\n  "keep": "these exact bytes"\r\n}\r\n'
+    pricing_path.write_bytes(original)
+
+    with pytest.raises(ValueError, match="non-negative"):
+        save_pricing(pricing_path, editable_pricing(stt_price=Decimal("-0.001")))
+
+    assert pricing_path.read_bytes() == original
+    assert not pricing_path.with_suffix(".json.tmp").exists()
+
+
+def test_save_pricing_updates_date_from_injected_today(tmp_path: Path) -> None:
+    pricing_path = tmp_path / "pricing.json"
+    write_pricing(pricing_path)
+
+    save_pricing(pricing_path, editable_pricing(), today=date(2030, 2, 3))
+
+    saved = json.loads(pricing_path.read_text(encoding="utf-8"))
+    assert saved["updated_date"] == "2030-02-03"
+    assert saved["stt"]["whisper-1"]["per_minute"] == 0.006
+
+
+def test_save_pricing_cleans_partial_temp_and_preserves_original_on_write_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    pricing_path = tmp_path / "pricing.json"
+    original = b'{"original":true}\n'
+    pricing_path.write_bytes(original)
+
+    def partial_dump(data, file, **kwargs):
+        file.write('{"partial":')
+        raise OSError("disk full")
+
+    monkeypatch.setattr("speedytype.usage_stats.json.dump", partial_dump)
+
+    with pytest.raises(OSError, match="disk full"):
+        save_pricing(pricing_path, editable_pricing())
+
+    assert pricing_path.read_bytes() == original
+    assert not pricing_path.with_suffix(".json.tmp").exists()
+
+
+def test_save_pricing_cleans_temp_and_preserves_original_on_replace_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    pricing_path = tmp_path / "pricing.json"
+    original = b'{"original":true}\n'
+    pricing_path.write_bytes(original)
+    real_replace = Path.replace
+
+    def fail_owned_temp_replace(source: Path, target: Path):
+        if source == pricing_path.with_suffix(".json.tmp"):
+            raise OSError("replace denied")
+        return real_replace(source, target)
+
+    monkeypatch.setattr(Path, "replace", fail_owned_temp_replace)
+
+    with pytest.raises(OSError, match="replace denied"):
+        save_pricing(pricing_path, editable_pricing())
+
+    assert pricing_path.read_bytes() == original
+    assert not pricing_path.with_suffix(".json.tmp").exists()
 
 
 def test_load_pricing_reads_decimal_schema_and_all_approved_models(tmp_path: Path) -> None:

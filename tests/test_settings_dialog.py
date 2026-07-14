@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 import sounddevice as sd
-from PyQt6.QtWidgets import QApplication, QPushButton, QScrollArea
+from PyQt6.QtWidgets import QApplication, QDialog, QPushButton, QScrollArea
 
 from speedytype.audio import list_input_devices
 from speedytype.settings import AppSettings, DEFAULT_VOCAB_TERMS, save_settings
@@ -168,6 +168,40 @@ def test_usage_is_calculated_exactly_once_when_settings_dialog_is_constructed(
 
     assert dialog.usage_total_label.text()
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("dialog_result", "expected_refreshes"),
+    [
+        (QDialog.DialogCode.Accepted, 1),
+        (QDialog.DialogCode.Rejected, 0),
+    ],
+)
+def test_price_editor_refreshes_usage_once_only_after_acceptance(
+    qapp, tmp_path, monkeypatch, dialog_result, expected_refreshes
+):
+    pricing_path = tmp_path / "pricing.json"
+    write_test_pricing(pricing_path)
+    dialog = known_usage_dialog(tmp_path, pricing_path)
+    refreshes = []
+    opened = []
+
+    class FakePriceEditorDialog:
+        def __init__(self, selected_path, parent=None):
+            opened.append((selected_path, parent))
+
+        def exec(self):
+            return dialog_result
+
+    monkeypatch.setattr(
+        "speedytype.settings_dialog.PriceEditorDialog", FakePriceEditorDialog
+    )
+    monkeypatch.setattr(dialog, "_refresh_usage", lambda: refreshes.append(True))
+
+    dialog.edit_pricing_button.click()
+
+    assert opened == [(pricing_path, dialog)]
+    assert len(refreshes) == expected_refreshes
 
 
 @pytest.mark.parametrize("pricing_contents", [None, "{not-json"])

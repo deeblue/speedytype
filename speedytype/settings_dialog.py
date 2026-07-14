@@ -30,6 +30,7 @@ from speedytype.env_writer import mask_secret, test_gemini_key, test_minimax_key
 from speedytype.icon import build_app_icon
 from speedytype.hotkey import PlatformPermissionError, capture_hotkey
 from speedytype.paths import default_env_path, default_pricing_path, default_settings_path
+from speedytype.pricing_dialog import PriceEditorDialog
 from speedytype.secrets_store import SecretStoreError, delete_api_key, set_api_key
 from speedytype.settings import (
     MAX_MAX_RECORD_SECONDS,
@@ -267,7 +268,15 @@ class SettingsDialog(QDialog):
         ):
             label.setWordWrap(True)
             group_layout.addWidget(label)
+        self.edit_pricing_button = QPushButton("編輯價格")
+        self.edit_pricing_button.clicked.connect(self._edit_pricing)
+        group_layout.addWidget(self.edit_pricing_button)
         return group
+
+    def _edit_pricing(self) -> None:
+        dialog = PriceEditorDialog(self.pricing_path, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._refresh_usage()
 
     @staticmethod
     def _format_usage_cost(cost, currency: str) -> str:
