@@ -135,13 +135,15 @@ Automated TDD coverage will include:
 - missing/malformed pricing, unknown model, and malformed CSV row tolerance;
 - price editor validation, JSON save, date update, and immediate UI refresh.
 
+Secret fallback tests must never delete, overwrite, or substitute any of the three production credential usernames or their real values. Live fallback verification uses a dedicated extra fake username such as `fallback_test_api_key`, a known non-secret value, a temporary `.env`, and an injected test-only secret-name mapping. Cleanup is limited to that exact extra username and temporary file. The production usernames `openai_api_key`, `gemini_api_key`, and `minimax_api_key` are read-only during this test.
+
 Fresh full-suite verification is required before any completion claim. Windows live verification will then attempt to:
 
 1. Run migration against the real configured `.env`.
 2. Read the resulting values back through `keyring.get_password()`.
 3. Confirm corresponding `SpeedyType` entries in Windows Credential Manager where the environment permits inspection.
 4. Run minimal provider connection tests using the resolved daemon configuration.
-5. Remove a test credential temporarily and verify `.env` fallback using a controlled test value, without exposing or losing the real key.
+5. Create the dedicated extra credential `fallback_test_api_key` with a known fake value, use an injected test-only mapping plus a temporary `.env` to verify credential deletion and `.env` fallback, then delete only that extra credential. This step must not delete, overwrite, rename, or substitute `openai_api_key`, `gemini_api_key`, `minimax_api_key`, or any real credential value.
 
 Any live step blocked by absent credentials, network access, Credential Manager visibility, or provider state is reported as not verified. Automated tests do not substitute for those external checks.
 
