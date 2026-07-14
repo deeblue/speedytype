@@ -50,58 +50,81 @@ class UsageSummary:
     usage_available: bool = True
 
 
-def _price(value: object, label: str, warning_messages: list[str]) -> Decimal | None:
-    try:
-        price = Decimal(str(value))
-    except (InvalidOperation, ValueError):
-        warning_messages.append(f"Invalid price for {label}.")
-        return None
+def _price(value: object, label: str) -> Decimal:
+    if not isinstance(value, Decimal):
+        raise ValueError(f"Price for {label} must be a JSON number.")
+    price = value
     if not price.is_finite() or price < 0:
-        warning_messages.append(f"Invalid price for {label}.")
-        return None
+        raise ValueError(f"Price for {label} must be finite and non-negative.")
     return price
+
+
+def _validate_date_string(value: object) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) != 10
+        or value[4] != "-"
+        or value[7] != "-"
+        or not (value[:4] + value[5:7] + value[8:]).isdigit()
+    ):
+        raise ValueError("Pricing updated_date must use YYYY-MM-DD.")
+    try:
+        date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError("Pricing updated_date must be a valid calendar date.") from exc
+    return value
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"Invalid JSON numeric constant: {value}.")
 
 
 def load_pricing(path: str | Path) -> PricingData:
     pricing_path = Path(path)
     with pricing_path.open("r", encoding="utf-8") as pricing_file:
-        raw = json.load(pricing_file, parse_float=Decimal, parse_int=Decimal)
+        raw = json.load(
+            pricing_file,
+            parse_float=Decimal,
+            parse_int=Decimal,
+            parse_constant=_reject_json_constant,
+        )
     if not isinstance(raw, dict):
         raise ValueError("Pricing data must be a JSON object.")
+    if set(raw) != {"updated_date", "currency", "stt", "llm"}:
+        raise ValueError("Pricing data has missing or unsupported fields.")
 
-    updated_date = raw.get("updated_date")
+    updated_date = _validate_date_string(raw.get("updated_date"))
     currency = raw.get("currency")
     stt_raw = raw.get("stt")
     llm_raw = raw.get("llm")
-    if not isinstance(updated_date, str) or not updated_date.strip():
-        raise ValueError("Pricing updated_date must be a non-empty string.")
     if not isinstance(currency, str) or not currency.strip():
         raise ValueError("Pricing currency must be a non-empty string.")
-    if not isinstance(stt_raw, dict) or not isinstance(llm_raw, dict):
-        raise ValueError("Pricing stt and llm fields must be objects.")
+    if not isinstance(stt_raw, dict) or not isinstance(llm_raw, dict) or not stt_raw or not llm_raw:
+        raise ValueError("Pricing stt and llm fields must be non-empty objects.")
 
-    warning_messages: list[str] = []
     stt: dict[str, Decimal | None] = {}
     for model, model_data in stt_raw.items():
-        if not isinstance(model, str) or not isinstance(model_data, dict):
+        if (
+            not isinstance(model, str)
+            or not model.strip()
+            or not isinstance(model_data, dict)
+            or set(model_data) != {"per_minute"}
+        ):
             raise ValueError("Each STT pricing entry must be a named object.")
-        stt[model] = _price(model_data.get("per_minute"), f"STT model {model}", warning_messages)
+        stt[model] = _price(model_data["per_minute"], f"STT model {model}")
 
     llm: dict[str, LlmPricing] = {}
     for model, model_data in llm_raw.items():
-        if not isinstance(model, str) or not isinstance(model_data, dict):
+        if (
+            not isinstance(model, str)
+            or not model.strip()
+            or not isinstance(model_data, dict)
+            or set(model_data) != {"input_per_million", "output_per_million"}
+        ):
             raise ValueError("Each LLM pricing entry must be a named object.")
         llm[model] = LlmPricing(
-            input_per_million=_price(
-                model_data.get("input_per_million"),
-                f"LLM model {model} input",
-                warning_messages,
-            ),
-            output_per_million=_price(
-                model_data.get("output_per_million"),
-                f"LLM model {model} output",
-                warning_messages,
-            ),
+            input_per_million=_price(model_data["input_per_million"], f"LLM model {model} input"),
+            output_per_million=_price(model_data["output_per_million"], f"LLM model {model} output"),
         )
 
     return PricingData(
@@ -109,7 +132,7 @@ def load_pricing(path: str | Path) -> PricingData:
         currency=currency,
         stt=MappingProxyType(stt),
         llm=MappingProxyType(llm),
-        warnings=tuple(warning_messages),
+        warnings=(),
     )
 
 
@@ -119,10 +142,34 @@ def _validated_saved_price(value: object, label: str) -> Decimal:
     return value
 
 
-def _json_number(value: Decimal) -> int | float:
-    if value == value.to_integral_value():
-        return int(value)
-    return float(value)
+def _json_string(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _write_pricing_json(file: TextIO, data: PricingData) -> None:
+    file.write("{\n")
+    file.write(f'  "updated_date": {_json_string(data.updated_date)},\n')
+    file.write(f'  "currency": {_json_string(data.currency)},\n')
+    file.write('  "stt": {\n')
+    for index, (model, price) in enumerate(data.stt.items()):
+        comma = "," if index + 1 < len(data.stt) else ""
+        file.write(f"    {_json_string(model)}: {{\n")
+        file.write(f'      "per_minute": {price.to_eng_string()}\n')
+        file.write(f"    }}{comma}\n")
+    file.write("  },\n")
+    file.write('  "llm": {\n')
+    for index, (model, prices) in enumerate(data.llm.items()):
+        comma = "," if index + 1 < len(data.llm) else ""
+        file.write(f"    {_json_string(model)}: {{\n")
+        file.write(f'      "input_per_million": {prices.input_per_million.to_eng_string()},\n')
+        file.write(f'      "output_per_million": {prices.output_per_million.to_eng_string()}\n')
+        file.write(f"    }}{comma}\n")
+    file.write("  }\n")
+    file.write("}\n")
+
+
+def _file_identity(stat_result: os.stat_result) -> tuple[int, int, int]:
+    return (stat_result.st_dev, stat_result.st_ino, stat_result.st_ctime_ns)
 
 
 def save_pricing(
@@ -138,15 +185,18 @@ def save_pricing(
         raise ValueError("Pricing data contains invalid prices.")
     if not isinstance(data.stt, Mapping) or not isinstance(data.llm, Mapping):
         raise ValueError("Pricing stt and llm fields must be mappings.")
+    if not data.stt or not data.llm:
+        raise ValueError("Pricing stt and llm mappings must not be empty.")
+    _validate_date_string(data.updated_date)
 
-    stt: dict[str, dict[str, int | float]] = {}
+    stt: dict[str, Decimal] = {}
     for model, price in data.stt.items():
         if not isinstance(model, str) or not model.strip():
             raise ValueError("Each STT pricing entry must have a non-empty model name.")
         validated = _validated_saved_price(price, f"STT model {model} price")
-        stt[model] = {"per_minute": _json_number(validated)}
+        stt[model] = validated
 
-    llm: dict[str, dict[str, int | float]] = {}
+    llm: dict[str, LlmPricing] = {}
     for model, prices in data.llm.items():
         if not isinstance(model, str) or not model.strip() or not isinstance(prices, LlmPricing):
             raise ValueError("Each LLM pricing entry must have a non-empty model name and prices.")
@@ -156,36 +206,43 @@ def save_pricing(
         output_price = _validated_saved_price(
             prices.output_per_million, f"LLM model {model} output price"
         )
-        llm[model] = {
-            "input_per_million": _json_number(input_price),
-            "output_per_million": _json_number(output_price),
-        }
+        llm[model] = LlmPricing(input_price, output_price)
 
     selected_date = date.today() if today is None else today
-    if not isinstance(selected_date, date):
-        raise ValueError("today must be a date.")
-    serialized = {
-        "updated_date": selected_date.isoformat(),
-        "currency": data.currency.strip(),
-        "stt": stt,
-        "llm": llm,
-    }
+    if type(selected_date) is not date:
+        raise ValueError("today must be an exact date, not a datetime or other type.")
+    serialized = PricingData(
+        updated_date=selected_date.isoformat(),
+        currency=data.currency.strip(),
+        stt=MappingProxyType(stt),
+        llm=MappingProxyType(llm),
+    )
 
     pricing_path = Path(path)
     temp_path = pricing_path.with_suffix(pricing_path.suffix + ".tmp")
-    owns_temp = False
+    owned_identity: tuple[int, int, int] | None = None
     try:
         with temp_path.open("x", encoding="utf-8", newline="\n") as temp_file:
-            owns_temp = True
-            json.dump(serialized, temp_file, ensure_ascii=False, indent=2)
-            temp_file.write("\n")
-            temp_file.flush()
-            os.fsync(temp_file.fileno())
+            try:
+                _write_pricing_json(temp_file, serialized)
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+            finally:
+                owned_identity = _file_identity(os.fstat(temp_file.fileno()))
         temp_path.replace(pricing_path)
-        owns_temp = False
+        owned_identity = None
     except Exception:
-        if owns_temp:
-            temp_path.unlink(missing_ok=True)
+        if owned_identity is not None:
+            try:
+                current_identity = _file_identity(temp_path.stat())
+            except OSError:
+                pass
+            else:
+                if current_identity == owned_identity:
+                    try:
+                        temp_path.unlink()
+                    except FileNotFoundError:
+                        pass
         raise
 
 

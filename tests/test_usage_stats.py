@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import csv
 import json
-from datetime import date
+from dataclasses import replace
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
@@ -104,11 +105,11 @@ def test_save_pricing_cleans_partial_temp_and_preserves_original_on_write_failur
     original = b'{"original":true}\n'
     pricing_path.write_bytes(original)
 
-    def partial_dump(data, file, **kwargs):
+    def partial_write(file, data):
         file.write('{"partial":')
         raise OSError("disk full")
 
-    monkeypatch.setattr("speedytype.usage_stats.json.dump", partial_dump)
+    monkeypatch.setattr("speedytype.usage_stats._write_pricing_json", partial_write)
 
     with pytest.raises(OSError, match="disk full"):
         save_pricing(pricing_path, editable_pricing())
@@ -137,6 +138,99 @@ def test_save_pricing_cleans_temp_and_preserves_original_on_replace_failure(
 
     assert pricing_path.read_bytes() == original
     assert not pricing_path.with_suffix(".json.tmp").exists()
+
+
+def test_save_pricing_does_not_delete_foreign_temp_swapped_before_cleanup(
+    tmp_path: Path, monkeypatch
+) -> None:
+    pricing_path = tmp_path / "pricing.json"
+    temp_path = pricing_path.with_suffix(".json.tmp")
+    original = b'{"original":true}\n'
+    foreign = b'{"foreign":true}\n'
+    pricing_path.write_bytes(original)
+
+    def swap_before_failure(source: Path, target: Path):
+        source.unlink()
+        source.write_bytes(foreign)
+        raise OSError("replace raced")
+
+    monkeypatch.setattr(Path, "replace", swap_before_failure)
+
+    with pytest.raises(OSError, match="replace raced"):
+        save_pricing(pricing_path, editable_pricing())
+
+    assert pricing_path.read_bytes() == original
+    assert temp_path.read_bytes() == foreign
+
+
+def test_save_pricing_preserves_preexisting_temp_it_does_not_own(tmp_path: Path) -> None:
+    pricing_path = tmp_path / "pricing.json"
+    temp_path = pricing_path.with_suffix(".json.tmp")
+    foreign = b'{"foreign":true}\n'
+    write_pricing(pricing_path)
+    temp_path.write_bytes(foreign)
+
+    with pytest.raises(FileExistsError):
+        save_pricing(pricing_path, editable_pricing())
+
+    assert temp_path.read_bytes() == foreign
+
+
+def test_save_pricing_roundtrips_long_decimal_without_binary_float_loss(tmp_path: Path) -> None:
+    pricing_path = tmp_path / "pricing.json"
+    precise = Decimal("0.123456789012345678901234567890123456789")
+
+    save_pricing(pricing_path, editable_pricing(stt_price=precise), today=date(2030, 2, 3))
+
+    assert precise.to_eng_string() in pricing_path.read_text(encoding="utf-8")
+    assert load_pricing(pricing_path).stt["whisper-1"] == precise
+
+
+def test_save_pricing_rejects_datetime_today_without_changing_original(tmp_path: Path) -> None:
+    pricing_path = tmp_path / "pricing.json"
+    original = b'{"original":true}\n'
+    pricing_path.write_bytes(original)
+
+    with pytest.raises(ValueError, match="exact date"):
+        save_pricing(pricing_path, editable_pricing(), today=datetime(2030, 2, 3, 4, 5))
+
+    assert pricing_path.read_bytes() == original
+
+
+@pytest.mark.parametrize("empty_field", ["stt", "llm"])
+def test_save_pricing_rejects_empty_required_price_mapping(
+    tmp_path: Path, empty_field: str
+) -> None:
+    pricing_path = tmp_path / "pricing.json"
+    original = b'{"original":true}\n'
+    pricing_path.write_bytes(original)
+    data = replace(editable_pricing(), **{empty_field: MappingProxyType({})})
+
+    with pytest.raises(ValueError, match="must not be empty"):
+        save_pricing(pricing_path, data)
+
+    assert pricing_path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        '{"updated_date":"2026-02-30","currency":"USD","stt":{"x":{"per_minute":1}},"llm":{"y":{"input_per_million":1,"output_per_million":1}}}',
+        '{"updated_date":"20260715","currency":"USD","stt":{"x":{"per_minute":1}},"llm":{"y":{"input_per_million":1,"output_per_million":1}}}',
+        '{"updated_date":"2026-07-15","currency":"USD","stt":{},"llm":{"y":{"input_per_million":1,"output_per_million":1}}}',
+        '{"updated_date":"2026-07-15","currency":"USD","stt":{"x":{"per_minute":1}},"llm":{}}',
+        '{"updated_date":"2026-07-15","currency":"USD","stt":{" ":{"per_minute":1}},"llm":{"y":{"input_per_million":1,"output_per_million":1}}}',
+        '{"updated_date":"2026-07-15","currency":"USD","stt":{"x":{"per_minute":"0.1"}},"llm":{"y":{"input_per_million":1,"output_per_million":1}}}',
+        '{"updated_date":"2026-07-15","currency":"USD","stt":{"x":{"per_minute":true}},"llm":{"y":{"input_per_million":1,"output_per_million":1}}}',
+        '{"updated_date":"2026-07-15","currency":"USD","stt":{"x":{"per_minute":null}},"llm":{"y":{"input_per_million":1,"output_per_million":1}}}',
+    ],
+)
+def test_load_pricing_rejects_strict_schema_violations(tmp_path: Path, contents: str) -> None:
+    pricing_path = tmp_path / "pricing.json"
+    pricing_path.write_text(contents, encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        load_pricing(pricing_path)
 
 
 def test_load_pricing_reads_decimal_schema_and_all_approved_models(tmp_path: Path) -> None:

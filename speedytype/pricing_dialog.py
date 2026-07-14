@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from types import MappingProxyType
 
@@ -18,6 +18,19 @@ from PyQt6.QtWidgets import (
 )
 
 from speedytype.usage_stats import LlmPricing, PricingData, load_pricing, save_pricing
+
+
+EDITOR_MAXIMUM = Decimal("1000000")
+EDITOR_QUANTUM = Decimal("0.00000001")
+
+
+def _is_editor_representable(value: Decimal) -> bool:
+    if value < 0 or value > EDITOR_MAXIMUM:
+        return False
+    try:
+        return value.quantize(EDITOR_QUANTUM) == value
+    except InvalidOperation:
+        return False
 
 
 class PriceEditorDialog(QDialog):
@@ -77,6 +90,14 @@ class PriceEditorDialog(QDialog):
                 raise ValueError("Pricing contains invalid values.")
         except (OSError, ValueError):
             self.error_label.setText("價格資料無法載入，請檢查 pricing.json。")
+            self.save_button.setEnabled(False)
+            return
+
+        all_prices = list(pricing.stt.values())
+        for prices in pricing.llm.values():
+            all_prices.extend((prices.input_per_million, prices.output_per_million))
+        if any(price is None or not _is_editor_representable(price) for price in all_prices):
+            self.error_label.setText("價格資料超出編輯器支援範圍，原始檔案未變更。")
             self.save_button.setEnabled(False)
             return
 

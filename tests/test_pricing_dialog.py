@@ -81,6 +81,47 @@ def test_editor_cancel_does_not_change_source(qapp, tmp_path) -> None:
     assert dialog.result() == dialog.DialogCode.Rejected
 
 
+@pytest.mark.parametrize("price_token", ["0.123456789", "1000000.00000001", "1000001"])
+def test_editor_rejects_source_price_it_cannot_represent_without_changing_bytes(
+    qapp, tmp_path, price_token
+) -> None:
+    pricing_path = tmp_path / "pricing.json"
+    original = (
+        '{"updated_date":"2026-07-14","currency":"USD",'
+        f'"stt":{{"whisper-1":{{"per_minute":{price_token}}}}},'
+        '"llm":{"model":{"input_per_million":1,"output_per_million":2}}}\n'
+    ).encode()
+    pricing_path.write_bytes(original)
+
+    dialog = PriceEditorDialog(pricing_path)
+    button(dialog, "儲存").click()
+
+    assert dialog.findChildren(QDoubleSpinBox) == []
+    assert dialog.error_label.text() == "價格資料超出編輯器支援範圍，原始檔案未變更。"
+    assert not button(dialog, "儲存").isEnabled()
+    assert pricing_path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        '{"updated_date":"2026-07-14","currency":"USD","stt":{},"llm":{"model":{"input_per_million":1,"output_per_million":2}}}',
+        '{"updated_date":"2026-07-14","currency":"USD","stt":{"whisper-1":{"per_minute":1}},"llm":{}}',
+    ],
+)
+def test_editor_rejects_empty_required_mapping_without_controls(
+    qapp, tmp_path, contents
+) -> None:
+    pricing_path = tmp_path / "pricing.json"
+    pricing_path.write_text(contents, encoding="utf-8")
+
+    dialog = PriceEditorDialog(pricing_path)
+
+    assert dialog.findChildren(QDoubleSpinBox) == []
+    assert dialog.error_label.text() == "價格資料無法載入，請檢查 pricing.json。"
+    assert not button(dialog, "儲存").isEnabled()
+
+
 @pytest.mark.parametrize("contents", [None, "{not-json", '{"updated_date":"x"}', '{"updated_date":"x","currency":"USD","stt":{"bad":{"per_minute":-1}},"llm":{}}'])
 def test_missing_or_malformed_source_has_error_and_no_editable_controls(
     qapp, tmp_path, contents
