@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import sys
+import warnings
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
@@ -16,6 +17,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QPushButton,
+    QScrollArea,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -27,7 +29,7 @@ from speedytype.config import AppConfig
 from speedytype.env_writer import mask_secret, test_gemini_key, test_minimax_key, test_openai_key
 from speedytype.icon import build_app_icon
 from speedytype.hotkey import PlatformPermissionError, capture_hotkey
-from speedytype.paths import default_env_path, default_settings_path
+from speedytype.paths import default_env_path, default_pricing_path, default_settings_path
 from speedytype.secrets_store import SecretStoreError, delete_api_key, set_api_key
 from speedytype.settings import (
     MAX_MAX_RECORD_SECONDS,
@@ -40,6 +42,7 @@ from speedytype.settings import (
     load_settings,
     save_settings,
 )
+from speedytype.usage_stats import calculate_usage
 
 
 # Best-effort, non-exhaustive: a static denylist of well-known Windows/common
@@ -166,11 +169,13 @@ class SettingsDialog(QDialog):
         env_path: str | Path | None,
         settings_path: str | Path | None,
         parent=None,
+        pricing_path: str | Path | None = None,
     ) -> None:
         super().__init__(parent)
         self.config = config
         self.env_path = str(env_path or default_env_path())
         self.settings_path = str(settings_path or default_settings_path())
+        self.pricing_path = Path(pricing_path) if pricing_path is not None else default_pricing_path()
         self._saved_key_values = {
             "OPENAI_API_KEY": config.openai_api_key,
             "GEMINI_API_KEY": config.gemini_api_key,
@@ -188,16 +193,26 @@ class SettingsDialog(QDialog):
         self._autostart_enabled, _ = query_autostart()
 
         layout = QVBoxLayout(self)
+        self.settings_scroll_area = QScrollArea()
+        self.settings_scroll_area.setWidgetResizable(True)
+        self.settings_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_contents = QWidget()
+        settings_layout = QVBoxLayout(scroll_contents)
+        self.settings_scroll_area.setWidget(scroll_contents)
 
-        layout.addWidget(self._build_record_seconds_group())
-        layout.addWidget(self._build_hotkey_group())
-        layout.addWidget(self._build_device_group())
-        layout.addWidget(self._build_vocab_group())
-        layout.addWidget(self._build_keys_group())
+        settings_layout.addWidget(self._build_record_seconds_group())
+        settings_layout.addWidget(self._build_hotkey_group())
+        settings_layout.addWidget(self._build_device_group())
+        settings_layout.addWidget(self._build_vocab_group())
+        settings_layout.addWidget(self._build_keys_group())
+        settings_layout.addWidget(self._build_usage_group())
+        self._refresh_usage()
 
         self.autostart_checkbox = QCheckBox("開機時自動啟動")
         self.autostart_checkbox.setChecked(self._autostart_enabled)
-        layout.addWidget(self.autostart_checkbox)
+        settings_layout.addWidget(self.autostart_checkbox)
+        settings_layout.addStretch(1)
+        layout.addWidget(self.settings_scroll_area, 1)
 
         self.status_label = QLabel("")
         layout.addWidget(self.status_label)
@@ -229,6 +244,91 @@ class SettingsDialog(QDialog):
         group_layout.addWidget(self.slider_label)
         group_layout.addWidget(self._restart_note())
         return group
+
+    # --- usage and estimated costs -----------------------------------------
+
+    def _build_usage_group(self) -> QGroupBox:
+        group = QGroupBox("用量與估算費用")
+        group_layout = QVBoxLayout(group)
+
+        self.usage_models_label = QLabel("")
+        self.usage_stt_label = QLabel("")
+        self.usage_llm_label = QLabel("")
+        self.usage_total_label = QLabel("")
+        self.usage_pricing_note_label = QLabel("")
+        self.usage_warning_label = QLabel("")
+        for label in (
+            self.usage_models_label,
+            self.usage_stt_label,
+            self.usage_llm_label,
+            self.usage_total_label,
+            self.usage_pricing_note_label,
+            self.usage_warning_label,
+        ):
+            label.setWordWrap(True)
+            group_layout.addWidget(label)
+        return group
+
+    @staticmethod
+    def _format_usage_cost(cost, currency: str) -> str:
+        if cost is None:
+            return "無法估算"
+        currency_suffix = f" {currency}" if currency else ""
+        return f"${cost:.6f}{currency_suffix}"
+
+    def _refresh_usage(self) -> None:
+        # The summary itself retains all warning details; suppress the pure
+        # parser's Python warning here because the same condition is rendered
+        # visibly in the dialog.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            summary = calculate_usage(self.config.latency_log_path, self.pricing_path)
+
+        stt_models = ", ".join(summary.stt_models) or "無紀錄"
+        llm_models = ", ".join(summary.llm_models) or "無紀錄"
+        self.usage_models_label.setText(f"目前使用模型：STT {stt_models}；LLM {llm_models}")
+        usage_unavailable = any(
+            message.startswith("Usage data unavailable:") for message in summary.warnings
+        )
+        stt_cost = None if usage_unavailable else summary.stt_cost
+        llm_cost = None if usage_unavailable else summary.llm_cost
+        total_cost = None if usage_unavailable else summary.total_cost
+        self.usage_stt_label.setText(
+            f"STT：{summary.stt_calls:,} 次呼叫，{summary.stt_minutes:.2f} 分鐘，"
+            f"估算費用 {self._format_usage_cost(stt_cost, summary.currency)}"
+        )
+        self.usage_llm_label.setText(
+            f"LLM：{summary.llm_calls:,} 次呼叫，輸入 {summary.llm_input_tokens:,} tokens，"
+            f"輸出 {summary.llm_output_tokens:,} tokens，"
+            f"估算費用 {self._format_usage_cost(llm_cost, summary.currency)}"
+        )
+        self.usage_total_label.setText(
+            f"總估算費用：{self._format_usage_cost(total_cost, summary.currency)}"
+        )
+
+        pricing_date = summary.pricing_updated_date or "無法取得"
+        self.usage_pricing_note_label.setText(
+            f"價格更新日期：{pricing_date}\n估算費用，非實際帳單，價格可能已變動"
+        )
+
+        warning_messages = []
+        if summary.stt_cost is None or summary.llm_cost is None or summary.total_cost is None:
+            warning_messages.append("價格資料缺失，無法估算費用")
+        if summary.legacy_inferred_rows:
+            warning_messages.append(
+                f"有 {summary.legacy_inferred_rows:,} 筆舊版紀錄依標籤推定為每日用量"
+            )
+        if usage_unavailable:
+            warning_messages.append("用量資料缺失，無法確認實際用量與費用")
+        skipped_rows = sum(
+            message.startswith("Skipped malformed CSV row") for message in summary.warnings
+        )
+        if skipped_rows:
+            warning_messages.append(f"已略過 {skipped_rows:,} 筆格式錯誤的用量紀錄")
+        uncategorized_warnings = len(summary.warnings) - int(usage_unavailable) - skipped_rows
+        if uncategorized_warnings > 0:
+            warning_messages.append(f"其他用量或價格資料警告：{uncategorized_warnings:,} 筆")
+        self.usage_warning_label.setText("；".join(warning_messages))
 
     def _on_slider_changed(self, value: int) -> None:
         self.slider_label.setText(format_seconds_readable(value))
@@ -408,12 +508,12 @@ class SettingsDialog(QDialog):
         group_layout.addWidget(self.openai_field)
         group_layout.addWidget(self.gemini_field)
         group_layout.addWidget(self.minimax_field)
-        group_layout.addWidget(
-            QLabel(
-                "金鑰主要儲存於系統保密管理機制（Windows Credential Manager / macOS Keychain）；"
-                ".env 僅作為 keyring 不可用時的相容備援。"
-            )
+        storage_note = QLabel(
+            "金鑰主要儲存於系統保密管理機制（Windows Credential Manager / macOS Keychain）；"
+            ".env 僅作為 keyring 不可用時的相容備援。"
         )
+        storage_note.setWordWrap(True)
+        group_layout.addWidget(storage_note)
         return group
 
     # --- save/cancel ---------------------------------------------------------

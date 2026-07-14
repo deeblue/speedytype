@@ -1,8 +1,11 @@
+import csv
 import json
+from dataclasses import replace
 
 import pytest
 import sounddevice as sd
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication, QScrollArea
 
 from speedytype.audio import list_input_devices
 from speedytype.settings import AppSettings, DEFAULT_VOCAB_TERMS, save_settings
@@ -19,6 +22,169 @@ def make_config():
     from speedytype.config import AppConfig
 
     return AppConfig(openai_api_key="sk-test-key-1234", gemini_api_key="gem-test-key-5678", minimax_api_key="mm-test-key-9999")
+
+
+USAGE_CSV_FIELDS = [
+    "usage_scope",
+    "run_label",
+    "recording_seconds",
+    "hybrid_request_count",
+    "stt_model",
+    "gemini_seconds",
+    "llm_model",
+    "llm_input_tokens",
+    "llm_output_tokens",
+]
+
+
+def write_usage_csv(path, rows):
+    with path.open("w", encoding="utf-8", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=USAGE_CSV_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def write_test_pricing(path):
+    path.write_text(
+        json.dumps(
+            {
+                "updated_date": "2026-07-14",
+                "currency": "USD",
+                "stt": {"whisper-1": {"per_minute": 0.006}},
+                "llm": {
+                    "gemini-3.1-flash-lite": {
+                        "input_per_million": 0.25,
+                        "output_per_million": 1.50,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def known_usage_dialog(tmp_path, pricing_path=None):
+    csv_path = tmp_path / "latency.csv"
+    settings_path = tmp_path / "settings.json"
+    write_usage_csv(
+        csv_path,
+        [
+            {
+                "usage_scope": "daily",
+                "run_label": "real_voice",
+                "recording_seconds": 60,
+                "stt_model": "whisper-1",
+                "gemini_seconds": 1,
+                "llm_model": "gemini-3.1-flash-lite",
+                "llm_input_tokens": 1000,
+                "llm_output_tokens": 200,
+            },
+            {
+                "usage_scope": "daily",
+                "recording_seconds": 30,
+                "hybrid_request_count": 1,
+                "stt_model": "whisper-1",
+                "gemini_seconds": 1,
+                "llm_model": "gemini-3.1-flash-lite",
+                "llm_input_tokens": 500,
+                "llm_output_tokens": 100,
+            },
+            {
+                "usage_scope": "",
+                "run_label": "",
+                "recording_seconds": 30,
+                "stt_model": "",
+            },
+        ],
+    )
+    save_settings(settings_path, AppSettings())
+    config = replace(make_config(), latency_log_path=csv_path)
+    return SettingsDialog(
+        config,
+        tmp_path / ".env",
+        settings_path,
+        pricing_path=pricing_path,
+    )
+
+
+def test_usage_group_shows_known_totals_models_price_date_and_disclaimer(qapp, tmp_path):
+    pricing_path = tmp_path / "pricing.json"
+    write_test_pricing(pricing_path)
+
+    dialog = known_usage_dialog(tmp_path, pricing_path)
+
+    assert "whisper-1" in dialog.usage_models_label.text()
+    assert "gemini-3.1-flash-lite" in dialog.usage_models_label.text()
+    assert "3" in dialog.usage_stt_label.text()
+    assert "2.00" in dialog.usage_stt_label.text()
+    assert "$0.012000" in dialog.usage_stt_label.text()
+    assert "2" in dialog.usage_llm_label.text()
+    assert "1,500" in dialog.usage_llm_label.text()
+    assert "300" in dialog.usage_llm_label.text()
+    assert "$0.000825" in dialog.usage_llm_label.text()
+    assert "$0.012825" in dialog.usage_total_label.text()
+    assert "2026-07-14" in dialog.usage_pricing_note_label.text()
+    assert "估算費用，非實際帳單，價格可能已變動" in dialog.usage_pricing_note_label.text()
+    assert "舊版" in dialog.usage_warning_label.text()
+    assert "推定" in dialog.usage_warning_label.text()
+
+
+@pytest.mark.parametrize("pricing_contents", [None, "{not-json"])
+def test_usage_group_keeps_usage_visible_when_pricing_is_unavailable(
+    qapp, tmp_path, pricing_contents
+):
+    pricing_path = tmp_path / "pricing.json"
+    if pricing_contents is not None:
+        pricing_path.write_text(pricing_contents, encoding="utf-8")
+
+    dialog = known_usage_dialog(tmp_path, pricing_path)
+
+    assert "3" in dialog.usage_stt_label.text()
+    assert "2.00" in dialog.usage_stt_label.text()
+    assert "1,500" in dialog.usage_llm_label.text()
+    assert "300" in dialog.usage_llm_label.text()
+    assert "價格資料缺失，無法估算費用" in dialog.usage_warning_label.text()
+    assert "$0.000000" not in dialog.usage_total_label.text()
+
+
+@pytest.mark.parametrize("csv_contents", [None, "usage_scope,recording_seconds\ndaily,broken\n"])
+def test_usage_group_handles_missing_or_malformed_latency_csv(qapp, tmp_path, csv_contents):
+    csv_path = tmp_path / "latency.csv"
+    settings_path = tmp_path / "settings.json"
+    pricing_path = tmp_path / "pricing.json"
+    if csv_contents is not None:
+        csv_path.write_text(csv_contents, encoding="utf-8")
+    write_test_pricing(pricing_path)
+    save_settings(settings_path, AppSettings())
+
+    dialog = SettingsDialog(
+        replace(make_config(), latency_log_path=csv_path),
+        tmp_path / ".env",
+        settings_path,
+        pricing_path=pricing_path,
+    )
+
+    assert "0" in dialog.usage_stt_label.text()
+    assert "0" in dialog.usage_llm_label.text()
+    if csv_contents is None:
+        assert "用量資料缺失，無法確認實際用量與費用" in dialog.usage_warning_label.text()
+        assert "$0.000000" not in dialog.usage_total_label.text()
+    else:
+        assert "已略過 1 筆格式錯誤的用量紀錄" in dialog.usage_warning_label.text()
+
+
+def test_settings_content_scrolls_to_keep_actions_reachable_on_short_screens(qapp, tmp_path):
+    settings_path = tmp_path / "settings.json"
+    save_settings(settings_path, AppSettings())
+
+    dialog = SettingsDialog(make_config(), tmp_path / ".env", settings_path)
+
+    assert dialog.findChild(QScrollArea) is not None
+    assert dialog.minimumSizeHint().height() <= qapp.primaryScreen().availableGeometry().height()
+    assert (
+        dialog.settings_scroll_area.horizontalScrollBarPolicy()
+        == Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    )
 
 
 def test_format_seconds_readable():
