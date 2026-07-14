@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
+import sys
 import tempfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from speedytype.config import load_config
 from speedytype.env_writer import test_gemini_key, test_minimax_key, test_openai_key

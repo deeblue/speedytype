@@ -1,9 +1,29 @@
 from pathlib import Path
+import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
 
 from scripts import verify_keyring_live
+
+
+def test_verifier_imports_when_run_as_a_direct_script_from_isolated_python():
+    script_path = Path(verify_keyring_live.__file__).resolve()
+    code = (
+        "import runpy, site, sys; "
+        "sys.path.append(site.getusersitepackages()); "
+        f"runpy.run_path({str(script_path)!r}, run_name='verify_import_test')"
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-I", "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_isolated_fallback_mutates_only_test_username_and_uses_temp_env(tmp_path, monkeypatch):
