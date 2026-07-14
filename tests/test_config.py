@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from speedytype.config import ConfigError, load_config, resolve_mic_device_setting
+from speedytype.secrets_store import SecretResolution
 from speedytype.settings import AppSettings, save_settings
 
 
@@ -24,6 +25,30 @@ def test_load_config_reads_env_file(tmp_path: Path):
     assert config.openai_api_key == "sk-test"
     assert config.gemini_api_key == "gem-test"
     assert config.gemini_model == "gemini-test-flash"
+
+
+def test_load_config_uses_resolved_keyring_values(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=file-openai\nGEMINI_API_KEY=file-gemini\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "speedytype.config.resolve_api_keys",
+        lambda *a, **k: SecretResolution({
+            "OPENAI_API_KEY": "ring-openai",
+            "GEMINI_API_KEY": "ring-gemini",
+            "MINIMAX_API_KEY": "ring-minimax",
+        }),
+    )
+    config = load_config(env_file, settings_path=tmp_path / "settings.json")
+    assert config.openai_api_key == "ring-openai"
+    assert config.gemini_api_key == "ring-gemini"
+
+
+def test_load_config_missing_message_mentions_settings_and_env(tmp_path, monkeypatch):
+    monkeypatch.setattr("speedytype.config.resolve_api_keys", lambda *a, **k: SecretResolution({}))
+    with pytest.raises(ConfigError) as exc:
+        load_config(tmp_path / ".env", settings_path=tmp_path / "settings.json")
+    assert "設定頁面" in str(exc.value)
+    assert ".env" in str(exc.value)
 
 
 def test_load_config_reads_behavior_settings_from_settings_json(tmp_path: Path):
@@ -86,4 +111,5 @@ def test_load_config_reports_missing_required_keys(tmp_path: Path):
     message = str(exc.value)
     assert "Missing required configuration: OPENAI_API_KEY, GEMINI_API_KEY" in message
     assert str(env_file) in message
-    assert "Copy .env.example to .env" in message
+    assert "設定頁面" in message
+    assert "keyring 不可用時於 .env 提供備援值" in message
