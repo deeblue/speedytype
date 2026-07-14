@@ -35,22 +35,31 @@ def _status(passed: bool) -> str:
     return "PASS" if passed else "FAIL"
 
 
-def _safe_message(message: str, secret_values: Mapping[str, str]) -> str:
-    safe = message
-    for value in secret_values.values():
-        if value:
-            safe = safe.replace(value, "[REDACTED]")
-    return safe
-
-
 def _delete_fallback(key_names: Mapping[str, str] = FALLBACK_KEY_NAMES) -> None:
     username = key_names[FALLBACK_ENV_NAME]
-    assert username == FALLBACK_USERNAME, "refusing to delete a non-test credential"
+    if username != FALLBACK_USERNAME:
+        raise RuntimeError("refusing to delete a non-test credential")
+    current = get_api_key(
+        FALLBACK_ENV_NAME,
+        service_name=SERVICE_NAME,
+        key_names=key_names,
+    )
+    if current is None:
+        return
+    if current != FALLBACK_VALUE:
+        raise RuntimeError("refusing to delete an unexpected fallback credential value")
     delete_api_key(
         FALLBACK_ENV_NAME,
         service_name=SERVICE_NAME,
         key_names=key_names,
     )
+    remaining = get_api_key(
+        FALLBACK_ENV_NAME,
+        service_name=SERVICE_NAME,
+        key_names=key_names,
+    )
+    if remaining is not None:
+        raise RuntimeError("fallback test credential is still present after delete")
 
 
 def verify_isolated_fallback(temp_root: str | Path) -> bool:
@@ -58,11 +67,24 @@ def verify_isolated_fallback(temp_root: str | Path) -> bool:
     root = Path(temp_root).resolve()
     root.mkdir(parents=True, exist_ok=True)
     env_path = (root / "keyring-fallback-test.env").resolve()
-    assert env_path.is_relative_to(root), "fallback environment escaped temporary root"
+    if not env_path.is_relative_to(root):
+        raise RuntimeError("fallback environment escaped temporary root")
     env_path.write_text(f"{FALLBACK_ENV_NAME}={FALLBACK_VALUE}\n", encoding="utf-8")
 
     passed = False
+    cleanup_allowed = False
     try:
+        existing = get_api_key(
+            FALLBACK_ENV_NAME,
+            service_name=SERVICE_NAME,
+            key_names=FALLBACK_KEY_NAMES,
+        )
+        if existing not in (None, FALLBACK_VALUE):
+            raise RuntimeError("fallback test username contains an unexpected value")
+        cleanup_allowed = True
+        if existing == FALLBACK_VALUE:
+            _delete_fallback()
+
         set_api_key(
             FALLBACK_ENV_NAME,
             FALLBACK_VALUE,
@@ -85,17 +107,21 @@ def verify_isolated_fallback(temp_root: str | Path) -> bool:
             service_name=SERVICE_NAME,
             key_names=FALLBACK_KEY_NAMES,
         )
-        fallback_ok = resolution.values.get(FALLBACK_ENV_NAME) == FALLBACK_VALUE
+        fallback_ok = (
+            resolution.values.get(FALLBACK_ENV_NAME) == FALLBACK_VALUE
+            and FALLBACK_ENV_NAME in resolution.migrated
+        )
         print(f"isolated .env fallback: {_status(fallback_ok)}")
         passed = round_trip_ok and fallback_ok
     finally:
-        try:
-            _delete_fallback()
-        except SecretStoreError as exc:
-            passed = False
-            print(f"isolated cleanup: FAIL ({_safe_message(str(exc), {FALLBACK_ENV_NAME: FALLBACK_VALUE})})")
-        else:
-            print("isolated cleanup: PASS")
+        if cleanup_allowed:
+            try:
+                _delete_fallback()
+            except (SecretStoreError, RuntimeError):
+                passed = False
+                print("isolated cleanup: FAIL")
+            else:
+                print("isolated cleanup: PASS")
         env_path.unlink(missing_ok=True)
 
     return passed
@@ -104,7 +130,11 @@ def verify_isolated_fallback(temp_root: str | Path) -> bool:
 def run_live_verification(real_env_path: str | Path, fallback_root: str | Path) -> bool:
     """Run production read-only checks plus the isolated fallback exercise."""
     env_path = Path(real_env_path)
-    config = load_config(env_path)
+    temp_root = Path(fallback_root).resolve()
+    settings_path = (temp_root / "settings.json").resolve()
+    if not settings_path.is_relative_to(temp_root):
+        raise RuntimeError("verifier settings path escaped temporary root")
+    config = load_config(env_path, settings_path=settings_path)
     resolved_values = {
         "OPENAI_API_KEY": config.openai_api_key,
         "GEMINI_API_KEY": config.gemini_api_key,
@@ -134,11 +164,13 @@ def run_live_verification(real_env_path: str | Path, fallback_root: str | Path) 
     )
     for provider, check, value in provider_checks:
         if provider == "MiniMax" and not value:
-            print("provider MiniMax: SKIP (no resolved key)")
             continue
-        passed, message = check(value)
+        try:
+            passed, _message = check(value)
+        except Exception:
+            passed = False
         checks_ok = checks_ok and passed
-        print(f"provider {provider}: {_status(passed)} ({_safe_message(message, resolved_values)})")
+        print(f"provider {provider}: {_status(passed)}")
 
     return verify_isolated_fallback(fallback_root) and checks_ok
 

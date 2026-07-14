@@ -424,17 +424,17 @@ The separate `API` / `BJ 團隊` over-correction hypothesis was rejected after 1
 
 ### Architecture
 
-- `load_config(real_env_path)` delegates secret resolution to `resolve_api_keys()`. For each configured provider, the resolution order is OS keyring (`SpeedyType` service), process environment, then `.env` compatibility fallback.
+- `load_config(real_env_path, settings_path=<temporary settings.json>)` delegates secret resolution to `resolve_api_keys()` without creating or changing the production `settings.json`. For each configured provider, the resolution order is OS keyring (`SpeedyType` service), process environment, then `.env` compatibility fallback.
 - File-sourced values migrate only after a successful keyring write and exact read-back. Only the effective `.env` assignment whose parsed value still matches the verified migrated value is scrubbed; unrelated lines and changed source values are preserved.
 - The Settings dialog uses the same keyring-backed store for changed-key writes and deletes. Production usernames are `openai_api_key`, `gemini_api_key`, and `minimax_api_key` and are read-only in the fallback verifier.
-- `scripts/verify_keyring_live.py` performs production migration/readback and provider status checks without printing complete key values. Its isolated fallback exercise can mutate only the fixed `fallback_test_api_key` username, confines its `.env` to a supplied temporary directory, and hard-asserts that username immediately before every delete.
+- `scripts/verify_keyring_live.py` performs production migration/readback and prints only fixed provider `PASS`/`FAIL` status, never helper messages, exceptions, URLs, or response bodies. Its isolated fallback exercise can mutate only the fixed `fallback_test_api_key` username, confines its `.env` and settings file to a supplied temporary directory, uses explicit runtime guards that cannot be optimized away, refuses an unknown pre-existing value without mutation, and verifies absence after every delete. A fallback result passes only when `resolve_api_keys()` reports that the fake value was migrated from the temporary `.env`, so a lingering keyring value cannot masquerade as fallback success.
 
 ### Automated evidence
 
 - RED: `python -m pytest tests/test_keyring_live_script.py -v` failed during collection because `scripts.verify_keyring_live` did not yet exist, which was the expected missing-feature failure.
-- GREEN verifier safety tests: `python -m pytest tests/test_keyring_live_script.py -q` → `5 passed in 0.78s`. Coverage includes mutation-username isolation, temporary `.env` confinement, the pre-delete production-username rejection guard, cleanup-failure propagation, production read-only lookup, real env-path forwarding, complete-secret redaction from printed provider messages, and optional MiniMax absence.
-- Focused Part A regression set: `python -m pytest tests/test_keyring_live_script.py tests/test_secrets_store.py tests/test_config.py tests/test_settings_dialog.py -q` → `40 passed in 1.68s`.
-- Full suite: `python -m pytest -q` → `154 passed in 3.90s`.
+- GREEN verifier safety tests after pre-execution review: `python -m pytest tests/test_keyring_live_script.py -q` → `9 passed in 0.81s`. Coverage includes mutation-username isolation, foreign-value refusal with zero mutation, known-fake residue cleanup, delete readback enforcement, temporary `.env`/settings confinement, migration provenance, explicit production-username rejection, fixed provider output for returned messages and raised exceptions, production read-only lookup, and optional MiniMax absence.
+- Focused Part A regression set: `python -m pytest tests/test_keyring_live_script.py tests/test_secrets_store.py tests/test_config.py tests/test_settings_dialog.py -q` → `44 passed in 1.67s`.
+- Full suite: `python -m pytest -q` → `158 passed in 3.83s`.
 
 ### Live evidence
 
