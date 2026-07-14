@@ -26,6 +26,33 @@ def test_verifier_imports_when_run_as_a_direct_script_from_isolated_python():
     assert completed.returncode == 0, completed.stderr
 
 
+def test_main_passes_explicit_env_path_without_running_live_operations(tmp_path, monkeypatch):
+    selected_env = tmp_path / "selected.env"
+    calls = []
+    monkeypatch.setattr(
+        verify_keyring_live,
+        "run_live_verification",
+        lambda env_path, temp_root: calls.append((Path(env_path), Path(temp_root))) or True,
+    )
+
+    assert verify_keyring_live.main(["--env", str(selected_env)]) == 0
+    assert calls[0][0] == selected_env
+
+
+def test_main_defaults_to_app_data_env_without_running_live_operations(tmp_path, monkeypatch):
+    default_env = tmp_path / "default.env"
+    calls = []
+    monkeypatch.setattr(verify_keyring_live, "default_env_path", lambda: default_env)
+    monkeypatch.setattr(
+        verify_keyring_live,
+        "run_live_verification",
+        lambda env_path, temp_root: calls.append((Path(env_path), Path(temp_root))) or True,
+    )
+
+    assert verify_keyring_live.main([]) == 0
+    assert calls[0][0] == default_env
+
+
 def test_isolated_fallback_mutates_only_test_username_and_uses_temp_env(tmp_path, monkeypatch):
     mutations: list[tuple[str, str]] = []
     env_paths: list[Path] = []

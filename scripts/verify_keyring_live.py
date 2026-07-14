@@ -6,6 +6,7 @@ Its only writes and deletes use the fixed ``fallback_test_api_key`` username.
 
 from __future__ import annotations
 
+import argparse
 from collections.abc import Mapping
 from pathlib import Path
 import sys
@@ -178,9 +179,17 @@ def run_live_verification(real_env_path: str | Path, fallback_root: str | Path) 
     return verify_isolated_fallback(fallback_root) and checks_ok
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Verify SpeedyType keyring integration.")
+    parser.add_argument(
+        "--env",
+        type=Path,
+        default=default_env_path(),
+        help="Environment file to migrate/read (default: app data .env).",
+    )
+    args = parser.parse_args(argv)
     with tempfile.TemporaryDirectory(prefix="speedytype-keyring-live-") as temp_root:
-        passed = run_live_verification(default_env_path(), temp_root)
+        passed = run_live_verification(args.env, temp_root)
     print(f"live keyring verification: {_status(passed)}")
     return 0 if passed else 1
 
