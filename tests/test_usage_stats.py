@@ -194,7 +194,9 @@ def test_concurrent_saves_use_distinct_sibling_temp_paths(tmp_path: Path, monkey
     pricing_path = tmp_path / "pricing.json"
     write_pricing(pricing_path)
     real_write = usage_stats._write_pricing_json
+    real_replace = Path.replace
     lock = threading.Lock()
+    replace_lock = threading.Lock()
     both_writers_entered = threading.Event()
     temp_paths = []
     errors = []
@@ -214,7 +216,12 @@ def test_concurrent_saves_use_distinct_sibling_temp_paths(tmp_path: Path, monkey
         except Exception as exc:
             errors.append(exc)
 
+    def serialized_replace(source: Path, target: Path):
+        with replace_lock:
+            return real_replace(source, target)
+
     monkeypatch.setattr(usage_stats, "_write_pricing_json", synchronized_write)
+    monkeypatch.setattr(Path, "replace", serialized_replace)
     threads = [threading.Thread(target=save_in_thread) for _ in range(2)]
     for thread in threads:
         thread.start()
@@ -270,7 +277,7 @@ def test_save_pricing_serializer_escapes_and_roundtrips_json_strings(tmp_path: P
     pricing_path = tmp_path / "pricing.json"
     stt_model = 'stt"\\line\n\t\x01中文'
     llm_model = 'llm"\\line\r\b模型'
-    currency = 'U"S\\D\n\t\x02幣'
+    currency = '\t\x02U"S\\D\n幣\r'
     data = PricingData(
         updated_date="2026-07-14",
         currency=currency,

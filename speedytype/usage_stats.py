@@ -214,7 +214,7 @@ def save_pricing(
         raise ValueError("today must be an exact date, not a datetime or other type.")
     serialized = PricingData(
         updated_date=selected_date.isoformat(),
-        currency=data.currency.strip(),
+        currency=data.currency,
         stt=MappingProxyType(stt),
         llm=MappingProxyType(llm),
     )
