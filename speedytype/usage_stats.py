@@ -169,8 +169,8 @@ def _write_pricing_json(file: TextIO, data: PricingData) -> None:
     file.write("}\n")
 
 
-def _file_identity(stat_result: os.stat_result) -> tuple[int, int, int]:
-    return (stat_result.st_dev, stat_result.st_ino, stat_result.st_ctime_ns)
+def _file_identity(stat_result: os.stat_result) -> tuple[int, int]:
+    return (stat_result.st_dev, stat_result.st_ino)
 
 
 def save_pricing(
@@ -223,7 +223,7 @@ def save_pricing(
     temp_path = pricing_path.with_name(
         f"{pricing_path.name}.{secrets.token_hex(16)}.tmp"
     )
-    owned_identity: tuple[int, int, int] | None = None
+    owned_identity: tuple[int, int] | None = None
     try:
         with temp_path.open("x", encoding="utf-8", newline="\n") as temp_file:
             try:

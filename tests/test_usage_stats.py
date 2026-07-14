@@ -6,7 +6,8 @@ from dataclasses import replace
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
+import os
 import threading
 
 import pytest
@@ -148,6 +149,63 @@ def test_save_pricing_cleans_temp_and_preserves_original_on_replace_failure(
     assert attempted_temps[0].parent == pricing_path.parent
     assert attempted_temps[0].suffix == ".tmp"
     assert not attempted_temps[0].exists()
+
+
+def test_save_pricing_cleans_same_inode_when_handle_and_path_ctime_differ(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from speedytype import usage_stats
+
+    pricing_path = tmp_path / "pricing.json"
+    original = b'{"original":true}\n'
+    pricing_path.write_bytes(original)
+    attempted_temps = []
+    real_stat = Path.stat
+
+    monkeypatch.setattr(
+        usage_stats.os,
+        "fstat",
+        lambda fd: SimpleNamespace(st_dev=10, st_ino=20, st_ctime_ns=100),
+    )
+
+    def path_stat_with_changed_ctime(path: Path, *args, **kwargs):
+        if path.suffix == ".tmp":
+            return SimpleNamespace(st_dev=10, st_ino=20, st_ctime_ns=200)
+        return real_stat(path, *args, **kwargs)
+
+    def fail_replace(source: Path, target: Path):
+        attempted_temps.append(source)
+        raise OSError("replace denied")
+
+    monkeypatch.setattr(Path, "stat", path_stat_with_changed_ctime)
+    monkeypatch.setattr(Path, "replace", fail_replace)
+
+    with pytest.raises(OSError, match="replace denied"):
+        save_pricing(pricing_path, editable_pricing())
+
+    assert pricing_path.read_bytes() == original
+    assert len(attempted_temps) == 1
+    assert not os.path.exists(attempted_temps[0])
+
+
+def test_owned_replace_failure_temp_cleanup_survives_repeated_windows_attempts(
+    tmp_path: Path, monkeypatch
+) -> None:
+    pricing_path = tmp_path / "pricing.json"
+    original = b'{"original":true}\n'
+    pricing_path.write_bytes(original)
+    monkeypatch.setattr(
+        Path,
+        "replace",
+        lambda source, target: (_ for _ in ()).throw(OSError("replace denied")),
+    )
+
+    for _ in range(50):
+        with pytest.raises(OSError, match="replace denied"):
+            save_pricing(pricing_path, editable_pricing())
+
+    assert pricing_path.read_bytes() == original
+    assert generated_temp_paths(pricing_path) == []
 
 
 def test_save_pricing_does_not_delete_foreign_temp_swapped_before_cleanup(
