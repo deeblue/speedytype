@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 import os
 from pathlib import Path
 import shlex
+from typing import Iterator, TextIO
 
 from keyring import delete_password as _delete_password
 from keyring import get_password as _get_password
@@ -156,36 +158,64 @@ def _scrub_warning(env_name: str) -> str:
     return f"Environment file scrub skipped for {env_name}: source changed"
 
 
+@contextmanager
+def _exclusive_file_lock(env_file: TextIO) -> Iterator[None]:
+    """Hold a platform-native exclusive lock on an open environment file."""
+    file_descriptor = env_file.fileno()
+    if os.name == "nt":
+        import msvcrt
+
+        env_file.seek(0)
+        lock_size = max(1, os.fstat(file_descriptor).st_size)
+        msvcrt.locking(file_descriptor, msvcrt.LK_LOCK, lock_size)
+        try:
+            yield
+        finally:
+            env_file.seek(0)
+            msvcrt.locking(file_descriptor, msvcrt.LK_UNLCK, lock_size)
+    else:
+        import fcntl
+
+        fcntl.flock(file_descriptor, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(file_descriptor, fcntl.LOCK_UN)
+
+
 def _remove_env_keys(env_path: Path, migrated_values: Mapping[str, str]) -> list[str]:
-    if not env_path.exists():
+    try:
+        env_file = env_path.open("r+", encoding="utf-8", newline="")
+    except FileNotFoundError:
         return [_scrub_warning(env_name) for env_name in migrated_values]
 
-    with env_path.open("r", encoding="utf-8", newline="") as env_file:
-        snapshot = env_file.read()
-    lines = snapshot.splitlines(keepends=True)
-    effective: dict[str, tuple[int, str]] = {}
-    for index, line in enumerate(lines):
-        assignment = _parse_env_assignment(line)
-        if assignment is not None and assignment[0] in migrated_values:
-            effective[assignment[0]] = (index, assignment[1])
+    with env_file:
+        with _exclusive_file_lock(env_file):
+            env_file.seek(0)
+            current_content = env_file.read()
+            lines = current_content.splitlines(keepends=True)
+            effective: dict[str, tuple[int, str]] = {}
+            for index, line in enumerate(lines):
+                assignment = _parse_env_assignment(line)
+                if assignment is not None and assignment[0] in migrated_values:
+                    effective[assignment[0]] = (index, assignment[1])
 
-    remove_indices: set[int] = set()
-    warnings: list[str] = []
-    for env_name, verified_value in migrated_values.items():
-        current = effective.get(env_name)
-        if current is None or current[1] != verified_value:
-            warnings.append(_scrub_warning(env_name))
-        else:
-            remove_indices.add(current[0])
+            remove_indices: set[int] = set()
+            warnings: list[str] = []
+            for env_name, verified_value in migrated_values.items():
+                current = effective.get(env_name)
+                if current is None or current[1] != verified_value:
+                    warnings.append(_scrub_warning(env_name))
+                else:
+                    remove_indices.add(current[0])
 
-    if not remove_indices:
-        return warnings
+            if not remove_indices:
+                return warnings
 
-    with env_path.open("r", encoding="utf-8", newline="") as env_file:
-        if env_file.read() != snapshot:
-            return [_scrub_warning(env_name) for env_name in migrated_values]
-
-    retained = [line for index, line in enumerate(lines) if index not in remove_indices]
-    with env_path.open("w", encoding="utf-8", newline="") as env_file:
-        env_file.write("".join(retained))
-    return warnings
+            retained = [line for index, line in enumerate(lines) if index not in remove_indices]
+            env_file.seek(0)
+            env_file.write("".join(retained))
+            env_file.truncate()
+            env_file.flush()
+            os.fsync(env_file.fileno())
+            return warnings

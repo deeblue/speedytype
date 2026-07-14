@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -128,3 +129,54 @@ def test_backend_exception_text_is_redacted_from_error_and_warning(tmp_path, mon
     result = secrets_store.resolve_api_keys(env_path, {"OPENAI_API_KEY": credential}, environment={})
     assert result.warnings == ("Credential store set failed for OPENAI_API_KEY (RuntimeError)",)
     assert all(credential not in warning for warning in result.warnings)
+
+
+def test_env_rewrite_occurs_while_exclusive_lock_is_held(tmp_path, monkeypatch):
+    install_fake_backend(monkeypatch)
+    env_path = tmp_path / ".env"
+    env_path.write_bytes(b"OPENAI_API_KEY=sk-fake\r\nLLM_PROVIDER=gemini\r\n")
+    lock_state = {"held": False}
+
+    @contextmanager
+    def fake_exclusive_file_lock(env_file):
+        lock_state["held"] = True
+        try:
+            yield
+        finally:
+            lock_state["held"] = False
+
+    monkeypatch.setattr(secrets_store, "_exclusive_file_lock", fake_exclusive_file_lock, raising=False)
+    real_path_open = Path.open
+
+    class TrackingFile:
+        def __init__(self, env_file):
+            self._env_file = env_file
+
+        def __enter__(self):
+            self._env_file.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self._env_file.__exit__(*args)
+
+        def write(self, value):
+            assert lock_state["held"], "environment file write occurred without the exclusive lock"
+            return self._env_file.write(value)
+
+        def truncate(self, *args):
+            assert lock_state["held"], "environment file truncate occurred without the exclusive lock"
+            return self._env_file.truncate(*args)
+
+        def __getattr__(self, name):
+            return getattr(self._env_file, name)
+
+    def tracking_open(path, *args, **kwargs):
+        return TrackingFile(real_path_open(path, *args, **kwargs))
+
+    monkeypatch.setattr(Path, "open", tracking_open)
+
+    result = secrets_store.resolve_api_keys(env_path, {"OPENAI_API_KEY": "sk-fake"}, environment={})
+
+    assert result.warnings == ()
+    assert lock_state["held"] is False
+    assert env_path.read_bytes() == b"LLM_PROVIDER=gemini\r\n"
