@@ -109,15 +109,22 @@ def load_pricing(path: str | Path) -> PricingData:
     )
 
 
-def _is_daily_row(row: Mapping[str, str]) -> tuple[bool, bool]:
-    scope = row.get("usage_scope", "").strip().lower()
+def _text_field(row: Mapping[str, object], name: str) -> str:
+    raw = row.get(name, "")
+    if not isinstance(raw, str):
+        raise ValueError(f"CSV field {name} is not text.")
+    return raw.strip()
+
+
+def _is_daily_row(row: Mapping[str, object]) -> tuple[bool, bool]:
+    scope = _text_field(row, "usage_scope").lower()
     if scope:
         return scope == "daily", False
-    return row.get("run_label", "").strip() in {"", "hybrid", "hybrid_fallback"}, True
+    return _text_field(row, "run_label") in {"", "hybrid", "hybrid_fallback"}, True
 
 
-def _decimal_field(row: Mapping[str, str], name: str) -> Decimal:
-    raw = row.get(name, "").strip()
+def _decimal_field(row: Mapping[str, object], name: str) -> Decimal:
+    raw = _text_field(row, name)
     if not raw:
         return Decimal("0")
     value = Decimal(raw)
@@ -126,7 +133,7 @@ def _decimal_field(row: Mapping[str, str], name: str) -> Decimal:
     return value
 
 
-def _integer_field(row: Mapping[str, str], name: str) -> int:
+def _integer_field(row: Mapping[str, object], name: str) -> int:
     value = _decimal_field(row, name)
     if value != value.to_integral_value():
         raise InvalidOperation
@@ -162,15 +169,17 @@ def calculate_usage(csv_path: str | Path, pricing_path: str | Path) -> UsageSumm
     else:
         with csv_file:
             for line_number, row in enumerate(csv.DictReader(csv_file), start=2):
-                is_daily, inferred = _is_daily_row(row)
-                if not is_daily:
-                    continue
                 try:
+                    is_daily, inferred = _is_daily_row(row)
+                    if not is_daily:
+                        continue
                     recording_seconds = _decimal_field(row, "recording_seconds")
                     request_count = _integer_field(row, "hybrid_request_count")
                     gemini_seconds = _decimal_field(row, "gemini_seconds")
                     input_tokens = _integer_field(row, "llm_input_tokens")
                     output_tokens = _integer_field(row, "llm_output_tokens")
+                    stt_model = _text_field(row, "stt_model") or "whisper-1"
+                    llm_model = _text_field(row, "llm_model")
                 except (InvalidOperation, ValueError):
                     message = f"Skipped malformed numeric CSV row {line_number}."
                     warning_messages.append(message)
@@ -180,7 +189,6 @@ def calculate_usage(csv_path: str | Path, pricing_path: str | Path) -> UsageSumm
                 if inferred:
                     legacy_inferred_rows += 1
 
-                stt_model = row.get("stt_model", "").strip() or "whisper-1"
                 row_minutes = recording_seconds / Decimal("60")
                 stt_calls += request_count if request_count > 0 else 1
                 stt_minutes += row_minutes
@@ -193,8 +201,7 @@ def calculate_usage(csv_path: str | Path, pricing_path: str | Path) -> UsageSumm
                     else:
                         stt_cost += row_minutes * price
 
-                llm_model = row.get("llm_model", "").strip()
-                if llm_model or gemini_seconds > 0:
+                if llm_model or (inferred and gemini_seconds > 0):
                     llm_calls += 1
                 llm_input_tokens += input_tokens
                 llm_output_tokens += output_tokens

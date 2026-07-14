@@ -228,6 +228,67 @@ def test_missing_provider_tokens_are_not_estimated(tmp_path: Path) -> None:
     assert summary.llm_cost == Decimal("0")
 
 
+def test_gemini_seconds_fallback_counts_only_accepted_legacy_rows(tmp_path: Path) -> None:
+    csv_path = tmp_path / "latency.csv"
+    pricing_path = tmp_path / "pricing.json"
+    write_pricing(pricing_path)
+    write_csv(
+        csv_path,
+        [
+            {
+                "usage_scope": "daily",
+                "run_label": "",
+                "recording_seconds": 10,
+                "stt_model": "whisper-1",
+                "gemini_seconds": 1,
+                "llm_model": "",
+            },
+            {
+                "usage_scope": "",
+                "run_label": "",
+                "recording_seconds": 10,
+                "gemini_seconds": 1,
+            },
+            {
+                "usage_scope": "",
+                "run_label": "hybrid",
+                "recording_seconds": 10,
+                "gemini_seconds": 1,
+            },
+            {
+                "usage_scope": "",
+                "run_label": "hybrid_fallback",
+                "recording_seconds": 10,
+                "gemini_seconds": 1,
+            },
+        ],
+    )
+
+    summary = calculate_usage(csv_path, pricing_path)
+
+    assert summary.llm_calls == 3
+    assert summary.legacy_inferred_rows == 3
+
+
+def test_structurally_truncated_row_is_skipped_with_one_warning(tmp_path: Path) -> None:
+    csv_path = tmp_path / "latency.csv"
+    pricing_path = tmp_path / "pricing.json"
+    write_pricing(pricing_path)
+    with csv_path.open("w", encoding="utf-8", newline="") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(CSV_FIELDS)
+        writer.writerow(["daily"])
+        writer.writerow(["daily", "", "60", "", "whisper-1", "0", "", "", ""])
+
+    with pytest.warns(UserWarning) as caught:
+        summary = calculate_usage(csv_path, pricing_path)
+
+    assert len(caught) == 1
+    assert summary.stt_calls == 1
+    assert summary.stt_minutes == Decimal("1")
+    assert len(summary.warnings) == 1
+
+
 def test_malformed_numeric_row_is_skipped_with_one_warning(tmp_path: Path) -> None:
     csv_path = tmp_path / "latency.csv"
     pricing_path = tmp_path / "pricing.json"
