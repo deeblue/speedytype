@@ -200,8 +200,17 @@ class HybridTranscriber:
     def finish(self, final_path: Path) -> HybridOutcome:
         tail_started = time.perf_counter()
         if not self._active:
+            request_started = time.perf_counter()
             text = self.batch_transcribe(final_path)
-            return HybridOutcome(text, time.perf_counter() - tail_started, 0.0, 1, False, {"mode": "batch"})
+            request_seconds = time.perf_counter() - request_started
+            return HybridOutcome(
+                text,
+                time.perf_counter() - tail_started,
+                request_seconds,
+                1,
+                False,
+                {"mode": "batch"},
+            )
 
         self._planner_stop.set()
         self._planner_event.set()
@@ -234,8 +243,17 @@ class HybridTranscriber:
             chunks,
             self._activity_intervals(self._duration, silences),
         )
-        resolved = resolve_with_batch_fallback(validation, merge.text, lambda: self.batch_transcribe(final_path))
-        request_seconds = sum(item.request_seconds for item in completed)
+        fallback_request_seconds = 0.0
+
+        def batch_fallback() -> str:
+            nonlocal fallback_request_seconds
+            request_started = time.perf_counter()
+            text = self.batch_transcribe(final_path)
+            fallback_request_seconds = time.perf_counter() - request_started
+            return text
+
+        resolved = resolve_with_batch_fallback(validation, merge.text, batch_fallback)
+        request_seconds = sum(item.request_seconds for item in completed) + fallback_request_seconds
         request_count = sum(item.request_attempted for item in completed) + int(resolved.fallback_used)
         return HybridOutcome(
             resolved.text,

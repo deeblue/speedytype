@@ -28,6 +28,14 @@ def speech(seconds, sample_rate=100):
     return np.full((int(seconds * sample_rate), 1), 0.2, dtype=np.float32)
 
 
+class FakeClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
 def fake_verbose(calls, fail_at=None, blocker=None):
     def transcribe(path, *, prompt_override=""):
         index = len(calls) + 1
@@ -42,11 +50,19 @@ def fake_verbose(calls, fail_at=None, blocker=None):
     return transcribe
 
 
-def test_under_threshold_uses_batch_without_chunk_requests(tmp_path):
+def test_under_threshold_times_batch_as_request_and_tail(tmp_path, monkeypatch):
     calls = []
     batches = []
+    clock = FakeClock()
+
+    def batch(path):
+        batches.append(path)
+        clock.advance(4.0)
+        return "batch text"
+
+    monkeypatch.setattr("speedytype.hybrid_pipeline.time.perf_counter", lambda: clock.now)
     transcriber = HybridTranscriber(
-        config(), fake_verbose(calls), lambda path: batches.append(path) or "batch text", sample_rate=100
+        config(), fake_verbose(calls), batch, sample_rate=100
     )
     transcriber.feed(speech(1.5), 1.5)
     outcome = transcriber.finish(tmp_path / "full.wav")
@@ -55,17 +71,24 @@ def test_under_threshold_uses_batch_without_chunk_requests(tmp_path):
     assert calls == []
     assert batches == [tmp_path / "full.wav"]
     assert outcome.request_count == 1
+    assert outcome.request_seconds == 4.0
+    assert outcome.tail_seconds == 4.0
 
 
 def test_natural_silence_closes_chunk(tmp_path):
     calls = []
+    batches = []
     audio = speech(6)
     audio[190:250] = 0.001
-    transcriber = HybridTranscriber(config(), fake_verbose(calls), lambda path: "batch", sample_rate=100)
+    transcriber = HybridTranscriber(
+        config(), fake_verbose(calls), lambda path: batches.append(path) or "batch", sample_rate=100
+    )
     transcriber.feed(audio, 6.0)
     outcome = transcriber.finish(tmp_path / "full.wav")
     assert "silence" in outcome.diagnostics["cut_reasons"]
-    assert outcome.request_count >= 2
+    assert outcome.fallback_used is False
+    assert batches == []
+    assert outcome.request_count == len(calls)
 
 
 def test_continuous_speech_uses_forced_cut(tmp_path):
@@ -88,18 +111,36 @@ def test_finish_waits_for_inflight_request(tmp_path):
     timer.cancel()
 
 
-def test_request_failure_falls_back_to_batch(tmp_path):
+def test_request_failure_times_chunks_and_batch_fallback(tmp_path, monkeypatch):
     calls = []
     batches = []
-    transcriber = HybridTranscriber(
-        config(), fake_verbose(calls, fail_at=1), lambda path: batches.append(path) or "safe batch", sample_rate=100
-    )
+    clock = FakeClock()
+
+    def verbose(path, *, prompt_override=""):
+        calls.append(Path(path))
+        clock.advance(2.0)
+        if len(calls) == 1:
+            raise RuntimeError("HTTP 429")
+        import soundfile as sf
+        duration = sf.info(path).duration
+        text = f"第{len(calls)}段"
+        return {"text": text, "segments": [{"start": 0.0, "end": duration, "text": text}]}
+
+    def batch(path):
+        batches.append(path)
+        clock.advance(5.0)
+        return "safe batch"
+
+    monkeypatch.setattr("speedytype.hybrid_pipeline.time.perf_counter", lambda: clock.now)
+    transcriber = HybridTranscriber(config(), verbose, batch, sample_rate=100)
     transcriber.feed(speech(7), 7.0)
     outcome = transcriber.finish(tmp_path / "full.wav")
     assert outcome.raw_text == "safe batch"
     assert outcome.fallback_used is True
     assert len(batches) == 1
     assert outcome.request_count == len(calls) + len(batches)
+    assert outcome.request_seconds == 2.0 * len(calls) + 5.0
+    assert outcome.tail_seconds == outcome.request_seconds
 
 
 def test_every_chunk_uses_vocab_bias_without_prior_narrative(tmp_path):
