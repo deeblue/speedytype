@@ -48,7 +48,7 @@
 - Consumes: `speedytype.version.VERSION: str` and `BUILD_DATE: str`.
 - Produces: `speedytype.__version__: str` and root CLI option `speedytype --version`.
 
-- [ ] **Step 1: Write failing package and CLI version tests**
+- [x] **Step 1: Write failing package and CLI version tests**
 
 Create `tests/test_version.py`:
 
@@ -79,7 +79,7 @@ def test_cli_version_exits_without_loading_configuration(monkeypatch, capsys):
     assert capsys.readouterr().out == "SpeedyType 0.5.1\n"
 ```
 
-- [ ] **Step 2: Run the tests and verify RED**
+- [x] **Step 2: Run the tests and verify RED**
 
 Run:
 
@@ -91,7 +91,7 @@ Expected: both tests fail under the old implementation: release metadata is
 `0.5.0` / `2026-07-10`, package metadata is `0.1.0`, and the CLI does not
 recognize `--version` without a required subcommand.
 
-- [ ] **Step 3: Update the authoritative release metadata**
+- [x] **Step 3: Update the authoritative release metadata**
 
 Replace `speedytype/version.py` with:
 
@@ -101,7 +101,7 @@ BUILD_DATE = "2026-07-16"
 STT_MODEL = "whisper-1"
 ```
 
-- [ ] **Step 4: Remove the duplicate package version literal**
+- [x] **Step 4: Remove the duplicate package version literal**
 
 Replace `speedytype/__init__.py` with:
 
@@ -114,7 +114,7 @@ from speedytype.version import VERSION
 __version__ = VERSION
 ```
 
-- [ ] **Step 5: Add the root CLI version action**
+- [x] **Step 5: Add the root CLI version action**
 
 Add this import to `speedytype/cli.py`:
 
@@ -134,7 +134,7 @@ parser.add_argument(
 
 Keep `--env` and the required subparsers unchanged after this argument.
 
-- [ ] **Step 6: Verify runtime version consumers**
+- [x] **Step 6: Verify runtime version consumers**
 
 Run:
 
@@ -147,7 +147,7 @@ python -m speedytype --version
 Expected: `3 passed`; the command prints exactly `SpeedyType 0.5.1` and exits
 `0` without requiring `.env` or Keyring credentials.
 
-- [ ] **Step 7: Commit runtime version unification**
+- [x] **Step 7: Commit runtime version unification**
 
 ```powershell
 git add speedytype/version.py speedytype/__init__.py speedytype/cli.py tests/test_version.py
@@ -166,7 +166,7 @@ git commit -m "feat: unify runtime version metadata"
 - Consumes: `VERSION == "0.5.1"` from Task 1 and `python scripts/build_release.py`.
 - Produces: version-correct end-user guidance and an operator-controlled annotated-tag checklist.
 
-- [ ] **Step 1: Write failing release checklist and artifact-name tests**
+- [x] **Step 1: Write failing release checklist and artifact-name tests**
 
 Append to `tests/test_release_docs.py`:
 
@@ -196,7 +196,7 @@ assert result.release_dir.name == "SpeedyType-0.5.1"
 assert result.archive_path.name == "SpeedyType-0.5.1-source.zip"
 ```
 
-- [ ] **Step 2: Run documentation and builder tests and verify RED**
+- [x] **Step 2: Run documentation and builder tests and verify RED**
 
 Run:
 
@@ -208,7 +208,7 @@ Expected: the checklist test fails because `RELEASE.md` does not exist; after
 Task 1 the new artifact-name assertions pass, while the existing `0.5.0`
 assertion would no longer match.
 
-- [ ] **Step 3: Create the operator release checklist**
+- [x] **Step 3: Create the operator release checklist**
 
 Create `RELEASE.md` with this content:
 
@@ -278,7 +278,7 @@ git push origin v0.5.1
 The local build/tag workflow does not execute either push automatically.
 ```
 
-- [ ] **Step 4: Update end-user checksum examples to `0.5.1`**
+- [x] **Step 4: Update end-user checksum examples to `0.5.1`**
 
 In `release/README.md`, replace both occurrences of
 `SpeedyType-0.5.0-source.zip` with `SpeedyType-0.5.1-source.zip`, and add
@@ -287,7 +287,7 @@ In `release/README.md`, replace both occurrences of
 Add `"speedytype --version"` to the existing `required` tuple in
 `test_release_readme_documents_keyring_usage_and_daily_commands`.
 
-- [ ] **Step 5: Verify release documentation and builder contracts**
+- [x] **Step 5: Verify release documentation and builder contracts**
 
 Run:
 
@@ -297,7 +297,7 @@ python -m pytest tests/test_release_docs.py tests/test_build_release.py tests/te
 
 Expected: `12 passed` with no failures.
 
-- [ ] **Step 6: Commit the release procedure**
+- [x] **Step 6: Commit the release procedure**
 
 ```powershell
 git add RELEASE.md release/README.md tests/test_release_docs.py tests/test_build_release.py
@@ -316,7 +316,7 @@ git commit -m "docs: establish annotated release workflow"
 - Consumes: unified version metadata and release procedure from Tasks 1-2.
 - Produces: verified `0.5.1` artifacts and exact tracked evidence.
 
-- [ ] **Step 1: Run the complete suite and compilation**
+- [x] **Step 1: Run the complete suite and compilation**
 
 Run:
 
@@ -328,7 +328,7 @@ python -m compileall -q speedytype scripts
 
 Expected: both commands exit `0`; record the exact pytest count and duration.
 
-- [ ] **Step 2: Build twice and verify reproducibility**
+- [x] **Step 2: Build twice and verify reproducibility**
 
 Run:
 
@@ -345,7 +345,7 @@ Get-Item dist/SpeedyType-0.5.1-source.zip | Select-Object Length
 Expected: both builds exit `0`, print the same three `0.5.1` output paths, and
 all three hashes match. Record the exact lowercase hash and ZIP byte length.
 
-- [ ] **Step 3: Extract and smoke-test the real archive**
+- [x] **Step 3: Extract and smoke-test the real archive**
 
 Extract `dist/SpeedyType-0.5.1-source.zip` into a unique directory beneath the
 system temporary directory. Verify the resolved extraction path remains beneath
@@ -364,7 +364,7 @@ Parse `scripts/setup_windows.ps1` and
 exit `0`, CLI output is exactly `SpeedyType 0.5.1`, and cleanup removes only the
 guarded temporary extraction directory.
 
-- [ ] **Step 4: Replace source-release evidence with exact `0.5.1` results**
+- [x] **Step 4: Replace source-release evidence with exact `0.5.1` results**
 
 In `POC_REPORT.md` under **Reproducible source release** and its evidence:
 
@@ -377,14 +377,14 @@ In `POC_REPORT.md` under **Reproducible source release** and its evidence:
 - record the extracted `0.5.1` CLI smoke result;
 - preserve the macOS real-device pending statement.
 
-- [ ] **Step 5: Commit exact release evidence**
+- [x] **Step 5: Commit exact release evidence**
 
 ```powershell
 git add POC_REPORT.md
 git commit -m "docs: record SpeedyType 0.5.1 release evidence"
 ```
 
-- [ ] **Step 6: Verify committed feature HEAD**
+- [x] **Step 6: Verify committed feature HEAD**
 
 Run:
 
