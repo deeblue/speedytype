@@ -42,7 +42,8 @@ def test_build_release_has_exact_runtime_inventory(tmp_path, monkeypatch):
 
     result = build_release.build_release(ROOT, tmp_path / "dist")
 
-    assert result.release_dir.name == "SpeedyType-0.5.0"
+    assert result.release_dir.name == "SpeedyType-0.5.1"
+    assert result.archive_path.name == "SpeedyType-0.5.1-source.zip"
     assert {path.name for path in result.release_dir.iterdir()} == EXPECTED_TOP_LEVEL
     assert {
         path.name for path in (result.release_dir / "scripts").iterdir()

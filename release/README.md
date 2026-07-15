@@ -85,6 +85,7 @@ The tray menu can reopen Settings, restart the daemon, or exit it.
 
 ```text
 speedytype settings
+speedytype --version
 speedytype diagnose-config
 speedytype daemon
 speedytype daemon-stop
@@ -122,13 +123,13 @@ Compare the downloaded ZIP SHA-256 with `SHA256SUMS.txt`.
 Windows:
 
 ```powershell
-Get-FileHash SpeedyType-0.5.0-source.zip -Algorithm SHA256
+Get-FileHash SpeedyType-0.5.1-source.zip -Algorithm SHA256
 ```
 
 macOS:
 
 ```sh
-shasum -a 256 SpeedyType-0.5.0-source.zip
+shasum -a 256 SpeedyType-0.5.1-source.zip
 ```
 
 Real macOS runtime verification remains required before describing Mac command

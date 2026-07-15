@@ -26,6 +26,7 @@ def test_release_readme_documents_keyring_usage_and_daily_commands():
         "Windows Credential Manager",
         "macOS Keychain",
         "speedytype settings",
+        "speedytype --version",
         "speedytype diagnose-config",
         "speedytype daemon",
         "speedytype daemon-stop",
@@ -45,3 +46,20 @@ def test_root_readme_distinguishes_development_tree_from_release():
     assert "dist/SpeedyType-" in content
     assert "tests" in content
     assert "benchmark" in content
+
+
+def test_release_checklist_documents_verified_annotated_tag_workflow():
+    content = (ROOT / "RELEASE.md").read_text(encoding="utf-8")
+    required = (
+        'VERSION = "0.5.1"',
+        'BUILD_DATE = "2026-07-16"',
+        "python -m pytest -q",
+        "python -m compileall -q speedytype scripts",
+        "python scripts/build_release.py",
+        'git tag -a v0.5.1 -m "SpeedyType 0.5.1"',
+        "git push origin master",
+        "git push origin v0.5.1",
+        "Never move or force-update an existing release tag",
+    )
+    for text in required:
+        assert text in content
