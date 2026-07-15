@@ -581,15 +581,20 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
 
 ### Source release verification evidence
 
-- Full automated suite: `python -m pytest -q` → `301 passed in 10.42s`.
+- Full automated suite: `python -m pytest -q` → `302 passed in 12.40s`.
 - Repeatability: `python scripts/build_release.py` completed twice and replaced
-  the same versioned outputs without duplicate or stale files.
+  the same versioned outputs without duplicate or stale files. A separate
+  cross-worktree build with different source mtimes and checkout line endings
+  produced the same ZIP bytes and SHA-256.
 - Generated outputs: `dist/SpeedyType-0.5.0/`,
-  `dist/SpeedyType-0.5.0-source.zip` (99,457 bytes), and
+  `dist/SpeedyType-0.5.0-source.zip` (98,781 bytes), and
   `dist/SHA256SUMS.txt`.
 - ZIP SHA-256:
-  `fd8972735d18f87a0614cc2b614ee6e5665230dd4927db79e35166b305bbf19e`.
+  `7af4619fbbd92c19f0668135137cbcacfb4ad7f82856e8b68fa9c33dab05c6b0`.
   The checksum file was parsed and independently matched against the ZIP.
+- Released text uses LF line endings, ZIP entries use a fixed timestamp,
+  shell scripts are stored as mode `0755`, and other files as `0644` so
+  checkout metadata does not change the archive.
 - Top-level release inventory was exactly `.env.example`,
   `KNOWN_LIMITATIONS.md`, `MAC_SETUP.md`, `README.md`, `pricing.json`,
   `real_voice_script.md`, `requirements.txt`, `scripts/`, and `speedytype/`.

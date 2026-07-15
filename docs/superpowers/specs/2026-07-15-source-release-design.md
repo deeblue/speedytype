@@ -59,6 +59,11 @@ Add `scripts/build_release.py` as the single release entry point. It will:
 9. Write `SHA256SUMS.txt` through a unique sibling temporary file followed by
    atomic file replacement.
 
+For byte-for-byte reproducibility across Windows and macOS checkouts, released
+text files are normalized to LF, ZIP entries use a fixed timestamp, shell
+scripts use mode `0755`, and other files use mode `0644`. Archive member order
+is sorted and does not depend on filesystem traversal order.
+
 The builder may remove only a resolved target within the repository's `dist/`
 directory. A path-containment guard must reject any unexpected target before a
 recursive remove or replace.

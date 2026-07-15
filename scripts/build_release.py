@@ -27,6 +27,16 @@ STATIC_FILES = {
         "scripts/verify_command_alias_windows.ps1"
     ),
 }
+TEXT_SUFFIXES = {
+    ".example",
+    ".json",
+    ".md",
+    ".ps1",
+    ".py",
+    ".sh",
+    ".txt",
+}
+ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 
 @dataclass(frozen=True)
@@ -64,11 +74,23 @@ def _safe_remove(path: Path, output_root: Path) -> None:
         path.unlink(missing_ok=True)
 
 
+def _copy_release_file(source: str | Path, destination: str | Path) -> str:
+    source_path = Path(source)
+    destination_path = Path(destination)
+    data = source_path.read_bytes()
+    if source_path.suffix.lower() in TEXT_SUFFIXES:
+        data = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    destination_path.write_bytes(data)
+    shutil.copymode(source_path, destination_path)
+    return str(destination_path)
+
+
 def _copy_release_content(repo_root: Path, staging: Path) -> None:
     shutil.copytree(
         repo_root / "speedytype",
         staging / "speedytype",
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+        copy_function=_copy_release_file,
     )
     for source_name, destination_name in STATIC_FILES.items():
         source = repo_root / source_name
@@ -76,7 +98,7 @@ def _copy_release_content(repo_root: Path, staging: Path) -> None:
             raise FileNotFoundError(f"Required release file is missing: {source}")
         destination = staging / destination_name
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
+        _copy_release_file(source, destination)
 
 
 def _swap_directory(staging: Path, target: Path, output_root: Path) -> None:
@@ -108,7 +130,13 @@ def _write_archive(release_dir: Path, archive_path: Path) -> None:
             for path in sorted(release_dir.rglob("*")):
                 if path.is_file():
                     relative = path.relative_to(release_dir).as_posix()
-                    archive.write(path, f"{release_dir.name}/{relative}")
+                    archive_name = f"{release_dir.name}/{relative}"
+                    info = zipfile.ZipInfo(archive_name, ZIP_TIMESTAMP)
+                    info.compress_type = zipfile.ZIP_DEFLATED
+                    info.create_system = 3
+                    permissions = 0o755 if path.suffix == ".sh" else 0o644
+                    info.external_attr = (0o100000 | permissions) << 16
+                    archive.writestr(info, path.read_bytes())
         os.replace(temporary, archive_path)
     finally:
         temporary.unlink(missing_ok=True)
