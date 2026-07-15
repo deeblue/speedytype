@@ -79,8 +79,12 @@ def delete_api_key(
     try:
         try:
             _delete_password(service_name, username)
-        except PasswordDeleteError:
-            return
+        except PasswordDeleteError as exc:
+            if _get_password(service_name, username) is None:
+                return
+            raise SecretStoreError(
+                f"Credential deletion failed for {env_name}: backend refused deletion"
+            ) from exc
         if _get_password(service_name, username) is not None:
             raise SecretStoreError(f"Credential deletion verification failed for {env_name}")
     except SecretStoreError:

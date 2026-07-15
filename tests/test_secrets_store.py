@@ -50,6 +50,17 @@ def test_delete_api_key_ignores_missing_credential(monkeypatch):
     secrets_store.delete_api_key("MINIMAX_API_KEY")
 
 
+def test_delete_api_key_reports_delete_error_when_credential_still_exists(monkeypatch):
+    def failed_delete(*args):
+        raise secrets_store.PasswordDeleteError("backend refused deletion")
+
+    monkeypatch.setattr(secrets_store, "_delete_password", failed_delete)
+    monkeypatch.setattr(secrets_store, "_get_password", lambda *args: "still-present")
+
+    with pytest.raises(secrets_store.SecretStoreError, match="Credential deletion failed"):
+        secrets_store.delete_api_key("OPENAI_API_KEY")
+
+
 def test_resolve_prefers_keyring_over_environment_and_file(monkeypatch, tmp_path):
     install_fake_backend(
         monkeypatch,
