@@ -561,3 +561,22 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
   `git diff --check` all exited `0` on Windows.
 - The installed wrapper was inspected: it contains only repository, venv
   Python, and default `.env` paths followed by `%*`; it contains no API key.
+
+## Reproducible source release (2026-07-15)
+
+- `python scripts/build_release.py` builds from an explicit allowlist into
+  ignored `dist/`. Repository tests, recordings, benchmark evidence,
+  development plans, caches, local settings, `.env`, and Keyring data are not
+  release inputs.
+- The version comes from `speedytype/version.py`; output consists of the
+  versioned source directory, matching source ZIP, and `SHA256SUMS.txt`.
+- The release README documents automatic setup and manual venv plus
+  `pip install -r requirements.txt` installation on Windows and macOS,
+  Keyring-backed credential configuration, daily commands, updates,
+  troubleshooting, and checksum verification.
+- A fresh install can run `speedytype settings` before credentials exist. That
+  command alone uses non-strict credential loading to open the existing
+  Keyring-backed Settings dialog; daemon, diagnose, recording, and provider
+  paths retain strict missing-key validation.
+- Verification evidence is recorded below after building and extracting the
+  real versioned artifact.

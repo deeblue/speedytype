@@ -1,6 +1,6 @@
 # Cross-Platform Command Alias Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add repeatable Windows and macOS setup scripts that install a short `speedytype` command without exposing or bypassing the existing Keyring credential flow.
 
@@ -32,7 +32,7 @@
 - Produces: `install_command_alias(env_path: str | Path | None = None) -> tuple[bool, str]`.
 - Produces: Windows `%APPDATA%/SpeedyType/bin/speedytype.bat` and macOS `~/.local/bin/speedytype`.
 
-- [ ] **Step 1: Write failing rendering and dispatch tests**
+- [x] **Step 1: Write failing rendering and dispatch tests**
 
 Create `tests/test_command_alias.py` with tests that import the wished-for API, install into temporary directories, and assert exact safety properties:
 
@@ -105,13 +105,13 @@ def test_install_command_alias_dispatches_by_platform(monkeypatch, tmp_path):
     assert calls == [("win", (tmp_path / ".env").resolve())]
 ```
 
-- [ ] **Step 2: Run the new tests and verify RED**
+- [x] **Step 2: Run the new tests and verify RED**
 
 Run: `python -m pytest tests/test_command_alias.py -q`
 
 Expected: collection fails with `ModuleNotFoundError: No module named 'speedytype.command_alias'`.
 
-- [ ] **Step 3: Implement atomic wrapper rendering and platform dispatch**
+- [x] **Step 3: Implement atomic wrapper rendering and platform dispatch**
 
 Create `speedytype/command_alias.py` with:
 
@@ -209,13 +209,13 @@ def install_command_alias(env_path: str | Path | None = None) -> tuple[bool, str
 
 Leave `_ensure_windows_user_path` temporarily raising `NotImplementedError`; the dispatch test replaces it and the next cycle defines it.
 
-- [ ] **Step 4: Run rendering tests and verify GREEN**
+- [x] **Step 4: Run rendering tests and verify GREEN**
 
 Run: `python -m pytest tests/test_command_alias.py -q`
 
 Expected: all four tests pass.
 
-- [ ] **Step 5: Write failing Windows PATH and macOS idempotence tests**
+- [x] **Step 5: Write failing Windows PATH and macOS idempotence tests**
 
 Append tests using an in-memory registry adapter seam:
 
@@ -312,13 +312,13 @@ def test_windows_broadcast_failure_is_reported_without_secret_text(monkeypatch, 
     assert "sentinel-secret" not in message
 ```
 
-- [ ] **Step 6: Run the focused tests and verify RED**
+- [x] **Step 6: Run the focused tests and verify RED**
 
 Run: `python -m pytest tests/test_command_alias.py -q`
 
 Expected: PATH tests fail because `_REG_EXPAND_SZ`, `_read_user_path`, `_write_user_path`, `_broadcast_environment_change`, and `_ensure_windows_user_path` are not implemented.
 
-- [ ] **Step 7: Implement Windows user PATH integration**
+- [x] **Step 7: Implement Windows user PATH integration**
 
 Add lazy Windows registry and notification helpers to `speedytype/command_alias.py` so importing the module remains safe on macOS:
 
@@ -375,13 +375,13 @@ def _ensure_windows_user_path(directory: Path) -> tuple[bool, str]:
     return True, "Added the command directory to the user PATH."
 ```
 
-- [ ] **Step 8: Run installer tests and the existing Keyring tests**
+- [x] **Step 8: Run installer tests and the existing Keyring tests**
 
 Run: `python -m pytest tests/test_command_alias.py tests/test_secrets_store.py tests/test_config.py -q`
 
 Expected: all tests pass, proving wrapper installation is independent of credential storage.
 
-- [ ] **Step 9: Commit the installer boundary**
+- [x] **Step 9: Commit the installer boundary**
 
 ```powershell
 git add speedytype/command_alias.py tests/test_command_alias.py
@@ -401,7 +401,7 @@ git commit -m "feat: install cross-platform command wrappers"
 - Produces: `python -m speedytype --env <path> install-command`.
 - Preserves: duplicate global `--env` arguments use the last value, allowing a wrapper default to be overridden.
 
-- [ ] **Step 1: Write failing CLI tests**
+- [x] **Step 1: Write failing CLI tests**
 
 Create `tests/test_cli_command_alias.py`:
 
@@ -442,13 +442,13 @@ def test_later_env_argument_overrides_wrapper_default():
     assert args.env == "other.env"
 ```
 
-- [ ] **Step 2: Run the CLI tests and verify RED**
+- [x] **Step 2: Run the CLI tests and verify RED**
 
 Run: `python -m pytest tests/test_cli_command_alias.py -q`
 
 Expected: import/monkeypatch or parser failures because `install_command_alias` and `install-command` are absent.
 
-- [ ] **Step 3: Add the CLI command**
+- [x] **Step 3: Add the CLI command**
 
 Modify `speedytype/cli.py`:
 
@@ -469,13 +469,13 @@ install_command = sub.add_parser("install-command")
 install_command.set_defaults(func=command_install_command)
 ```
 
-- [ ] **Step 4: Run CLI and alias tests and verify GREEN**
+- [x] **Step 4: Run CLI and alias tests and verify GREEN**
 
 Run: `python -m pytest tests/test_cli_command_alias.py tests/test_command_alias.py -q`
 
 Expected: all tests pass.
 
-- [ ] **Step 5: Commit the CLI entry point**
+- [x] **Step 5: Commit the CLI entry point**
 
 ```powershell
 git add speedytype/cli.py tests/test_cli_command_alias.py
@@ -496,7 +496,7 @@ git commit -m "feat: expose command alias installer in CLI"
 - Produces: one-time `scripts/setup_windows.ps1 [-EnvPath <path>]`.
 - Produces: one-time `scripts/setup_mac.sh [env-path]`.
 
-- [ ] **Step 1: Write failing setup-script contract tests**
+- [x] **Step 1: Write failing setup-script contract tests**
 
 Create `tests/test_setup_scripts.py`:
 
@@ -540,13 +540,13 @@ def test_macos_setup_has_valid_bash_syntax_when_bash_is_available():
     assert result.returncode == 0, result.stderr
 ```
 
-- [ ] **Step 2: Run setup-script tests and verify RED**
+- [x] **Step 2: Run setup-script tests and verify RED**
 
 Run: `python -m pytest tests/test_setup_scripts.py -q`
 
 Expected: file-not-found failures for both setup scripts.
 
-- [ ] **Step 3: Implement `scripts/setup_windows.ps1`**
+- [x] **Step 3: Implement `scripts/setup_windows.ps1`**
 
 Create this PowerShell setup entry:
 
@@ -580,7 +580,7 @@ if ($LASTEXITCODE -ne 0) { throw "Failed to install the speedytype command." }
 Write-Host "Setup complete. Open a new terminal and run: speedytype diagnose-config"
 ```
 
-- [ ] **Step 4: Implement `scripts/setup_mac.sh`**
+- [x] **Step 4: Implement `scripts/setup_mac.sh`**
 
 Create this Bash setup entry:
 
@@ -605,13 +605,13 @@ echo "Setup complete. Open a new terminal and run: speedytype diagnose-config"
 
 Set executable permission with `git update-index --chmod=+x scripts/setup_mac.sh`.
 
-- [ ] **Step 5: Run script contract and syntax tests**
+- [x] **Step 5: Run script contract and syntax tests**
 
 Run: `python -m pytest tests/test_setup_scripts.py -q`
 
 Expected: all tests pass; the Bash syntax test runs where Git Bash or another Bash is on PATH.
 
-- [ ] **Step 6: Parse the PowerShell script without executing setup**
+- [x] **Step 6: Parse the PowerShell script without executing setup**
 
 Run:
 
@@ -627,7 +627,7 @@ if ($errors.Count) { $errors | Format-List; exit 1 }
 
 Expected: exit 0 with no parser errors.
 
-- [ ] **Step 7: Commit both setup scripts**
+- [x] **Step 7: Commit both setup scripts**
 
 ```powershell
 git add scripts/setup_windows.ps1 scripts/setup_mac.sh tests/test_setup_scripts.py
@@ -648,7 +648,7 @@ git commit -m "feat: add Windows and macOS setup scripts"
 - Consumes: setup scripts and installed wrappers from Tasks 1-3.
 - Produces: repeatable live Windows evidence and macOS user verification instructions.
 
-- [ ] **Step 1: Create a live Windows verification script**
+- [x] **Step 1: Create a live Windows verification script**
 
 Create `scripts/verify_command_alias_windows.ps1` with guarded daemon cleanup:
 
@@ -686,7 +686,7 @@ finally {
 Write-Host "COMMAND_ALIAS_WINDOWS_OK"
 ```
 
-- [ ] **Step 2: Document macOS setup and Keyring-safe behavior**
+- [x] **Step 2: Document macOS setup and Keyring-safe behavior**
 
 Create `MAC_SETUP.md` with these concrete commands and explanations:
 
@@ -730,7 +730,7 @@ Real-device check: rerun setup, open a new terminal, execute the examples above,
 and confirm the second setup neither duplicates PATH entries nor changes keys.
 ```
 
-- [ ] **Step 3: Update project evidence and limitations**
+- [x] **Step 3: Update project evidence and limitations**
 
 Add a `Short command alias` section to `POC_REPORT.md` recording:
 
@@ -742,7 +742,7 @@ Add a `Short command alias` section to `POC_REPORT.md` recording:
 
 Update `KNOWN_LIMITATIONS.md` to state that macOS wrapper logic and Bash syntax are audited on Windows, while new-terminal and daemon behavior still require real macOS verification.
 
-- [ ] **Step 4: Run documentation and script checks**
+- [x] **Step 4: Run documentation and script checks**
 
 Run:
 
@@ -753,7 +753,7 @@ git diff --check
 
 Expected: all focused tests pass and `git diff --check` exits 0.
 
-- [ ] **Step 5: Commit documentation and verifier**
+- [x] **Step 5: Commit documentation and verifier**
 
 ```powershell
 git add MAC_SETUP.md POC_REPORT.md KNOWN_LIMITATIONS.md scripts/verify_command_alias_windows.ps1
@@ -771,13 +771,13 @@ git commit -m "docs: explain short command setup and verification"
 - Consumes: the completed setup and verifier.
 - Produces: fresh automated and real Windows acceptance evidence.
 
-- [ ] **Step 1: Run the complete automated suite before installation**
+- [x] **Step 1: Run the complete automated suite before installation**
 
 Run: `python -m pytest -q`
 
 Expected: all tests pass with no failures.
 
-- [ ] **Step 2: Run Windows setup twice to prove idempotence**
+- [x] **Step 2: Run Windows setup twice to prove idempotence**
 
 Run:
 
@@ -788,7 +788,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 
 Expected: both runs exit 0; the second reports the wrapper directory is already present in user PATH and does not duplicate it.
 
-- [ ] **Step 3: Verify from fresh command-shell processes**
+- [x] **Step 3: Verify from fresh command-shell processes**
 
 Run:
 
@@ -798,7 +798,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify_command_alias
 
 Expected: `diagnose-config`, parameter forwarding, daemon startup, and daemon stop all exit successfully, ending with `COMMAND_ALIAS_WINDOWS_OK`.
 
-- [ ] **Step 4: Verify explicit `.env` override without exposing secrets**
+- [x] **Step 4: Verify explicit `.env` override without exposing secrets**
 
 Run a new command process against a temporary valid config path:
 
@@ -808,7 +808,7 @@ cmd.exe /d /c "speedytype --env `"$((Resolve-Path .env).Path)`" diagnose-config"
 
 Expected: exit 0 and `Config OK`; output contains configuration names but no API key values.
 
-- [ ] **Step 5: Audit macOS script and compile Python sources**
+- [x] **Step 5: Audit macOS script and compile Python sources**
 
 Run:
 
@@ -820,18 +820,18 @@ git diff --check
 
 Expected: all commands exit 0. If Bash is unavailable, record the automated pytest syntax check as skipped and state that limitation rather than claiming a Bash audit.
 
-- [ ] **Step 6: Update evidence text with exact observed results**
+- [x] **Step 6: Update evidence text with exact observed results**
 
 If test counts, timings, PATH messages, or live verification results differ from Task 4, edit `POC_REPORT.md` to contain only the observed outputs. Do not claim macOS real-device success.
 
-- [ ] **Step 7: Commit final evidence if documentation changed**
+- [x] **Step 7: Commit final evidence if documentation changed**
 
 ```powershell
 git add POC_REPORT.md
 git diff --cached --quiet || git commit -m "docs: record command alias verification"
 ```
 
-- [ ] **Step 8: Run final verification on committed HEAD**
+- [x] **Step 8: Run final verification on committed HEAD**
 
 Run:
 
