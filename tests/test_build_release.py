@@ -2,6 +2,8 @@ from hashlib import sha256
 from pathlib import Path
 import zipfile
 
+import pytest
+
 import scripts.build_release as build_release
 
 
@@ -67,3 +69,49 @@ def test_archive_matches_directory_and_checksum(tmp_path):
     assert result.checksum_path.read_text(encoding="utf-8") == (
         f"{digest}  {result.archive_path.name}\n"
     )
+
+
+def test_repeat_build_removes_stale_release_files(tmp_path):
+    output = tmp_path / "dist"
+    first = build_release.build_release(ROOT, output)
+    stale = first.release_dir / "stale-development-output.txt"
+    stale.write_text("must disappear", encoding="utf-8")
+
+    second = build_release.build_release(ROOT, output)
+
+    assert second.release_dir == first.release_dir
+    assert not stale.exists()
+
+
+def test_failed_staging_preserves_previous_complete_release(tmp_path, monkeypatch):
+    output = tmp_path / "dist"
+    first = build_release.build_release(ROOT, output)
+    marker = first.release_dir / "previous-complete-marker.txt"
+    marker.write_text("preserve me", encoding="utf-8")
+    archive_bytes = first.archive_path.read_bytes()
+    checksum_bytes = first.checksum_path.read_bytes()
+
+    def fail_copy(repo_root, staging):
+        (staging / "partial.txt").write_text("partial", encoding="utf-8")
+        raise OSError("injected staging failure")
+
+    monkeypatch.setattr(build_release, "_copy_release_content", fail_copy)
+
+    with pytest.raises(OSError, match="injected staging failure"):
+        build_release.build_release(ROOT, output)
+
+    assert marker.read_text(encoding="utf-8") == "preserve me"
+    assert first.archive_path.read_bytes() == archive_bytes
+    assert first.checksum_path.read_bytes() == checksum_bytes
+    assert not list(output.glob("*.staging"))
+
+
+def test_safe_remove_rejects_paths_outside_output(tmp_path):
+    output = tmp_path / "dist"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    with pytest.raises(ValueError, match="outside release output"):
+        build_release._safe_remove(outside, output)
+
+    assert outside.exists()
