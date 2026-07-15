@@ -578,5 +578,26 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
   command alone uses non-strict credential loading to open the existing
   Keyring-backed Settings dialog; daemon, diagnose, recording, and provider
   paths retain strict missing-key validation.
-- Verification evidence is recorded below after building and extracting the
-  real versioned artifact.
+### Source release verification evidence
+
+- Full automated suite: `python -m pytest -q` → `301 passed in 10.31s`.
+- Repeatability: `python scripts/build_release.py` completed twice and replaced
+  the same versioned outputs without duplicate or stale files.
+- Generated outputs: `dist/SpeedyType-0.5.0/`,
+  `dist/SpeedyType-0.5.0-source.zip` (99,457 bytes), and
+  `dist/SHA256SUMS.txt`.
+- ZIP SHA-256:
+  `fd8972735d18f87a0614cc2b614ee6e5665230dd4927db79e35166b305bbf19e`.
+  The checksum file was parsed and independently matched against the ZIP.
+- Top-level release inventory was exactly `.env.example`,
+  `KNOWN_LIMITATIONS.md`, `MAC_SETUP.md`, `README.md`, `pricing.json`,
+  `real_voice_script.md`, `requirements.txt`, `scripts/`, and `speedytype/`.
+- The ZIP was extracted into a guarded temporary directory. From the extracted
+  release, `python -m compileall -q speedytype`,
+  `python -m speedytype --help`, `bash -n scripts/setup_mac.sh`, and Windows
+  PowerShell parser checks for `setup_windows.ps1` and
+  `verify_command_alias_windows.ps1` all exited `0`; the combined smoke test
+  printed `EXTRACTED_RELEASE_SMOKE_OK`.
+- macOS shell syntax and path logic are covered by the audit above; actual
+  setup, Keychain, PATH, and command execution on a real Mac remain a
+  user-side verification step.
