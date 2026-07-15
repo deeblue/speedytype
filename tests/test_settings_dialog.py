@@ -5,8 +5,14 @@ import sounddevice as sd
 from PyQt6.QtWidgets import QApplication
 
 from speedytype.audio import list_input_devices
+from speedytype.secrets_store import SecretStoreError
 from speedytype.settings import AppSettings, DEFAULT_VOCAB_TERMS, save_settings
-from speedytype.settings_dialog import SYSTEM_DEFAULT_DEVICE_LABEL, SettingsDialog, format_seconds_readable
+from speedytype.settings_dialog import (
+    SYSTEM_DEFAULT_DEVICE_LABEL,
+    MaskedKeyField,
+    SettingsDialog,
+    format_seconds_readable,
+)
 
 
 @pytest.fixture(scope="module")
@@ -125,14 +131,18 @@ def test_masked_key_field_reveal_toggle_and_edit(qapp, tmp_path):
     assert field.current_value() == "sk-brand-new-value"
 
 
-def test_save_writes_settings_and_only_changed_keys(qapp, tmp_path):
+def test_save_writes_only_changed_secret_to_keyring(qapp, tmp_path, monkeypatch):
     settings_path = tmp_path / "settings.json"
     env_path = tmp_path / ".env"
-    env_path.write_text(
-        "OPENAI_API_KEY=sk-test-key-1234\nGEMINI_API_KEY=gem-test-key-5678\nMINIMAX_API_KEY=mm-test-key-9999\n# a comment\nHOTKEY=f9\n",
-        encoding="utf-8",
-    )
+    original_env = "GEMINI_API_KEY=legacy-fallback\n# keep\n"
+    env_path.write_text(original_env, encoding="utf-8")
     save_settings(settings_path, AppSettings(max_record_seconds=90.0))
+    writes = []
+    monkeypatch.setattr(
+        "speedytype.settings_dialog.set_api_key",
+        lambda name, value: writes.append((name, value)),
+    )
+    monkeypatch.setattr("speedytype.settings_dialog.delete_api_key", lambda name: None)
     dialog = SettingsDialog(make_config(), str(env_path), str(settings_path))
 
     dialog.slider.setValue(200)
@@ -149,14 +159,67 @@ def test_save_writes_settings_and_only_changed_keys(qapp, tmp_path):
     saved = json.loads(settings_path.read_text(encoding="utf-8"))
     assert saved["max_record_seconds"] == 200.0
     assert "NewTerm" in saved["vocab_terms"]
-
-    env_text = env_path.read_text(encoding="utf-8")
-    assert "GEMINI_API_KEY=gem-changed-value" in env_text
-    assert "OPENAI_API_KEY=sk-test-key-1234" in env_text  # untouched
-    assert "# a comment" in env_text  # preserved
+    assert writes == [("GEMINI_API_KEY", "gem-changed-value")]
+    assert env_path.read_text(encoding="utf-8") == original_env
     assert "已儲存" in dialog.status_label.text()
     assert "GEMINI_API_KEY" in dialog.status_label.text()
     assert "OPENAI_API_KEY" not in dialog.status_label.text()
+
+
+def test_save_empty_changed_secret_deletes_keyring_entry(qapp, tmp_path, monkeypatch):
+    settings_path = tmp_path / "settings.json"
+    save_settings(settings_path, AppSettings())
+    deleted = []
+    monkeypatch.setattr("speedytype.settings_dialog.set_api_key", lambda *args: None)
+    monkeypatch.setattr(
+        "speedytype.settings_dialog.delete_api_key",
+        lambda name: deleted.append(name),
+    )
+    dialog = SettingsDialog(make_config(), tmp_path / ".env", settings_path)
+
+    dialog.minimax_field.toggle_button.click()
+    dialog.minimax_field.line_edit.clear()
+    dialog._save()
+
+    assert deleted == ["MINIMAX_API_KEY"]
+
+
+def test_failed_secret_save_is_reported_and_retried(qapp, tmp_path, monkeypatch):
+    settings_path = tmp_path / "settings.json"
+    save_settings(settings_path, AppSettings())
+    attempts = []
+
+    def fail_save(name, value):
+        attempts.append((name, value))
+        raise SecretStoreError("backend locked")
+
+    monkeypatch.setattr("speedytype.settings_dialog.set_api_key", fail_save)
+    dialog = SettingsDialog(make_config(), tmp_path / ".env", settings_path)
+    dialog.gemini_field.toggle_button.click()
+    dialog.gemini_field.line_edit.setText("gem-new-fake")
+    dialog._save()
+
+    assert "金鑰儲存失敗（GEMINI_API_KEY）" in dialog.status_label.text()
+    monkeypatch.setattr(
+        "speedytype.settings_dialog.set_api_key",
+        lambda name, value: attempts.append((name, value)),
+    )
+    dialog._save()
+    assert attempts == [
+        ("GEMINI_API_KEY", "gem-new-fake"),
+        ("GEMINI_API_KEY", "gem-new-fake"),
+    ]
+
+
+def test_connection_button_uses_current_edited_value(qapp):
+    received = []
+    field = MaskedKeyField("Provider", "old-value", lambda value: received.append(value) or (True, "ok"))
+    field.toggle_button.click()
+    field.line_edit.setText("currently-edited-value")
+
+    field.test_button.click()
+
+    assert received == ["currently-edited-value"]
 
 
 def test_cancel_writes_nothing(qapp, tmp_path):

@@ -24,10 +24,11 @@ from PyQt6.QtWidgets import (
 from speedytype.audio import list_input_devices
 from speedytype.autostart import install_autostart, query_autostart, uninstall_autostart
 from speedytype.config import AppConfig
-from speedytype.env_writer import mask_secret, test_gemini_key, test_minimax_key, test_openai_key, update_env_key
+from speedytype.env_writer import mask_secret, test_gemini_key, test_minimax_key, test_openai_key
 from speedytype.icon import build_app_icon
 from speedytype.hotkey import PlatformPermissionError, capture_hotkey
 from speedytype.paths import default_env_path, default_settings_path
+from speedytype.secrets_store import SecretStoreError, delete_api_key, set_api_key
 from speedytype.settings import (
     MAX_MAX_RECORD_SECONDS,
     MIN_MAX_RECORD_SECONDS,
@@ -170,6 +171,11 @@ class SettingsDialog(QDialog):
         self.config = config
         self.env_path = str(env_path or default_env_path())
         self.settings_path = str(settings_path or default_settings_path())
+        self._saved_key_values = {
+            "OPENAI_API_KEY": config.openai_api_key,
+            "GEMINI_API_KEY": config.gemini_api_key,
+            "MINIMAX_API_KEY": config.minimax_api_key,
+        }
         self.setWindowTitle("SpeedyType 設定")
         self.setWindowIcon(build_app_icon())
         self.setMinimumWidth(520)
@@ -403,7 +409,10 @@ class SettingsDialog(QDialog):
         group_layout.addWidget(self.gemini_field)
         group_layout.addWidget(self.minimax_field)
         group_layout.addWidget(
-            QLabel("金鑰仍以明碼存放於 .env；此處只是把編輯方式從手動改文字檔變成透過介面操作，安全性沒有改變。")
+            QLabel(
+                "金鑰主要儲存於系統保密管理機制（Windows Credential Manager / macOS Keychain）；"
+                ".env 僅作為 keyring 不可用時的相容備援。"
+            )
         )
         return group
 
@@ -439,15 +448,24 @@ class SettingsDialog(QDialog):
                 self._autostart_enabled = desired_autostart
 
         key_changes = []
-        for field, env_key, original in (
-            (self.openai_field, "OPENAI_API_KEY", self.config.openai_api_key),
-            (self.gemini_field, "GEMINI_API_KEY", self.config.gemini_api_key),
-            (self.minimax_field, "MINIMAX_API_KEY", self.config.minimax_api_key),
+        for field, env_key in (
+            (self.openai_field, "OPENAI_API_KEY"),
+            (self.gemini_field, "GEMINI_API_KEY"),
+            (self.minimax_field, "MINIMAX_API_KEY"),
         ):
             new_value = field.current_value()
-            if new_value != original:
-                update_env_key(self.env_path, env_key, new_value)
-                key_changes.append(env_key)
+            if new_value == self._saved_key_values[env_key]:
+                continue
+            try:
+                if new_value:
+                    set_api_key(env_key, new_value)
+                else:
+                    delete_api_key(env_key)
+            except SecretStoreError as exc:
+                messages.append(f"金鑰儲存失敗（{env_key}）：{exc}")
+                continue
+            self._saved_key_values[env_key] = new_value
+            key_changes.append(env_key)
 
         if key_changes:
             messages.append(f"金鑰已更新（{', '.join(key_changes)}）")
