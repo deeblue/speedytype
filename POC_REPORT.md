@@ -562,14 +562,18 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
 - The installed wrapper was inspected: it contains only repository, venv
   Python, and default `.env` paths followed by `%*`; it contains no API key.
 
-## Reproducible source release (2026-07-15)
+## Reproducible source release (updated 2026-07-16)
 
 - `python scripts/build_release.py` builds from an explicit allowlist into
   ignored `dist/`. Repository tests, recordings, benchmark evidence,
   development plans, caches, local settings, `.env`, and Keyring data are not
   release inputs.
-- The version comes from `speedytype/version.py`; output consists of the
-  versioned source directory, matching source ZIP, and `SHA256SUMS.txt`.
+- `speedytype/version.py` is the sole runtime version source. Package
+  `__version__`, `speedytype --version`, the tray About dialog, and the release
+  builder all resolve the same value. The CLI prints `SpeedyType 0.5.1` without
+  loading configuration or credentials.
+- Release output consists of the versioned source directory, matching source
+  ZIP, and `SHA256SUMS.txt`.
 - The release README documents automatic setup and manual venv plus
   `pip install -r requirements.txt` installation on Windows and macOS,
   Keyring-backed credential configuration, daily commands, updates,
@@ -581,18 +585,18 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
 
 ### Source release verification evidence
 
-- Full automated suite: `python -m pytest -q` → `303 passed in 13.47s`.
+- Full automated suite: `python -m pytest -q` → `306 passed in 14.29s`.
 - On first run, each masked API key field accepts typing and native paste before
   reveal; **Show** is only needed to inspect the entered value.
 - Repeatability: `python scripts/build_release.py` completed twice and replaced
   the same versioned outputs without duplicate or stale files. A separate
   cross-worktree build with different source mtimes and checkout line endings
   produced the same ZIP bytes and SHA-256.
-- Generated outputs: `dist/SpeedyType-0.5.0/`,
-  `dist/SpeedyType-0.5.0-source.zip` (98,849 bytes), and
+- Generated outputs: `dist/SpeedyType-0.5.1/`,
+  `dist/SpeedyType-0.5.1-source.zip` (98,922 bytes), and
   `dist/SHA256SUMS.txt`.
 - ZIP SHA-256:
-  `ff30b48db4eedd44eb63d89e9e43514dcfacb25b80d49a6a070bbfcf53927497`.
+  `490aceb6557529ad3d6ab56df26300d1e692d6bfd2f75e882bdba1c3f8712466`.
   The checksum file was parsed and independently matched against the ZIP.
 - Released text uses LF line endings, ZIP entries use a fixed timestamp,
   shell scripts are stored as mode `0755`, and other files as `0644` so
@@ -600,12 +604,13 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
 - Top-level release inventory was exactly `.env.example`,
   `KNOWN_LIMITATIONS.md`, `MAC_SETUP.md`, `README.md`, `pricing.json`,
   `real_voice_script.md`, `requirements.txt`, `scripts/`, and `speedytype/`.
-- The ZIP was extracted into a guarded temporary directory. From the extracted
-  release, `python -m compileall -q speedytype`,
-  `python -m speedytype --help`, `bash -n scripts/setup_mac.sh`, and Windows
-  PowerShell parser checks for `setup_windows.ps1` and
-  `verify_command_alias_windows.ps1` all exited `0`; the combined smoke test
-  printed `EXTRACTED_RELEASE_SMOKE_OK`.
+- The `0.5.1` ZIP was extracted into a guarded temporary directory. From the
+  extracted release, `python -m compileall -q speedytype`,
+  `python -m speedytype --version`, package `__version__`,
+  `bash -n scripts/setup_mac.sh`, and Windows PowerShell parser checks for
+  `setup_windows.ps1` and `verify_command_alias_windows.ps1` all succeeded.
+  CLI output was exactly `SpeedyType 0.5.1`, package output was `0.5.1`, and
+  the combined smoke test printed `EXTRACTED_0_5_1_SMOKE_OK`.
 - macOS shell syntax and path logic are covered by the audit above; actual
   setup, Keychain, PATH, and command execution on a real Mac remain a
   user-side verification step.
