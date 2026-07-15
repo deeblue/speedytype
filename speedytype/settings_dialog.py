@@ -26,7 +26,11 @@ from PyQt6.QtWidgets import (
 from speedytype.audio import list_input_devices
 from speedytype.autostart import install_autostart, query_autostart, uninstall_autostart
 from speedytype.config import AppConfig
-from speedytype.env_writer import mask_secret, test_gemini_key, test_minimax_key, test_openai_key
+from speedytype.env_writer import (
+    test_gemini_key,
+    test_minimax_key,
+    test_openai_key,
+)
 from speedytype.icon import build_app_icon
 from speedytype.hotkey import PlatformPermissionError, capture_hotkey
 from speedytype.paths import default_env_path, default_pricing_path, default_settings_path
@@ -118,8 +122,8 @@ class MaskedKeyField(QWidget):
         layout.addWidget(QLabel(label))
 
         self.line_edit = QLineEdit()
-        self.line_edit.setReadOnly(True)
-        self.line_edit.setText(mask_secret(self._value))
+        self.line_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.line_edit.setText(self._value)
         layout.addWidget(self.line_edit, 1)
 
         self.toggle_button = QPushButton("顯示")
@@ -133,24 +137,21 @@ class MaskedKeyField(QWidget):
         self.status_label = QLabel("")
         layout.addWidget(self.status_label)
 
-    def _sync_value_from_field_if_editable(self) -> None:
-        if not self.line_edit.isReadOnly():
-            self._value = self.line_edit.text()
+    def _sync_value_from_field(self) -> None:
+        self._value = self.line_edit.text()
 
     def _toggle_reveal(self) -> None:
-        self._sync_value_from_field_if_editable()
+        self._sync_value_from_field()
         self._revealed = not self._revealed
-        if self._revealed:
-            self.line_edit.setReadOnly(False)
-            self.line_edit.setText(self._value)
-            self.toggle_button.setText("隱藏")
-        else:
-            self.line_edit.setReadOnly(True)
-            self.line_edit.setText(mask_secret(self._value))
-            self.toggle_button.setText("顯示")
+        self.line_edit.setEchoMode(
+            QLineEdit.EchoMode.Normal
+            if self._revealed
+            else QLineEdit.EchoMode.Password
+        )
+        self.toggle_button.setText("隱藏" if self._revealed else "顯示")
 
     def current_value(self) -> str:
-        self._sync_value_from_field_if_editable()
+        self._sync_value_from_field()
         return self._value
 
     def _run_test(self) -> None:

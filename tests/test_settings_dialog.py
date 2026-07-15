@@ -4,7 +4,13 @@ from dataclasses import replace
 
 import pytest
 import sounddevice as sd
-from PyQt6.QtWidgets import QApplication, QDialog, QPushButton, QScrollArea
+from PyQt6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+)
 
 from speedytype.audio import list_input_devices
 from speedytype.settings import AppSettings, DEFAULT_VOCAB_TERMS, save_settings
@@ -434,23 +440,45 @@ def test_vocab_export_import_roundtrip_via_dialog(qapp, tmp_path, monkeypatch):
     assert [dialog.vocab_list.item(i).text() for i in range(dialog.vocab_list.count())] == ["BIOS", "Custom1"]
 
 
+def test_empty_masked_key_field_accepts_paste_without_reveal(qapp):
+    field = MaskedKeyField("OpenAI", "", lambda value: (True, "ok"))
+    clipboard = qapp.clipboard()
+    previous_text = clipboard.text()
+    try:
+        clipboard.setText("sk-pasted-first-run-key")
+
+        field.line_edit.setFocus()
+        field.line_edit.paste()
+
+        assert not field.line_edit.isReadOnly()
+        assert field.line_edit.echoMode() == QLineEdit.EchoMode.Password
+        assert field.line_edit.text() == "sk-pasted-first-run-key"
+        assert field.current_value() == "sk-pasted-first-run-key"
+    finally:
+        clipboard.setText(previous_text)
+
+
 def test_masked_key_field_reveal_toggle_and_edit(qapp, tmp_path):
     settings_path = tmp_path / "settings.json"
     save_settings(settings_path, AppSettings())
-    dialog = SettingsDialog(make_config(), str(tmp_path / ".env"), str(settings_path))
+    dialog = SettingsDialog(
+        make_config(), str(tmp_path / ".env"), str(settings_path)
+    )
 
     field = dialog.openai_field
-    assert field.line_edit.isReadOnly()
-    assert field.line_edit.text() == "•" * (len("sk-test-key-1234") - 4) + "1234"
+    assert not field.line_edit.isReadOnly()
+    assert field.line_edit.echoMode() == QLineEdit.EchoMode.Password
+    assert field.line_edit.text() == "sk-test-key-1234"
     assert field.current_value() == "sk-test-key-1234"
 
     field.toggle_button.click()
-    assert not field.line_edit.isReadOnly()
+    assert field.line_edit.echoMode() == QLineEdit.EchoMode.Normal
     assert field.line_edit.text() == "sk-test-key-1234"
 
     field.line_edit.setText("sk-brand-new-value")
     field.toggle_button.click()
-    assert field.line_edit.isReadOnly()
+    assert field.line_edit.echoMode() == QLineEdit.EchoMode.Password
+    assert field.line_edit.text() == "sk-brand-new-value"
     assert field.current_value() == "sk-brand-new-value"
 
 
