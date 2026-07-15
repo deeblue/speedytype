@@ -79,7 +79,7 @@ def verify_production_credentials(env_path: Path) -> tuple[bool, AppConfig | Non
     try:
         config = load_config(env_path)
     except Exception as exc:
-        print(f"PRODUCTION_MIGRATION NOT_VERIFIED: {exc}")
+        print(f"PRODUCTION_MIGRATION NOT_VERIFIED ({type(exc).__name__})")
         return False, None
 
     all_match = True
@@ -127,7 +127,7 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="speedytype_keyring_verify_") as temp_dir:
             fallback_ok = run_isolated_fallback_check(temp_dir)
     except Exception as exc:
-        print(f"ISOLATED_FALLBACK NOT_VERIFIED: {exc}")
+        print(f"ISOLATED_FALLBACK NOT_VERIFIED ({type(exc).__name__})")
         fallback_ok = False
     else:
         print(f"ISOLATED_FALLBACK: {'PASS' if fallback_ok else 'FAIL'}")

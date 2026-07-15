@@ -123,8 +123,27 @@ def test_failed_write_keeps_env_exactly(tmp_path, monkeypatch):
 
     assert result.values["OPENAI_API_KEY"] == "sk-fake"
     assert result.migrated == ()
-    assert result.warnings and "backend locked" in result.warnings[0]
+    assert result.warnings and "RuntimeError" in result.warnings[0]
     assert env_path.read_text(encoding="utf-8") == original
+
+
+def test_backend_exception_text_never_reaches_resolution_warning(tmp_path, monkeypatch):
+    sentinel_secret = "SECRET-SENTINEL-MUST-NOT-APPEAR"
+
+    def fail_read(*args):
+        raise RuntimeError(f"backend included {sentinel_secret}")
+
+    monkeypatch.setattr(secrets_store, "_get_password", fail_read)
+
+    result = secrets_store.resolve_api_keys(
+        tmp_path / ".env",
+        {},
+        environment={},
+    )
+
+    assert result.warnings
+    assert "RuntimeError" in " ".join(result.warnings)
+    assert sentinel_secret not in " ".join(result.warnings)
 
 
 def test_remove_env_keys_preserves_comments_blank_lines_and_crlf(tmp_path, monkeypatch):

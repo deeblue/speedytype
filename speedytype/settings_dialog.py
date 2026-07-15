@@ -461,8 +461,8 @@ class SettingsDialog(QDialog):
                     set_api_key(env_key, new_value)
                 else:
                     delete_api_key(env_key)
-            except SecretStoreError as exc:
-                messages.append(f"金鑰儲存失敗（{env_key}）：{exc}")
+            except SecretStoreError:
+                messages.append(f"金鑰儲存失敗（{env_key}）：系統保密管理機制無法完成操作")
                 continue
             self._saved_key_values[env_key] = new_value
             key_changes.append(env_key)

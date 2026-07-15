@@ -188,10 +188,11 @@ def test_failed_secret_save_is_reported_and_retried(qapp, tmp_path, monkeypatch)
     settings_path = tmp_path / "settings.json"
     save_settings(settings_path, AppSettings())
     attempts = []
+    sentinel_secret = "SECRET-SENTINEL-MUST-NOT-APPEAR"
 
     def fail_save(name, value):
         attempts.append((name, value))
-        raise SecretStoreError("backend locked")
+        raise SecretStoreError(f"backend exposed {sentinel_secret}")
 
     monkeypatch.setattr("speedytype.settings_dialog.set_api_key", fail_save)
     dialog = SettingsDialog(make_config(), tmp_path / ".env", settings_path)
@@ -200,6 +201,7 @@ def test_failed_secret_save_is_reported_and_retried(qapp, tmp_path, monkeypatch)
     dialog._save()
 
     assert "金鑰儲存失敗（GEMINI_API_KEY）" in dialog.status_label.text()
+    assert sentinel_secret not in dialog.status_label.text()
     monkeypatch.setattr(
         "speedytype.settings_dialog.set_api_key",
         lambda name, value: attempts.append((name, value)),

@@ -39,3 +39,20 @@ def test_isolated_fallback_mutates_only_fake_username_and_temp_env(tmp_path, mon
     assert set(mutated_usernames) == {"fallback_test_api_key"}
     assert env_paths
     assert all(path.is_relative_to(tmp_path.resolve()) for path in env_paths)
+
+
+def test_production_verifier_does_not_print_exception_text(tmp_path, monkeypatch, capsys):
+    from scripts import verify_keyring_live
+
+    sentinel_secret = "SECRET-SENTINEL-MUST-NOT-APPEAR"
+    monkeypatch.setattr(
+        verify_keyring_live,
+        "load_config",
+        lambda path: (_ for _ in ()).throw(RuntimeError(f"failure contains {sentinel_secret}")),
+    )
+
+    ok, config = verify_keyring_live.verify_production_credentials(tmp_path / ".env")
+
+    assert ok is False
+    assert config is None
+    assert sentinel_secret not in capsys.readouterr().out

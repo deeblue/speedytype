@@ -48,7 +48,9 @@ def get_api_key(
     try:
         return _get_password(service_name, username) or ""
     except Exception as exc:
-        raise SecretStoreError(f"Credential store read failed for {env_name}: {exc}") from exc
+        raise SecretStoreError(
+            f"Credential store read failed for {env_name} ({type(exc).__name__})"
+        ) from exc
 
 
 def set_api_key(
@@ -66,7 +68,9 @@ def set_api_key(
     except SecretStoreError:
         raise
     except Exception as exc:
-        raise SecretStoreError(f"Credential store failed for {env_name}: {exc}") from exc
+        raise SecretStoreError(
+            f"Credential store failed for {env_name} ({type(exc).__name__})"
+        ) from exc
 
 
 def delete_api_key(
@@ -90,7 +94,9 @@ def delete_api_key(
     except SecretStoreError:
         raise
     except Exception as exc:
-        raise SecretStoreError(f"Credential deletion failed for {env_name}: {exc}") from exc
+        raise SecretStoreError(
+            f"Credential deletion failed for {env_name} ({type(exc).__name__})"
+        ) from exc
 
 
 def _remove_env_keys(path: Path, env_names: tuple[str, ...]) -> None:

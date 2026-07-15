@@ -438,8 +438,8 @@ Safety behavior:
 
 Verification evidence:
 
-- Targeted automated keyring/config/Settings/verifier suite: `36 passed`.
-- Full automated suite after implementation and documentation: `151 passed in 4.02s`.
+- Targeted automated keyring/config/Settings/verifier suite: `39 passed`.
+- Full automated suite after implementation and documentation: `153 passed in 3.91s`.
 - Live Windows Credential Manager: all three provider credentials existed and exactly matched the resolved configuration.
 - Live provider checks: OpenAI `PASS`, Gemini `PASS`, MiniMax `PASS` using model-list endpoints; no secret values were printed.
 - Real untracked `.env`: active plaintext lines for all three API-key names were absent after verification.
