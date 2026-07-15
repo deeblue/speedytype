@@ -65,9 +65,11 @@ def test_latency_records_hybrid_diagnostics(tmp_path, monkeypatch):
         wav, config, do_paste=False, raw_transcript_override="text", whisper_seconds_override=1,
         hybrid_request_count=4, hybrid_request_seconds=8.5, hybrid_fallback_used=True,
         hybrid_validation_reasons="active gap", precomputed_tail_seconds=2.0,
+        stt_audio_seconds=123.5,
     )
     assert result.latency.hybrid_request_count == 4
     assert result.latency.hybrid_request_seconds == 8.5
+    assert result.latency.stt_audio_seconds == 123.5
     assert result.latency.hybrid_fallback_used is True
     assert result.latency.total_tail_latency_seconds >= 2.0
     assert "active gap" in (tmp_path / "latency.csv").read_text(encoding="utf-8")

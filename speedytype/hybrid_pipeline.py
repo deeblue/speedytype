@@ -23,6 +23,7 @@ class HybridOutcome:
     tail_seconds: float
     request_seconds: float
     request_count: int
+    audio_seconds: float
     fallback_used: bool
     diagnostics: dict[str, object]
 
@@ -208,6 +209,7 @@ class HybridTranscriber:
                 time.perf_counter() - tail_started,
                 request_seconds,
                 1,
+                self._duration,
                 False,
                 {"mode": "batch"},
             )
@@ -255,11 +257,17 @@ class HybridTranscriber:
         resolved = resolve_with_batch_fallback(validation, merge.text, batch_fallback)
         request_seconds = sum(item.request_seconds for item in completed) + fallback_request_seconds
         request_count = sum(item.request_attempted for item in completed) + int(resolved.fallback_used)
+        audio_seconds = sum(
+            item.plan.end_seconds - item.plan.start_seconds
+            for item in completed
+            if item.request_attempted
+        ) + (self._duration if resolved.fallback_used else 0.0)
         return HybridOutcome(
             resolved.text,
             time.perf_counter() - tail_started,
             request_seconds,
             request_count,
+            audio_seconds,
             resolved.fallback_used,
             {
                 "mode": "hybrid",

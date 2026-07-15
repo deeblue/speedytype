@@ -346,6 +346,12 @@ def calculate_usage(csv_path: str | Path, pricing_path: str | Path) -> UsageSumm
                     input_tokens = _integer_field(row, "llm_input_tokens")
                     output_tokens = _integer_field(row, "llm_output_tokens")
                     stt_model = _text_field(row, "stt_model") or "whisper-1"
+                    stt_audio_raw = _text_field(row, "stt_audio_seconds")
+                    stt_audio_seconds = (
+                        _decimal_field(row, "stt_audio_seconds")
+                        if stt_audio_raw
+                        else recording_seconds
+                    )
                     llm_model = _text_field(row, "llm_model")
                 except (InvalidOperation, ValueError):
                     message = f"Skipped malformed CSV row {line_number}."
@@ -356,7 +362,7 @@ def calculate_usage(csv_path: str | Path, pricing_path: str | Path) -> UsageSumm
                 if inferred:
                     legacy_inferred_rows += 1
 
-                row_minutes = recording_seconds / Decimal("60")
+                row_minutes = stt_audio_seconds / Decimal("60")
                 stt_calls += request_count if request_count > 0 else 1
                 stt_minutes += row_minutes
                 stt_models.add(stt_model)

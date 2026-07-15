@@ -154,6 +154,7 @@ class DaemonController(QObject):
                         run_label="hybrid_fallback" if hybrid.fallback_used else "hybrid",
                         hybrid_request_count=hybrid.request_count,
                         hybrid_request_seconds=hybrid.request_seconds,
+                        stt_audio_seconds=hybrid.audio_seconds,
                         hybrid_fallback_used=hybrid.fallback_used,
                         hybrid_validation_reasons=" | ".join(hybrid.diagnostics.get("validation_reasons", [])),
                         precomputed_tail_seconds=hybrid.tail_seconds,

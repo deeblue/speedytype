@@ -449,10 +449,10 @@ The separate `API` / `BJ 團隊` over-correction hypothesis was rejected after 1
 
 ### Recorded data and scope policy
 
-- The latency CSV appends `usage_scope`, `stt_model`, `llm_input_tokens`, `llm_output_tokens`, and `llm_total_tokens`. Old headers are migrated with existing values preserved and new cells blank. Missing provider token metadata is written as blank, never manufactured as zero-valued provider usage.
+- The latency CSV appends `usage_scope`, `stt_model`, `stt_audio_seconds`, `llm_input_tokens`, `llm_output_tokens`, and `llm_total_tokens`. Old headers are migrated with existing values preserved and new cells blank. Missing provider token metadata is written as blank, never manufactured as zero-valued provider usage.
 - `process_wav()` defaults to `usage_scope="development"`. The daemon normal/hybrid paths and CLI `run-once`/`listen` explicitly pass `daily`; benchmark, real-voice, and other programmatic callers remain excluded unless they explicitly opt in.
 - For older rows without `usage_scope`, only blank, `hybrid`, and `hybrid_fallback` `run_label` values are inferred as daily. Other non-empty legacy labels, including `real_voice`, are excluded. The Settings warning reports how many rows were inferred.
-- STT calls use a positive `hybrid_request_count` when present, otherwise one call per accepted row. STT minutes are recorded audio seconds divided by 60. LLM calls are recognized from a recorded model, with the old `gemini_seconds > 0` fallback limited to accepted inferred-legacy rows. LLM input/output totals use only provider-reported `LlmUsage`; absent tokens are not estimated.
+- STT calls use a positive `hybrid_request_count` when present, otherwise one call per accepted row. STT minutes use authoritative submitted `stt_audio_seconds`: normal batch calls submit the recording once, while hybrid sums every attempted chunk and adds the full recording when batch fallback runs. Legacy rows without this field fall back to `recording_seconds`. LLM calls are recognized from a recorded model, with the old `gemini_seconds > 0` fallback limited to accepted inferred-legacy rows. LLM input/output totals use only provider-reported `LlmUsage`; absent tokens are not estimated.
 
 ### Fixed known-data proof
 
@@ -477,6 +477,16 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
 - Static/syntax check: `python -m compileall -q speedytype scripts` → exit `0`, no output.
 - Documentation diff check: `git diff --check` → exit `0`; Git printed only the checkout's LF-to-CRLF notices for the two edited Markdown files.
 
+### Integration verification after current-master reconciliation
+
+- The feature branch was reconciled with keyring-enabled `master`; the feature's stricter source-change checks, cross-platform file locking, delete read-back verification, and redacted errors were retained.
+- Reviewer-found fallback regressions were fixed: empty keyring and process-environment values now continue to valid `.env` fallback, and `PasswordDeleteError` is idempotent only when read-back confirms the credential is absent.
+- Hybrid fallback cost accounting now records all submitted STT audio seconds rather than charging only one copy of the original recording.
+- Old latency CSV migration now runs under a writer lock, writes the migrated history plus new row to a unique sibling temp file, flushes and `fsync`s it, then atomically replaces the destination. Injected write and replace failures preserve the original bytes.
+- Targeted usage/cost, keyring, hybrid, pipeline, and latency regression sets passed during the fixes.
+- Fresh complete suite, including the real Windows clipboard module: `python -m pytest -q` → `273 passed in 7.40s`.
+- Fresh static/syntax and diff checks: `python -m compileall -q speedytype scripts` and `git diff --check` both exited `0`.
+
 ### Part A Windows evidence retained without rerunning live operations
 
 - Three Windows Generic Credential targets were observed exactly as `openai_api_key@SpeedyType`, `gemini_api_key@SpeedyType`, and `minimax_api_key@SpeedyType`; values were not exposed.
@@ -498,4 +508,4 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
 | Development and excluded legacy calls do not count | **PASS** | Fresh fixture and call-site tests verify default development exclusion, explicit daily user paths, and legacy-label policy. |
 | Pricing date and estimate disclaimer shown | **PASS** | Fresh Settings tests verify `2026-07-14` and `估算費用，非實際帳單，價格可能已變動`; provider billing reconciliation remains out of scope. |
 | Documentation records architecture, limits, tests, and live/automated distinction | **PASS** | `KNOWN_LIMITATIONS.md` items 4/10 and this Part B section record the implemented policy, residuals, exact evidence, and non-rerun live boundary. |
-| Complete suite including real Windows clipboard tests | **NOT_VERIFIED** | Fresh run was blocked only by five `OpenClipboard` access-denied failures; all other `242` tests passed. |
+| Complete suite including real Windows clipboard tests | **PASS** | Integration verification reran the complete suite without exclusions: `273 passed in 7.40s`, including the real Windows clipboard module. |

@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 
 import pytest
+from keyring.errors import PasswordDeleteError
 
 from speedytype import secrets_store
 
@@ -59,6 +60,33 @@ def test_delete_api_key_redacts_readback_error(monkeypatch):
     assert credential not in str(caught.value)
 
 
+def test_delete_api_key_treats_already_missing_credential_as_success(monkeypatch):
+    monkeypatch.setattr(
+        secrets_store,
+        "_delete_password",
+        lambda service, user: (_ for _ in ()).throw(PasswordDeleteError("not found")),
+    )
+    monkeypatch.setattr(secrets_store, "_get_password", lambda service, user: None)
+
+    secrets_store.delete_api_key("OPENAI_API_KEY")
+
+
+def test_delete_api_key_reports_password_delete_error_when_value_remains(monkeypatch):
+    credential = "sk-fake-secret-still-present"
+    monkeypatch.setattr(
+        secrets_store,
+        "_delete_password",
+        lambda service, user: (_ for _ in ()).throw(PasswordDeleteError("not found")),
+    )
+    monkeypatch.setattr(secrets_store, "_get_password", lambda service, user: credential)
+
+    with pytest.raises(secrets_store.SecretStoreError) as caught:
+        secrets_store.delete_api_key("OPENAI_API_KEY")
+
+    assert "Credential store delete failed for OPENAI_API_KEY" in str(caught.value)
+    assert credential not in str(caught.value)
+
+
 def test_resolve_migrates_file_value_and_removes_only_verified_line(tmp_path, monkeypatch):
     install_fake_backend(monkeypatch)
     env_path = tmp_path / ".env"
@@ -71,6 +99,41 @@ def test_resolve_migrates_file_value_and_removes_only_verified_line(tmp_path, mo
     assert result.values["OPENAI_API_KEY"] == "sk-fake"
     assert result.migrated == ("OPENAI_API_KEY", "GEMINI_API_KEY")
     assert env_path.read_text(encoding="utf-8") == "# keep\nLLM_PROVIDER=gemini\n"
+
+
+def test_empty_keyring_value_falls_back_to_file_and_migrates(tmp_path, monkeypatch):
+    values = install_fake_backend(
+        monkeypatch,
+        initial={("SpeedyType", "openai_api_key"): ""},
+    )
+    env_path = tmp_path / ".env"
+    env_path.write_text("OPENAI_API_KEY=sk-file-fallback\n", encoding="utf-8")
+
+    result = secrets_store.resolve_api_keys(
+        env_path,
+        {"OPENAI_API_KEY": "sk-file-fallback"},
+        environment={},
+    )
+
+    assert result.values["OPENAI_API_KEY"] == "sk-file-fallback"
+    assert values[("SpeedyType", "openai_api_key")] == "sk-file-fallback"
+    assert result.migrated == ("OPENAI_API_KEY",)
+
+
+def test_empty_environment_value_falls_back_to_file_and_migrates(tmp_path, monkeypatch):
+    values = install_fake_backend(monkeypatch)
+    env_path = tmp_path / ".env"
+    env_path.write_text("OPENAI_API_KEY=sk-file-fallback\n", encoding="utf-8")
+
+    result = secrets_store.resolve_api_keys(
+        env_path,
+        {"OPENAI_API_KEY": "sk-file-fallback"},
+        environment={"OPENAI_API_KEY": ""},
+    )
+
+    assert result.values["OPENAI_API_KEY"] == "sk-file-fallback"
+    assert values[("SpeedyType", "openai_api_key")] == "sk-file-fallback"
+    assert result.migrated == ("OPENAI_API_KEY",)
 
 
 def test_failed_write_keeps_env_exactly(tmp_path, monkeypatch):

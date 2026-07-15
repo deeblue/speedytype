@@ -41,6 +41,7 @@ def process_wav(
     whisper_seconds_override: float | None = None,
     hybrid_request_count: int = 0,
     hybrid_request_seconds: float = 0.0,
+    stt_audio_seconds: float | None = None,
     hybrid_fallback_used: bool = False,
     hybrid_validation_reasons: str = "",
     precomputed_tail_seconds: float = 0.0,
@@ -48,6 +49,9 @@ def process_wav(
     if usage_scope not in {"daily", "development"}:
         raise ValueError("usage_scope must be 'daily' or 'development'")
     recording_seconds = wav_duration_seconds(audio_path)
+    resolved_stt_audio_seconds = (
+        recording_seconds if stt_audio_seconds is None else stt_audio_seconds
+    )
     tail_start = time.perf_counter()
     safe_print("Recording ended.", flush=True)
 
@@ -78,6 +82,7 @@ def process_wav(
             hybrid_validation_reasons=hybrid_validation_reasons,
             usage_scope=usage_scope,
             stt_model=stt_model,
+            stt_audio_seconds=resolved_stt_audio_seconds,
         )
         append_latency_record(config.latency_log_path, latency)
         message = "Whisper returned empty text; skipped Gemini and paste."
@@ -125,6 +130,7 @@ def process_wav(
         hybrid_validation_reasons=hybrid_validation_reasons,
         usage_scope=usage_scope,
         stt_model=stt_model,
+        stt_audio_seconds=resolved_stt_audio_seconds,
         llm_input_tokens=llm_result.usage.input_tokens,
         llm_output_tokens=llm_result.usage.output_tokens,
         llm_total_tokens=llm_result.usage.total_tokens,

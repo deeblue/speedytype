@@ -28,6 +28,7 @@ CSV_FIELDS = [
     "recording_seconds",
     "hybrid_request_count",
     "stt_model",
+    "stt_audio_seconds",
     "gemini_seconds",
     "llm_model",
     "llm_input_tokens",
@@ -59,6 +60,32 @@ def write_pricing(path: Path) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def test_hybrid_fallback_cost_uses_all_uploaded_audio_seconds(tmp_path: Path) -> None:
+    csv_path = tmp_path / "usage.csv"
+    pricing_path = tmp_path / "pricing.json"
+    write_pricing(pricing_path)
+    write_csv(
+        csv_path,
+        [
+            {
+                "timestamp": "2026-07-15T00:00:00+00:00",
+                "usage_scope": "daily",
+                "run_label": "hybrid_fallback",
+                "recording_seconds": 60,
+                "hybrid_request_count": 3,
+                "stt_model": "whisper-1",
+                "stt_audio_seconds": 150,
+            }
+        ],
+    )
+
+    summary = calculate_usage(csv_path, pricing_path)
+
+    assert summary.stt_calls == 3
+    assert summary.stt_minutes == Decimal("2.5")
+    assert summary.stt_cost == Decimal("0.0150")
 
 
 def editable_pricing(*, stt_price: Decimal = Decimal("0.006")) -> PricingData:
@@ -729,7 +756,7 @@ def test_structurally_truncated_row_is_skipped_with_one_warning(tmp_path: Path) 
         writer = csv.writer(csv_file)
         writer.writerow(CSV_FIELDS)
         writer.writerow(["truncated"])
-        writer.writerow(["valid", "daily", "", "60", "", "whisper-1", "0", "", "", ""])
+        writer.writerow(["valid", "daily", "", "60", "", "whisper-1", "", "0", "", "", ""])
 
     with pytest.warns(UserWarning) as caught:
         summary = calculate_usage(csv_path, pricing_path)

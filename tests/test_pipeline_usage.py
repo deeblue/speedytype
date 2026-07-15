@@ -153,6 +153,7 @@ def test_daemon_processing_paths_mark_usage_daily(tmp_path, monkeypatch, hybrid_
             fallback_used=False,
             request_count=2,
             request_seconds=2.5,
+            audio_seconds=75.0,
             diagnostics={"validation_reasons": []},
         )
         controller._hybrid_transcriber = SimpleNamespace(finish=lambda path: hybrid_result)
@@ -175,6 +176,8 @@ def test_daemon_processing_paths_mark_usage_daily(tmp_path, monkeypatch, hybrid_
     controller._finish_after_release()
 
     assert calls[0]["usage_scope"] == "daily"
+    if hybrid_enabled:
+        assert calls[0]["stt_audio_seconds"] == 75.0
     app.processEvents()
 
 

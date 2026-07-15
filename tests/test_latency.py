@@ -4,6 +4,8 @@ import csv
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from speedytype.latency import LATENCY_FIELDS, LatencyRecord, append_latency_record
 from speedytype.usage_stats import calculate_usage
 
@@ -11,6 +13,7 @@ from speedytype.usage_stats import calculate_usage
 NEW_USAGE_FIELDS = [
     "usage_scope",
     "stt_model",
+    "stt_audio_seconds",
     "llm_input_tokens",
     "llm_output_tokens",
     "llm_total_tokens",
@@ -59,9 +62,58 @@ def test_append_migrates_old_header_and_preserves_old_values(tmp_path) -> None:
     assert all(rows[0][field] == "" for field in NEW_USAGE_FIELDS)
     assert rows[1]["usage_scope"] == "daily"
     assert rows[1]["stt_model"] == "whisper-1"
+    assert rows[1]["stt_audio_seconds"] == ""
     assert rows[1]["llm_input_tokens"] == "120"
     assert rows[1]["llm_output_tokens"] == "30"
     assert rows[1]["llm_total_tokens"] == "150"
+
+
+def _write_legacy_latency_file(path: Path) -> bytes:
+    old_fields = [field for field in LATENCY_FIELDS if field not in NEW_USAGE_FIELDS]
+    old_row = {field: "" for field in old_fields}
+    old_row.update({"timestamp": "legacy-time", "run_label": "hybrid", "recording_seconds": "12.5"})
+    with path.open("w", encoding="utf-8", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=old_fields)
+        writer.writeheader()
+        writer.writerow(old_row)
+    return path.read_bytes()
+
+
+def test_schema_migration_write_failure_preserves_original_bytes(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "latency.csv"
+    original = _write_legacy_latency_file(path)
+    real_writerow = csv.DictWriter.writerow
+
+    def fail_new_schema_write(writer, rowdict):
+        if "usage_scope" in rowdict:
+            raise OSError("simulated disk full")
+        return real_writerow(writer, rowdict)
+
+    monkeypatch.setattr(csv.DictWriter, "writerow", fail_new_schema_write)
+
+    with pytest.raises(OSError, match="simulated disk full"):
+        append_latency_record(path, _record(usage_scope="daily"))
+
+    assert path.read_bytes() == original
+
+
+def test_schema_migration_replace_failure_preserves_original_bytes(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "latency.csv"
+    original = _write_legacy_latency_file(path)
+    real_replace = Path.replace
+
+    def fail_target_replace(source, target):
+        if Path(target) == path:
+            raise OSError("simulated replace failure")
+        return real_replace(source, target)
+
+    monkeypatch.setattr(Path, "replace", fail_target_replace)
+
+    with pytest.raises(OSError, match="simulated replace failure"):
+        append_latency_record(path, _record(usage_scope="daily"))
+
+    assert path.read_bytes() == original
+    assert list(tmp_path.glob("latency.csv.*.tmp")) == []
 
 
 def test_optional_token_counts_are_written_as_blank(tmp_path) -> None:

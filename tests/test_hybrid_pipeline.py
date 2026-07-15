@@ -3,6 +3,7 @@ import threading
 import time
 
 import numpy as np
+import pytest
 
 from speedytype.chunking import ChunkingConfig
 from speedytype.hybrid_pipeline import HybridTranscriber
@@ -114,14 +115,16 @@ def test_finish_waits_for_inflight_request(tmp_path):
 def test_request_failure_times_chunks_and_batch_fallback(tmp_path, monkeypatch):
     calls = []
     batches = []
+    uploaded_durations = []
     clock = FakeClock()
 
     def verbose(path, *, prompt_override=""):
         calls.append(Path(path))
+        import soundfile as sf
+        uploaded_durations.append(sf.info(path).duration)
         clock.advance(2.0)
         if len(calls) == 1:
             raise RuntimeError("HTTP 429")
-        import soundfile as sf
         duration = sf.info(path).duration
         text = f"第{len(calls)}段"
         return {"text": text, "segments": [{"start": 0.0, "end": duration, "text": text}]}
@@ -140,6 +143,7 @@ def test_request_failure_times_chunks_and_batch_fallback(tmp_path, monkeypatch):
     assert len(batches) == 1
     assert outcome.request_count == len(calls) + len(batches)
     assert outcome.request_seconds == 2.0 * len(calls) + 5.0
+    assert outcome.audio_seconds == pytest.approx(sum(uploaded_durations) + 7.0)
     assert outcome.tail_seconds == outcome.request_seconds
 
 

@@ -13,6 +13,7 @@ from typing import Iterator, TextIO
 from keyring import delete_password as _delete_password
 from keyring import get_password as _get_password
 from keyring import set_password as _set_password
+from keyring.errors import PasswordDeleteError
 
 
 SERVICE_NAME = "SpeedyType"
@@ -83,6 +84,14 @@ def delete_api_key(
     username = key_names[env_name]
     try:
         _delete_password(service_name, username)
+    except PasswordDeleteError as exc:
+        try:
+            stored_value = _get_password(service_name, username)
+        except Exception as readback_exc:
+            raise _backend_error(env_name, "verify delete", readback_exc) from None
+        if stored_value is None:
+            return
+        raise _backend_error(env_name, "delete", exc) from None
     except Exception as exc:
         raise _backend_error(env_name, "delete", exc) from None
     try:
@@ -115,16 +124,17 @@ def resolve_api_keys(
             warnings.append(str(exc))
             stored_value = None
 
-        if stored_value is not None:
+        if stored_value:
             values[env_name] = stored_value
             continue
 
-        if env_name in environment:
-            values[env_name] = environment[env_name]
+        environment_value = environment.get(env_name)
+        if environment_value:
+            values[env_name] = environment_value
             continue
 
         file_value = file_values.get(env_name)
-        if file_value is None:
+        if not file_value:
             continue
 
         values[env_name] = file_value
