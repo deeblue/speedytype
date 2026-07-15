@@ -412,7 +412,7 @@ create `v0.5.1` on the feature branch.
 - Consumes: reviewed feature branch and local-merge choice from branch finishing.
 - Produces: annotated local tag `v0.5.1` pointing to verified `master`.
 
-- [ ] **Step 1: Merge locally before tagging**
+- [x] **Step 1: Merge locally before tagging**
 
 From the main repository root, update and fast-forward merge only after the user
 selects local merge:
@@ -425,7 +425,7 @@ git merge --ff-only feature/versioning-release-0.5.1
 
 Expected: merge exits `0`; do not tag if pull or merge fails.
 
-- [ ] **Step 2: Reverify merged master and rebuild its release**
+- [x] **Step 2: Reverify merged master and rebuild its release**
 
 Run on `master`:
 
@@ -440,7 +440,7 @@ python -m speedytype --version
 Expected: every command exits `0`, CLI prints `SpeedyType 0.5.1`, and the
 master-root release hash equals the feature's recorded checksum.
 
-- [ ] **Step 3: Refuse an existing tag and create the annotated tag**
+- [x] **Step 3: Refuse an existing tag and create the annotated tag**
 
 Run:
 
@@ -455,7 +455,7 @@ git tag -a v0.5.1 -m "SpeedyType 0.5.1"
 
 Expected: the pre-check finds no tag; annotated tag creation exits `0`.
 
-- [ ] **Step 4: Verify tag type and target**
+- [x] **Step 4: Verify tag type and target**
 
 Run:
 
@@ -469,7 +469,7 @@ if ($tagCommit -ne $masterCommit) { throw "v0.5.1 does not point to master" }
 
 Expected: tag type is `tag`; tag and master commit IDs match.
 
-- [ ] **Step 5: Clean feature workspace without pushing**
+- [x] **Step 5: Clean feature workspace without pushing**
 
 After successful merge, tests, build, and tag verification, remove the owned
 `.worktrees/versioning-release-0.5.1` worktree, prune registrations, and delete
