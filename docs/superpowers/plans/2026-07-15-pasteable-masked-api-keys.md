@@ -36,7 +36,7 @@
 - Consumes: `MaskedKeyField(label: str, initial_value: str, test_func, parent=None)`.
 - Produces: an always-editable `line_edit` whose `current_value() -> str` returns pasted or typed text regardless of echo mode.
 
-- [ ] **Step 1: Add the failing direct-paste test and update imports**
+- [x] **Step 1: Add the failing direct-paste test and update imports**
 
 Add `QLineEdit` to the existing QtWidgets import and insert this test before the existing reveal-toggle test:
 
@@ -68,7 +68,7 @@ def test_empty_masked_key_field_accepts_paste_without_reveal(qapp):
         clipboard.setText(previous_text)
 ```
 
-- [ ] **Step 2: Run the paste test and verify RED**
+- [x] **Step 2: Run the paste test and verify RED**
 
 Run:
 
@@ -79,7 +79,7 @@ python -m pytest tests/test_settings_dialog.py::test_empty_masked_key_field_acce
 
 Expected: FAIL because the current field is read-only and uses the normal echo mode, so the clipboard value is not pasted.
 
-- [ ] **Step 3: Implement editable password-mode fields**
+- [x] **Step 3: Implement editable password-mode fields**
 
 Remove the now-unused `mask_secret` name from the `speedytype.env_writer`
 import, retaining the three connection-test functions:
@@ -123,7 +123,7 @@ def current_value(self) -> str:
 
 Do not call `setReadOnly()` or replace the field text with `mask_secret()` when hiding it.
 
-- [ ] **Step 4: Update the reveal-toggle regression test**
+- [x] **Step 4: Update the reveal-toggle regression test**
 
 Replace `test_masked_key_field_reveal_toggle_and_edit` with:
 
@@ -152,7 +152,7 @@ def test_masked_key_field_reveal_toggle_and_edit(qapp, tmp_path):
     assert field.current_value() == "sk-brand-new-value"
 ```
 
-- [ ] **Step 5: Run Settings and Keyring-focused tests**
+- [x] **Step 5: Run Settings and Keyring-focused tests**
 
 Run:
 
@@ -163,7 +163,7 @@ python -m pytest tests/test_settings_dialog.py tests/test_settings_launcher.py t
 
 Expected: all selected tests pass with zero failures, including direct paste, save-only-changed-key, cancel, connection tests, and Keyring fallback behavior.
 
-- [ ] **Step 6: Commit the behavior change**
+- [x] **Step 6: Commit the behavior change**
 
 ```powershell
 git add speedytype/settings_dialog.py tests/test_settings_dialog.py
@@ -181,7 +181,7 @@ git commit -m "fix: allow paste into masked key fields"
 - Consumes: the direct-paste `MaskedKeyField` behavior from Task 1 and `python scripts/build_release.py`.
 - Produces: user-facing first-run paste guidance and exact evidence for the regenerated `SpeedyType-0.5.0-source.zip`.
 
-- [ ] **Step 1: Add a failing release documentation assertion**
+- [x] **Step 1: Add a failing release documentation assertion**
 
 In the existing release README credential test, add:
 
@@ -190,7 +190,7 @@ assert "paste" in content
 assert "masked" in content
 ```
 
-- [ ] **Step 2: Run the documentation test and verify RED**
+- [x] **Step 2: Run the documentation test and verify RED**
 
 Run:
 
@@ -200,7 +200,7 @@ python -m pytest tests/test_release_docs.py -q
 
 Expected: FAIL because the current release README does not explain that masked fields accept direct paste.
 
-- [ ] **Step 3: Document first-run paste behavior**
+- [x] **Step 3: Document first-run paste behavior**
 
 After the first `speedytype settings` command in `release/README.md`, add:
 
@@ -209,7 +209,7 @@ API key fields stay masked but accept typing and native Paste immediately; the
 **Show** button is only needed when you want to inspect the entered value.
 ```
 
-- [ ] **Step 4: Run documentation and focused UI tests**
+- [x] **Step 4: Run documentation and focused UI tests**
 
 Run:
 
@@ -220,7 +220,7 @@ python -m pytest tests/test_release_docs.py tests/test_settings_dialog.py tests/
 
 Expected: all selected tests pass with zero failures.
 
-- [ ] **Step 5: Run the full suite and regenerate the release twice**
+- [x] **Step 5: Run the full suite and regenerate the release twice**
 
 Run:
 
@@ -239,7 +239,7 @@ Get-Content dist/SHA256SUMS.txt
 
 Expected: pytest and compileall exit `0`; both builds print the same three output paths; `$first` equals `$second` and the checksum file; record the exact observed test count, duration, ZIP length, and lowercase SHA-256.
 
-- [ ] **Step 6: Replace release evidence with exact observed values**
+- [x] **Step 6: Replace release evidence with exact observed values**
 
 In `POC_REPORT.md` under **Source release verification evidence**:
 
@@ -250,14 +250,14 @@ In `POC_REPORT.md` under **Source release verification evidence**:
 
 Do not change the existing macOS real-device verification boundary.
 
-- [ ] **Step 7: Commit documentation and evidence**
+- [x] **Step 7: Commit documentation and evidence**
 
 ```powershell
 git add tests/test_release_docs.py release/README.md POC_REPORT.md
 git commit -m "docs: explain masked API key paste"
 ```
 
-- [ ] **Step 8: Verify committed HEAD and clean status**
+- [x] **Step 8: Verify committed HEAD and clean status**
 
 Run:
 
