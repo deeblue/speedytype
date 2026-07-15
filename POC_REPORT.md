@@ -578,9 +578,10 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
   command alone uses non-strict credential loading to open the existing
   Keyring-backed Settings dialog; daemon, diagnose, recording, and provider
   paths retain strict missing-key validation.
+
 ### Source release verification evidence
 
-- Full automated suite: `python -m pytest -q` → `301 passed in 10.31s`.
+- Full automated suite: `python -m pytest -q` → `301 passed in 10.42s`.
 - Repeatability: `python scripts/build_release.py` completed twice and replaced
   the same versioned outputs without duplicate or stale files.
 - Generated outputs: `dist/SpeedyType-0.5.0/`,
