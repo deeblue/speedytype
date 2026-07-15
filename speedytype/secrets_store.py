@@ -85,6 +85,12 @@ def delete_api_key(
         _delete_password(service_name, username)
     except Exception as exc:
         raise _backend_error(env_name, "delete", exc) from None
+    try:
+        stored_value = _get_password(service_name, username)
+    except Exception as exc:
+        raise _backend_error(env_name, "verify delete", exc) from None
+    if stored_value is not None:
+        raise SecretStoreError(f"Credential deletion verification failed for {env_name}")
 
 
 def resolve_api_keys(
@@ -159,6 +165,26 @@ def _scrub_warning(env_name: str) -> str:
     return f"Environment file scrub skipped for {env_name}: source changed"
 
 
+def _scrub_io_warning(env_name: str, operation: str, exc: OSError) -> str:
+    return (
+        f"Environment file scrub failed for {env_name} during {operation} "
+        f"({type(exc).__name__})"
+    )
+
+
+def _restore_env_content(env_file: TextIO, original_content: str) -> OSError | None:
+    """Best-effort same-handle rollback while the source file is still open."""
+    try:
+        env_file.seek(0)
+        env_file.write(original_content)
+        env_file.truncate()
+        env_file.flush()
+        os.fsync(env_file.fileno())
+    except OSError as exc:
+        return exc
+    return None
+
+
 @contextmanager
 def _exclusive_file_lock(env_file: TextIO) -> Iterator[None]:
     """Hold a platform-native exclusive lock on an open environment file."""
@@ -188,34 +214,85 @@ def _remove_env_keys(env_path: Path, migrated_values: Mapping[str, str]) -> list
         env_file = env_path.open("r+", encoding="utf-8", newline="")
     except FileNotFoundError:
         return [_scrub_warning(env_name) for env_name in migrated_values]
+    except OSError as exc:
+        return [_scrub_io_warning(env_name, "open", exc) for env_name in migrated_values]
 
-    with env_file:
-        with _exclusive_file_lock(env_file):
-            env_file.seek(0)
-            current_content = env_file.read()
-            lines = current_content.splitlines(keepends=True)
-            effective: dict[str, tuple[int, str]] = {}
-            for index, line in enumerate(lines):
-                assignment = _parse_env_assignment(line)
-                if assignment is not None and assignment[0] in migrated_values:
-                    effective[assignment[0]] = (index, assignment[1])
+    operation = "close"
+    try:
+        with env_file:
+            original_content: str | None = None
+            mutation_started = False
+            operation = "lock"
+            try:
+                with _exclusive_file_lock(env_file):
+                    try:
+                        operation = "read"
+                        env_file.seek(0)
+                        current_content = env_file.read()
+                        original_content = current_content
+                        lines = current_content.splitlines(keepends=True)
+                        effective: dict[str, tuple[int, str]] = {}
+                        for index, line in enumerate(lines):
+                            assignment = _parse_env_assignment(line)
+                            if assignment is not None and assignment[0] in migrated_values:
+                                effective[assignment[0]] = (index, assignment[1])
 
-            remove_indices: set[int] = set()
-            warnings: list[str] = []
-            for env_name, verified_value in migrated_values.items():
-                current = effective.get(env_name)
-                if current is None or current[1] != verified_value:
-                    warnings.append(_scrub_warning(env_name))
-                else:
-                    remove_indices.add(current[0])
+                        remove_indices: set[int] = set()
+                        warnings: list[str] = []
+                        for env_name, verified_value in migrated_values.items():
+                            current = effective.get(env_name)
+                            if current is None or current[1] != verified_value:
+                                warnings.append(_scrub_warning(env_name))
+                            else:
+                                remove_indices.add(current[0])
 
-            if not remove_indices:
-                return warnings
+                        if not remove_indices:
+                            return warnings
 
-            retained = [line for index, line in enumerate(lines) if index not in remove_indices]
-            env_file.seek(0)
-            env_file.write("".join(retained))
-            env_file.truncate()
-            env_file.flush()
-            os.fsync(env_file.fileno())
+                        retained = [
+                            line
+                            for index, line in enumerate(lines)
+                            if index not in remove_indices
+                        ]
+                        operation = "write"
+                        env_file.seek(0)
+                        mutation_started = True
+                        env_file.write("".join(retained))
+                        operation = "truncate"
+                        env_file.truncate()
+                        operation = "flush"
+                        env_file.flush()
+                        operation = "fsync"
+                        os.fsync(env_file.fileno())
+                    except OSError as exc:
+                        rollback_error = None
+                        if mutation_started and original_content is not None:
+                            rollback_error = _restore_env_content(env_file, original_content)
+                        failure_warnings = [
+                            _scrub_io_warning(env_name, operation, exc)
+                            for env_name in migrated_values
+                        ]
+                        if rollback_error is not None:
+                            failure_warnings.extend(
+                                _scrub_io_warning(env_name, "rollback", rollback_error)
+                                for env_name in migrated_values
+                            )
+                        return failure_warnings
+                    operation = "lock"
+            except OSError as exc:
+                rollback_error = None
+                if mutation_started and original_content is not None:
+                    rollback_error = _restore_env_content(env_file, original_content)
+                failure_warnings = [
+                    _scrub_io_warning(env_name, operation, exc)
+                    for env_name in migrated_values
+                ]
+                if rollback_error is not None:
+                    failure_warnings.extend(
+                        _scrub_io_warning(env_name, "rollback", rollback_error)
+                        for env_name in migrated_values
+                    )
+                return failure_warnings
             return warnings
+    except OSError as exc:
+        return [_scrub_io_warning(env_name, operation, exc) for env_name in migrated_values]

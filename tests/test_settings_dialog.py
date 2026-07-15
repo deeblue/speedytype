@@ -8,7 +8,12 @@ from PyQt6.QtWidgets import QApplication, QDialog, QPushButton, QScrollArea
 
 from speedytype.audio import list_input_devices
 from speedytype.settings import AppSettings, DEFAULT_VOCAB_TERMS, save_settings
-from speedytype.settings_dialog import SYSTEM_DEFAULT_DEVICE_LABEL, SettingsDialog, format_seconds_readable
+from speedytype.settings_dialog import (
+    SYSTEM_DEFAULT_DEVICE_LABEL,
+    MaskedKeyField,
+    SettingsDialog,
+    format_seconds_readable,
+)
 
 
 @pytest.fixture(scope="module")
@@ -461,7 +466,39 @@ def test_masked_key_field_test_connection_uses_currently_edited_value(qapp, tmp_
     dialog.openai_field.test_button.click()
 
     assert tested_values == ["sk-currently-edited"]
-    assert dialog.openai_field.status_label.text() == "OK: connected"
+    assert dialog.openai_field.status_label.text() == "連線測試成功"
+
+
+@pytest.mark.parametrize("ok", [True, False])
+def test_masked_key_field_never_renders_callback_message_or_secret(qapp, ok):
+    fake_key = "sk-adversarial-full-secret-value"
+    field = MaskedKeyField(
+        "Provider",
+        fake_key,
+        lambda value: (ok, f"provider message leaked {value}"),
+    )
+
+    field.test_button.click()
+
+    expected = "連線測試成功" if ok else "連線測試失敗"
+    assert field.status_label.text() == expected
+    assert fake_key not in field.status_label.text()
+    assert "provider message" not in field.status_label.text()
+
+
+def test_masked_key_field_converts_callback_exception_to_fixed_failure(qapp):
+    fake_key = "sk-adversarial-full-secret-value"
+
+    def raise_with_secret(value):
+        raise RuntimeError(f"provider exception leaked {value}")
+
+    field = MaskedKeyField("Provider", fake_key, raise_with_secret)
+
+    field._run_test()
+
+    assert field.status_label.text() == "連線測試失敗"
+    assert fake_key not in field.status_label.text()
+    assert "provider exception" not in field.status_label.text()
 
 
 def test_save_writes_only_changed_secret_to_keyring(qapp, tmp_path, monkeypatch):
@@ -491,6 +528,43 @@ def test_save_empty_changed_secret_deletes_keyring_entry(qapp, tmp_path, monkeyp
     dialog.minimax_field.line_edit.clear()
     dialog._save()
     assert deleted == ["MINIMAX_API_KEY"]
+
+
+def test_failed_verified_delete_retains_baseline_and_retries(qapp, tmp_path, monkeypatch):
+    from speedytype import secrets_store
+
+    credential = "mm-test-key-9999"
+    stored = {("SpeedyType", "minimax_api_key"): credential}
+    delete_attempts = []
+    monkeypatch.setattr(
+        secrets_store,
+        "_get_password",
+        lambda service, username: stored.get((service, username)),
+    )
+
+    def delete_password(service, username):
+        delete_attempts.append((service, username))
+        if len(delete_attempts) > 1:
+            stored.pop((service, username), None)
+
+    monkeypatch.setattr(secrets_store, "_delete_password", delete_password)
+    monkeypatch.setattr("speedytype.settings_dialog.delete_api_key", secrets_store.delete_api_key)
+    dialog = SettingsDialog(make_config(), tmp_path / ".env", tmp_path / "settings.json")
+    dialog.minimax_field.toggle_button.click()
+    dialog.minimax_field.line_edit.clear()
+
+    dialog._save()
+
+    assert dialog._saved_key_values["MINIMAX_API_KEY"] == credential
+    assert "金鑰儲存失敗（MINIMAX_API_KEY）" in dialog.status_label.text()
+    assert credential not in dialog.status_label.text()
+
+    dialog._save()
+
+    assert dialog._saved_key_values["MINIMAX_API_KEY"] == ""
+    assert stored == {}
+    assert len(delete_attempts) == 2
+    assert "金鑰已更新（MINIMAX_API_KEY）" in dialog.status_label.text()
 
 
 def test_save_reports_secret_errors_independently_and_retries_only_failed_keys(qapp, tmp_path, monkeypatch):

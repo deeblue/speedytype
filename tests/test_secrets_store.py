@@ -27,6 +27,38 @@ def test_set_api_key_verifies_round_trip(monkeypatch):
     assert values[("SpeedyType", "openai_api_key")] == "sk-fake"
 
 
+def test_delete_api_key_verifies_value_is_absent(monkeypatch):
+    credential = "sk-lingering-fake-secret"
+    values = install_fake_backend(
+        monkeypatch,
+        initial={("SpeedyType", "openai_api_key"): credential},
+    )
+    monkeypatch.setattr(secrets_store, "_delete_password", lambda service, user: None)
+
+    with pytest.raises(secrets_store.SecretStoreError) as caught:
+        secrets_store.delete_api_key("OPENAI_API_KEY")
+
+    assert str(caught.value) == "Credential deletion verification failed for OPENAI_API_KEY"
+    assert credential not in str(caught.value)
+    assert values[("SpeedyType", "openai_api_key")] == credential
+
+
+def test_delete_api_key_redacts_readback_error(monkeypatch):
+    credential = "sk-fake-secret-in-readback-error"
+    monkeypatch.setattr(secrets_store, "_delete_password", lambda service, user: None)
+
+    def fail_readback(service, user):
+        raise OSError(f"could not read {credential}")
+
+    monkeypatch.setattr(secrets_store, "_get_password", fail_readback)
+
+    with pytest.raises(secrets_store.SecretStoreError) as caught:
+        secrets_store.delete_api_key("OPENAI_API_KEY")
+
+    assert str(caught.value) == "Credential store verify delete failed for OPENAI_API_KEY (OSError)"
+    assert credential not in str(caught.value)
+
+
 def test_resolve_migrates_file_value_and_removes_only_verified_line(tmp_path, monkeypatch):
     install_fake_backend(monkeypatch)
     env_path = tmp_path / ".env"
@@ -109,6 +141,108 @@ def test_changed_env_value_is_not_scrubbed_after_verified_write(tmp_path, monkey
     assert result.migrated == ("OPENAI_API_KEY",)
     assert result.warnings == ("Environment file scrub skipped for OPENAI_API_KEY: source changed",)
     assert env_path.read_text(encoding="utf-8") == "OPENAI_API_KEY=sk-changed\n"
+
+
+@pytest.mark.parametrize("operation", ["open", "lock", "write", "truncate", "fsync"])
+def test_scrub_io_failure_keeps_resolved_key_and_source_bytes_safely(
+    tmp_path, monkeypatch, operation
+):
+    credential = "sk-adversarial-fake-secret"
+    install_fake_backend(monkeypatch)
+    env_path = tmp_path / ".env"
+    original = f"# keep\r\nOPENAI_API_KEY={credential}\r\nLLM_PROVIDER=gemini\r\n".encode()
+    env_path.write_bytes(original)
+
+    if operation == "open":
+        real_open = Path.open
+
+        def fail_target_open(path, *args, **kwargs):
+            if Path(path) == env_path and args and args[0] == "r+":
+                raise PermissionError(f"locked {credential}")
+            return real_open(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", fail_target_open)
+    elif operation == "lock":
+        @contextmanager
+        def fail_lock(env_file):
+            raise OSError(f"lock contains {credential}")
+            yield
+
+        monkeypatch.setattr(secrets_store, "_exclusive_file_lock", fail_lock)
+    else:
+        real_open = Path.open
+        failed = {"done": False}
+        lock_state = {"held": False}
+
+        @contextmanager
+        def tracked_lock(env_file):
+            lock_state["held"] = True
+            try:
+                yield
+            finally:
+                lock_state["held"] = False
+
+        monkeypatch.setattr(secrets_store, "_exclusive_file_lock", tracked_lock)
+
+        class FailOnceFile:
+            def __init__(self, env_file):
+                self._env_file = env_file
+
+            def __enter__(self):
+                self._env_file.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                return self._env_file.__exit__(*args)
+
+            def write(self, value):
+                assert lock_state["held"], "environment file write occurred without lock"
+                if operation == "write" and not failed["done"]:
+                    failed["done"] = True
+                    raise OSError(f"write contains {credential}")
+                return self._env_file.write(value)
+
+            def truncate(self, *args):
+                assert lock_state["held"], "environment file truncate occurred without lock"
+                if operation == "truncate" and not failed["done"]:
+                    failed["done"] = True
+                    raise OSError(f"truncate contains {credential}")
+                return self._env_file.truncate(*args)
+
+            def __getattr__(self, name):
+                return getattr(self._env_file, name)
+
+        def wrapped_open(path, *args, **kwargs):
+            opened = real_open(path, *args, **kwargs)
+            if Path(path) == env_path and args and args[0] == "r+":
+                return FailOnceFile(opened)
+            return opened
+
+        monkeypatch.setattr(Path, "open", wrapped_open)
+        if operation == "fsync":
+            real_fsync = os.fsync
+
+            def fail_once_fsync(file_descriptor):
+                if not failed["done"]:
+                    failed["done"] = True
+                    raise OSError(f"fsync contains {credential}")
+                return real_fsync(file_descriptor)
+
+            monkeypatch.setattr(os, "fsync", fail_once_fsync)
+
+    result = secrets_store.resolve_api_keys(
+        env_path,
+        {"OPENAI_API_KEY": credential},
+        environment={},
+    )
+
+    assert result.values["OPENAI_API_KEY"] == credential
+    assert result.migrated == ("OPENAI_API_KEY",)
+    assert len(result.warnings) == 1
+    assert operation in result.warnings[0]
+    assert "OSError" in result.warnings[0] or "PermissionError" in result.warnings[0]
+    assert credential not in result.warnings[0]
+    assert env_path.read_bytes() == original
 
 
 def test_backend_exception_text_is_redacted_from_error_and_warning(tmp_path, monkeypatch):

@@ -49,11 +49,11 @@ def test_openai_key(api_key: str, timeout_seconds: float = 15.0) -> tuple[bool, 
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=timeout_seconds,
         )
-    except requests.RequestException as exc:
-        return False, f"Request failed: {exc}"
+    except requests.RequestException:
+        return False, "Connection test failed."
     if response.status_code == 200:
         return True, "OpenAI key OK (model list retrieved)."
-    return False, f"OpenAI key check failed: status={response.status_code} body={response.text[:200]}"
+    return False, "Connection test failed."
 
 
 def test_gemini_key(api_key: str, timeout_seconds: float = 15.0) -> tuple[bool, str]:
@@ -64,11 +64,11 @@ def test_gemini_key(api_key: str, timeout_seconds: float = 15.0) -> tuple[bool, 
             f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}",
             timeout=timeout_seconds,
         )
-    except requests.RequestException as exc:
-        return False, f"Request failed: {exc}"
+    except requests.RequestException:
+        return False, "Connection test failed."
     if response.status_code == 200:
         return True, "Gemini key OK (model list retrieved)."
-    return False, f"Gemini key check failed: status={response.status_code} body={response.text[:200]}"
+    return False, "Connection test failed."
 
 
 def test_minimax_key(api_key: str, timeout_seconds: float = 15.0) -> tuple[bool, str]:
@@ -80,8 +80,8 @@ def test_minimax_key(api_key: str, timeout_seconds: float = 15.0) -> tuple[bool,
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=timeout_seconds,
         )
-    except requests.RequestException as exc:
-        return False, f"Request failed: {exc}"
+    except requests.RequestException:
+        return False, "Connection test failed."
     if response.status_code == 200:
         return True, "MiniMax key OK (model list retrieved)."
-    return False, f"MiniMax key check failed: status={response.status_code} body={response.text[:200]}"
+    return False, "Connection test failed."

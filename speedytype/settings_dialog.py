@@ -155,8 +155,11 @@ class MaskedKeyField(QWidget):
 
     def _run_test(self) -> None:
         self.status_label.setText("測試中...")
-        ok, message = self._test_func(self.current_value())
-        self.status_label.setText(("OK: " if ok else "FAIL: ") + message[:100])
+        try:
+            ok, _message = self._test_func(self.current_value())
+        except Exception:
+            ok = False
+        self.status_label.setText("連線測試成功" if ok else "連線測試失敗")
 
 
 class SettingsDialog(QDialog):

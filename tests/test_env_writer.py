@@ -1,3 +1,7 @@
+import pytest
+import requests
+
+from speedytype import env_writer
 from speedytype.env_writer import mask_secret, update_env_key
 
 
@@ -65,3 +69,44 @@ def test_mask_secret_shows_only_last_four_chars():
     assert mask_secret("abcd") == "••••"
     assert mask_secret("ab") == "••"
     assert mask_secret("") == ""
+
+
+@pytest.mark.parametrize(
+    "tester",
+    [env_writer.test_openai_key, env_writer.test_gemini_key, env_writer.test_minimax_key],
+)
+def test_connection_test_redacts_exception_url_and_key(monkeypatch, tester):
+    fake_key = "sk-adversarial-full-secret-value"
+    leaked_url = f"https://example.invalid/models?key={fake_key}"
+
+    def raise_request_error(*args, **kwargs):
+        raise requests.RequestException(f"request failed for {leaked_url}")
+
+    monkeypatch.setattr(env_writer.requests, "get", raise_request_error)
+
+    ok, message = tester(fake_key)
+
+    assert ok is False
+    assert message == "Connection test failed."
+    assert fake_key not in message
+    assert leaked_url not in message
+
+
+@pytest.mark.parametrize(
+    "tester",
+    [env_writer.test_openai_key, env_writer.test_gemini_key, env_writer.test_minimax_key],
+)
+def test_connection_test_redacts_error_response_body(monkeypatch, tester):
+    fake_key = "sk-adversarial-full-secret-value"
+
+    class Response:
+        status_code = 401
+        text = f"invalid credential {fake_key}"
+
+    monkeypatch.setattr(env_writer.requests, "get", lambda *args, **kwargs: Response())
+
+    ok, message = tester(fake_key)
+
+    assert ok is False
+    assert message == "Connection test failed."
+    assert fake_key not in message

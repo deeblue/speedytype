@@ -127,8 +127,11 @@ class LatencyRecord:
 def append_latency_record(path: Path, record: LatencyRecord) -> None:
     path.parent.mkdir(parents=True, exist_ok=True) if path.parent != Path(".") else None
     exists = path.exists()
+    write_header = not exists
     if exists:
-        first_line = path.read_text(encoding="utf-8").splitlines()[0] if path.read_text(encoding="utf-8").splitlines() else ""
+        lines = path.read_text(encoding="utf-8").splitlines()
+        first_line = lines[0] if lines else ""
+        write_header = not first_line
         if first_line and first_line.split(",") != LATENCY_FIELDS:
             existing_rows: list[dict[str, str]] = []
             with path.open("r", encoding="utf-8", newline="") as csv_file:
@@ -141,7 +144,7 @@ def append_latency_record(path: Path, record: LatencyRecord) -> None:
                     writer.writerow({field: row.get(field, "") for field in LATENCY_FIELDS})
     with path.open("a", encoding="utf-8", newline="") as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=LATENCY_FIELDS)
-        if not exists:
+        if write_header:
             writer.writeheader()
         writer.writerow(
             {
