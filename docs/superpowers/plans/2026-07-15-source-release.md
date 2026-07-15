@@ -4,7 +4,7 @@
 
 **Goal:** Produce a clean, reproducible, versioned SpeedyType source bundle and ZIP with complete Windows/macOS installation and usage documentation.
 
-**Architecture:** A standalone standard-library builder uses a strict source-to-destination manifest, a fresh staging directory, guarded transactional directory replacement, atomic ZIP/checksum replacement, and no application imports beyond reading `version.py` with `runpy`. A tracked release README is copied into the bundle while a separate root README explains the development tree and build command.
+**Architecture:** A bootstrap-safe `settings` CLI opens the existing Keyring-backed dialog through a non-strict config load while every operational command retains strict credential validation. A standalone standard-library builder uses a strict source-to-destination manifest, a fresh staging directory, guarded transactional directory replacement, atomic ZIP/checksum replacement, and no application imports beyond reading `version.py` with `runpy`. A tracked release README is copied into the bundle while a separate root README explains the development tree and build command.
 
 **Tech Stack:** Python 3.13 standard library (`argparse`, `dataclasses`, `hashlib`, `pathlib`, `runpy`, `shutil`, `tempfile`, `zipfile`), pytest, PowerShell parser, Bash syntax check.
 
@@ -17,10 +17,207 @@
 - Existing historical files remain in place so report links do not break.
 - Versioned names come only from `speedytype/version.py`.
 - A failed staging/swap operation must preserve the last completed release; ZIP and checksum files change only after new bytes are complete.
+- Only `speedytype settings` may load configuration without required API keys; daemon, diagnose, recording, and provider commands remain strict.
 
 ---
 
-### Task 1: Release and repository README contracts
+### Task 1: Bootstrap-safe Settings command
+
+**Files:**
+- Modify: `speedytype/config.py`
+- Create: `speedytype/settings_launcher.py`
+- Modify: `speedytype/cli.py`
+- Modify: `tests/test_config.py`
+- Create: `tests/test_settings_launcher.py`
+
+**Interfaces:**
+- Produces: `load_config(..., *, require_api_keys: bool = True) -> AppConfig`.
+- Produces: `show_settings_dialog(env_path: str | Path | None = None) -> int`.
+- Produces: `speedytype [--env PATH] settings`.
+
+- [ ] **Step 1: Write failing strict/non-strict config tests**
+
+Append to `tests/test_config.py`:
+
+```python
+def test_settings_config_allows_missing_required_keys(tmp_path):
+    config = load_config(
+        tmp_path / ".env",
+        settings_path=tmp_path / "settings.json",
+        require_api_keys=False,
+    )
+    assert config.openai_api_key == ""
+    assert config.gemini_api_key == ""
+
+
+def test_operational_config_still_rejects_missing_required_keys(tmp_path):
+    with pytest.raises(ConfigError, match="OPENAI_API_KEY, GEMINI_API_KEY"):
+        load_config(tmp_path / ".env", settings_path=tmp_path / "settings.json")
+```
+
+- [ ] **Step 2: Run config tests and verify RED**
+
+Run: `python -m pytest tests/test_config.py::test_settings_config_allows_missing_required_keys tests/test_config.py::test_operational_config_still_rejects_missing_required_keys -q`
+
+Expected: the settings test fails because `load_config()` does not accept `require_api_keys`; the operational test passes under the existing strict behavior.
+
+- [ ] **Step 3: Implement the opt-in non-strict config load**
+
+Change the signature and missing-key check in `speedytype/config.py`:
+
+```python
+def load_config(
+    path: str | Path | None = None,
+    settings_path: str | Path | None = None,
+    *,
+    require_api_keys: bool = True,
+) -> AppConfig:
+```
+
+```python
+missing = [
+    name
+    for name, value in (
+        ("OPENAI_API_KEY", openai_api_key),
+        ("GEMINI_API_KEY", gemini_api_key),
+    )
+    if not value
+]
+if missing and require_api_keys:
+    raise ConfigError(
+        "Missing required configuration: "
+        + ", ".join(missing)
+        + ". 請從 SpeedyType 設定頁面新增金鑰，或在 keyring 不可用時於 .env 提供備援值："
+        + f"{env_path.resolve()}."
+    )
+```
+
+Run the two named tests again; expected: both pass.
+
+- [ ] **Step 4: Write failing launcher and CLI tests**
+
+Create `tests/test_settings_launcher.py`:
+
+```python
+from pathlib import Path
+
+import speedytype.cli as cli
+import speedytype.settings_launcher as launcher
+
+
+def test_settings_launcher_uses_non_strict_config_and_selected_env(monkeypatch, tmp_path):
+    calls = []
+    config = object()
+    env_path = tmp_path / "config.env"
+
+    monkeypatch.setattr(
+        launcher,
+        "load_config",
+        lambda path, require_api_keys: calls.append((path, require_api_keys)) or config,
+    )
+
+    class FakeApplication:
+        @staticmethod
+        def instance():
+            return object()
+
+    class FakeDialog:
+        def __init__(self, actual_config, actual_env, settings_path):
+            calls.append((actual_config, actual_env, settings_path))
+
+        def exec(self):
+            calls.append("exec")
+
+    monkeypatch.setattr(launcher, "QApplication", FakeApplication)
+    monkeypatch.setattr(launcher, "SettingsDialog", FakeDialog)
+
+    assert launcher.show_settings_dialog(env_path) == 0
+    assert calls == [
+        (env_path, False),
+        (config, env_path, None),
+        "exec",
+    ]
+
+
+def test_settings_cli_forwards_explicit_env(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(
+        cli,
+        "show_settings_dialog",
+        lambda env_path: calls.append(env_path) or 0,
+    )
+    env_path = tmp_path / "selected.env"
+
+    result = cli.main(["--env", str(env_path), "settings"])
+
+    assert result == 0
+    assert calls == [str(env_path)]
+```
+
+Run: `python -m pytest tests/test_settings_launcher.py -q`
+
+Expected: collection fails because `speedytype.settings_launcher` does not exist.
+
+- [ ] **Step 5: Implement the launcher and CLI command, verify, and commit**
+
+Create `speedytype/settings_launcher.py`:
+
+```python
+from __future__ import annotations
+
+from pathlib import Path
+import sys
+
+from PyQt6.QtWidgets import QApplication
+
+from speedytype.config import load_config
+from speedytype.settings_dialog import SettingsDialog
+
+
+def show_settings_dialog(env_path: str | Path | None = None) -> int:
+    config = load_config(env_path, require_api_keys=False)
+    application = QApplication.instance()
+    if application is None:
+        application = QApplication(sys.argv)
+    dialog = SettingsDialog(config, env_path, None)
+    dialog.exec()
+    return 0
+```
+
+Modify `speedytype/cli.py`:
+
+```python
+from speedytype.settings_launcher import show_settings_dialog
+
+
+def command_settings(args: argparse.Namespace) -> int:
+    return show_settings_dialog(args.env)
+```
+
+Add to `build_parser()`:
+
+```python
+settings_command = sub.add_parser("settings")
+settings_command.set_defaults(func=command_settings)
+```
+
+Run:
+
+```powershell
+python -m pytest tests/test_config.py tests/test_settings_launcher.py tests/test_settings_dialog.py -q
+git diff --check
+```
+
+Expected: all tests pass and strict missing-key behavior remains covered. Then commit:
+
+```powershell
+git add speedytype/config.py speedytype/settings_launcher.py speedytype/cli.py tests/test_config.py tests/test_settings_launcher.py
+git commit -m "feat: open settings before credentials exist"
+```
+
+---
+
+### Task 2: Release and repository README contracts
 
 **Files:**
 - Create: `release/README.md`
@@ -28,7 +225,7 @@
 - Create: `tests/test_release_docs.py`
 
 **Interfaces:**
-- Produces: `release/README.md`, copied by Task 2 to bundle `README.md`.
+- Produces: `release/README.md`, copied by Task 3 to bundle `README.md`.
 - Produces: root `README.md`, which labels the checkout as a development tree and documents `python scripts/build_release.py`.
 
 - [ ] **Step 1: Write the failing documentation contract tests**
@@ -61,6 +258,7 @@ def test_release_readme_documents_keyring_usage_and_daily_commands():
     required = (
         "Windows Credential Manager",
         "macOS Keychain",
+        "speedytype settings",
         "speedytype diagnose-config",
         "speedytype daemon",
         "speedytype daemon-stop",
@@ -144,10 +342,11 @@ python3 -m venv .venv
 
 ## Credentials and first start
 
-Run `speedytype daemon`, open the tray menu, choose Settings, and save provider
-keys there. Keys are stored by Keyring in Windows Credential Manager or macOS
-Keychain. Do not put new keys in `.env`; file keys exist only for legacy
-fallback/migration. Use `.env.example` for non-secret configuration reference.
+Run `speedytype settings` and save provider keys before starting the daemon.
+Keys are stored by Keyring in Windows Credential Manager or macOS Keychain. Do
+not put new keys in `.env`; file keys exist only for legacy fallback/migration.
+Use `.env.example` for non-secret configuration reference. Then run
+`speedytype diagnose-config` followed by `speedytype daemon`.
 
 ## Daily commands
 
@@ -222,7 +421,7 @@ git commit -m "docs: add source release installation guide"
 
 ---
 
-### Task 2: Manifest-based release builder
+### Task 3: Manifest-based release builder
 
 **Files:**
 - Create: `scripts/build_release.py`
@@ -506,14 +705,14 @@ git commit -m "feat: build allowlisted source releases"
 
 ---
 
-### Task 3: Idempotence and failure preservation
+### Task 4: Idempotence and failure preservation
 
 **Files:**
 - Modify: `tests/test_build_release.py`
 - Modify: `scripts/build_release.py` only if tests expose a defect.
 
 **Interfaces:**
-- Consumes: `build_release()`, `_copy_release_content()`, and guarded staging cleanup from Task 2.
+- Consumes: `build_release()`, `_copy_release_content()`, and guarded staging cleanup from Task 3.
 - Verifies: stale-file removal and preservation of the last complete bundle on staging failure.
 
 - [ ] **Step 1: Write failing repeat-build and injected-failure tests**
@@ -596,7 +795,7 @@ git commit -m "test: verify repeatable release replacement"
 
 ---
 
-### Task 4: Plan bookkeeping and release evidence
+### Task 5: Plan bookkeeping and release evidence
 
 **Files:**
 - Modify: `docs/superpowers/plans/2026-07-15-command-alias.md`
@@ -621,7 +820,7 @@ if (($plan | Select-String '^- \[x\]').Count -ne 34) { exit 1 }
 - [ ] **Step 2: Add the release section to `POC_REPORT.md`**
 
 Record these facts, replacing command results with exact observed values from
-Task 5 rather than estimates:
+Task 6 rather than estimates:
 
 ```markdown
 ## Reproducible source release
@@ -636,7 +835,7 @@ Task 5 rather than estimates:
   `pip install -r requirements.txt` installation on Windows and macOS,
   Keyring-backed credential configuration, daily commands, updates,
   troubleshooting, and checksum verification.
-- Verification evidence is added in Task 5 from the observed pytest, build,
+- Verification evidence is added in Task 6 from the observed pytest, build,
   extraction, syntax, and checksum command outputs.
 ```
 
@@ -660,7 +859,7 @@ git commit -m "docs: record source release workflow"
 
 ---
 
-### Task 5: Build and verify the real release
+### Task 6: Build and verify the real release
 
 **Files:**
 - Modify: `POC_REPORT.md` only to replace evidence text with exact results.
