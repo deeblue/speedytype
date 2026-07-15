@@ -198,3 +198,14 @@ Three fixes were made and independently re-verified with a fresh 3x-per-case bat
 - **Offline gate reanalysis**: `long_recording_hybrid_v4_quality_reanalysis_round5.jsonl` and `long_recording_hybrid_v4_295s_recovery_quality_round5.jsonl` recompute the saved raw outputs without new API calls. Successful 295s hybrid samples (v4 runs 1 and 3 plus recovery) now have zero missing units, 0.992 ordered coverage, zero new duplicates, and full key-term recall. The retained timeout run still has 12 genuinely absent raw-hybrid units, but its batch-fallback final `text` has 0.994 source coverage, zero missing units, and preserved numbers, so incomplete hybrid text was not the delivered output.
 - **Aggregate gate result**: `hybrid_regression_gate_ok` remains 0/3 for every case after removing the false whole-transcript omission. `real_126s` still fails 0.977 coverage and number preservation; `real_134s` fails only number preservation; successful 295s runs fail only number preservation (`百分之二十` versus `20%` is currently tokenized differently). Thresholds were not weakened to obtain a pass.
 - **Production Enablement Gate update**: condition 1 remains **failed** because `real_126s` ordered coverage is 0.977, below 0.980. Condition 2 is now **passed for delivered output**: all successful 295s hybrid samples have zero source omissions, both real recordings have zero batch-relative omissions, and the one incomplete API run delivered the verified batch fallback rather than its partial hybrid text. Other Round 4 gate states remain unchanged. `HYBRID_TRANSCRIPTION_ENABLED` remains `false`; enabling it remains a user decision.
+
+## 20. macOS short-command installation requires real-Mac verification
+
+- **Windows-audited**: `scripts/setup_mac.sh` resolves the repository from its
+  own location, creates/reuses `.venv`, quotes the default config path, invokes
+  `install-command`, and passes `bash -n` plus automated wrapper tests.
+- **Must be tested on the Mac**: repeat setup, open a new terminal, resolve
+  `speedytype` through `~/.local/bin`, run diagnose/daemon/daemon-stop and a
+  parameter-bearing command, and confirm Keychain credentials are unchanged.
+- **Trigger to re-evaluate**: Complete the checklist in `MAC_SETUP.md` on the
+  target Mac and record the observed shell, PATH, permission, and daemon results.

@@ -509,3 +509,28 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
 | Pricing date and estimate disclaimer shown | **PASS** | Fresh Settings tests verify `2026-07-14` and `估算費用，非實際帳單，價格可能已變動`; provider billing reconciliation remains out of scope. |
 | Documentation records architecture, limits, tests, and live/automated distinction | **PASS** | `KNOWN_LIMITATIONS.md` items 4/10 and this Part B section record the implemented policy, residuals, exact evidence, and non-rerun live boundary. |
 | Complete suite including real Windows clipboard tests | **PASS** | Integration verification reran the complete suite without exclusions: `273 passed in 7.40s`, including the real Windows clipboard module. |
+
+## Cross-platform short command alias (2026-07-15)
+
+- One-time setup is separate from daily execution: Windows uses
+  `scripts/setup_windows.ps1`, macOS uses `scripts/setup_mac.sh`, and both call
+  the shared `python -m speedytype ... install-command` implementation.
+- Windows installs `%APPDATA%\SpeedyType\bin\speedytype.bat` and adds that
+  directory once to the user PATH. macOS installs executable
+  `~/.local/bin/speedytype` and prints the exact shell PATH instruction when
+  needed.
+- Generated wrappers capture only absolute Python, repository, and default
+  `.env` paths. They forward all arguments with `%*` or `"$@"`; a later
+  `speedytype --env other.env <action>` overrides the installed default.
+- Wrappers never contain or modify API key values. Configuration continues
+  through the existing Keyring-first resolver and legacy `.env` migration.
+- Automated evidence covers atomic replacement, Windows PATH preservation and
+  case-insensitive deduplication, environment-change notification, Mac mode and
+  PATH guidance, secret sentinels, CLI override behavior, setup-script
+  contracts, PowerShell parsing, and Bash syntax.
+- Windows live evidence is produced by
+  `scripts/verify_command_alias_windows.ps1`, which refreshes PATH from the
+  user/machine environment for new `cmd.exe` processes and exercises
+  `diagnose-config`, parameter forwarding, daemon start, and daemon stop.
+- Real macOS execution remains pending; [MAC_SETUP.md](MAC_SETUP.md) contains
+  the target-device checklist.
