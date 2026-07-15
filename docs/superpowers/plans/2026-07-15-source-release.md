@@ -35,7 +35,7 @@
 - Produces: `show_settings_dialog(env_path: str | Path | None = None) -> int`.
 - Produces: `speedytype [--env PATH] settings`.
 
-- [ ] **Step 1: Write failing strict/non-strict config tests**
+- [x] **Step 1: Write failing strict/non-strict config tests**
 
 Append to `tests/test_config.py`:
 
@@ -55,13 +55,13 @@ def test_operational_config_still_rejects_missing_required_keys(tmp_path):
         load_config(tmp_path / ".env", settings_path=tmp_path / "settings.json")
 ```
 
-- [ ] **Step 2: Run config tests and verify RED**
+- [x] **Step 2: Run config tests and verify RED**
 
 Run: `python -m pytest tests/test_config.py::test_settings_config_allows_missing_required_keys tests/test_config.py::test_operational_config_still_rejects_missing_required_keys -q`
 
 Expected: the settings test fails because `load_config()` does not accept `require_api_keys`; the operational test passes under the existing strict behavior.
 
-- [ ] **Step 3: Implement the opt-in non-strict config load**
+- [x] **Step 3: Implement the opt-in non-strict config load**
 
 Change the signature and missing-key check in `speedytype/config.py`:
 
@@ -94,7 +94,7 @@ if missing and require_api_keys:
 
 Run the two named tests again; expected: both pass.
 
-- [ ] **Step 4: Write failing launcher and CLI tests**
+- [x] **Step 4: Write failing launcher and CLI tests**
 
 Create `tests/test_settings_launcher.py`:
 
@@ -158,7 +158,7 @@ Run: `python -m pytest tests/test_settings_launcher.py -q`
 
 Expected: collection fails because `speedytype.settings_launcher` does not exist.
 
-- [ ] **Step 5: Implement the launcher and CLI command, verify, and commit**
+- [x] **Step 5: Implement the launcher and CLI command, verify, and commit**
 
 Create `speedytype/settings_launcher.py`:
 
@@ -228,7 +228,7 @@ git commit -m "feat: open settings before credentials exist"
 - Produces: `release/README.md`, copied by Task 3 to bundle `README.md`.
 - Produces: root `README.md`, which labels the checkout as a development tree and documents `python scripts/build_release.py`.
 
-- [ ] **Step 1: Write the failing documentation contract tests**
+- [x] **Step 1: Write the failing documentation contract tests**
 
 Create `tests/test_release_docs.py`:
 
@@ -279,13 +279,13 @@ def test_root_readme_distinguishes_development_tree_from_release():
     assert "benchmark" in content
 ```
 
-- [ ] **Step 2: Run the documentation tests and verify RED**
+- [x] **Step 2: Run the documentation tests and verify RED**
 
 Run: `python -m pytest tests/test_release_docs.py -q`
 
 Expected: file-not-found failures for `release/README.md` and root `README.md`.
 
-- [ ] **Step 3: Create the release README**
+- [x] **Step 3: Create the release README**
 
 Create `release/README.md` with these sections and commands:
 
@@ -377,7 +377,7 @@ Compare the downloaded ZIP SHA-256 with `SHA256SUMS.txt` using
 `shasum -a 256 SpeedyType-0.5.0-source.zip` on macOS.
 ```
 
-- [ ] **Step 4: Create the root development-tree README**
+- [x] **Step 4: Create the root development-tree README**
 
 Create `README.md`:
 
@@ -406,13 +406,13 @@ python -m pytest -q
 ```
 ```
 
-- [ ] **Step 5: Run README tests and verify GREEN**
+- [x] **Step 5: Run README tests and verify GREEN**
 
 Run: `python -m pytest tests/test_release_docs.py -q`
 
 Expected: `3 passed`.
 
-- [ ] **Step 6: Commit README contracts and content**
+- [x] **Step 6: Commit README contracts and content**
 
 ```powershell
 git add README.md release/README.md tests/test_release_docs.py
@@ -434,7 +434,7 @@ git commit -m "docs: add source release installation guide"
 - CLI: `python scripts/build_release.py --output-dir C:\release-output` (the
   option is omitted to use repository `dist/`).
 
-- [ ] **Step 1: Write failing inventory, archive, checksum, and secret tests**
+- [x] **Step 1: Write failing inventory, archive, checksum, and secret tests**
 
 Create `tests/test_build_release.py`:
 
@@ -508,13 +508,13 @@ def test_archive_matches_directory_and_checksum(tmp_path):
     )
 ```
 
-- [ ] **Step 2: Run builder tests and verify RED**
+- [x] **Step 2: Run builder tests and verify RED**
 
 Run: `python -m pytest tests/test_build_release.py -q`
 
 Expected: collection fails because `scripts.build_release` does not exist.
 
-- [ ] **Step 3: Implement the builder**
+- [x] **Step 3: Implement the builder**
 
 Create `scripts/build_release.py`:
 
@@ -682,7 +682,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: Ignore generated release output**
+- [x] **Step 4: Ignore generated release output**
 
 Append this exact entry to `.gitignore`:
 
@@ -690,13 +690,13 @@ Append this exact entry to `.gitignore`:
 dist/
 ```
 
-- [ ] **Step 5: Run builder and documentation tests and verify GREEN**
+- [x] **Step 5: Run builder and documentation tests and verify GREEN**
 
 Run: `python -m pytest tests/test_build_release.py tests/test_release_docs.py -q`
 
 Expected: `5 passed`.
 
-- [ ] **Step 6: Commit the manifest-based builder**
+- [x] **Step 6: Commit the manifest-based builder**
 
 ```powershell
 git add .gitignore scripts/build_release.py tests/test_build_release.py
@@ -715,7 +715,7 @@ git commit -m "feat: build allowlisted source releases"
 - Consumes: `build_release()`, `_copy_release_content()`, and guarded staging cleanup from Task 3.
 - Verifies: stale-file removal and preservation of the last complete bundle on staging failure.
 
-- [ ] **Step 1: Write failing repeat-build and injected-failure tests**
+- [x] **Step 1: Write failing repeat-build and injected-failure tests**
 
 Append to `tests/test_build_release.py`:
 
@@ -758,13 +758,13 @@ def test_failed_staging_preserves_previous_complete_release(tmp_path, monkeypatc
     assert not list(output.glob("*.staging"))
 ```
 
-- [ ] **Step 2: Run the idempotence tests and verify behavior**
+- [x] **Step 2: Run the idempotence tests and verify behavior**
 
 Run: `python -m pytest tests/test_build_release.py -q`
 
 Expected: all four tests pass. If either fails, fix only the transactional cleanup/swap code required by that failure and rerun until green.
 
-- [ ] **Step 3: Add a containment-guard regression test**
+- [x] **Step 3: Add a containment-guard regression test**
 
 Append:
 
@@ -780,13 +780,13 @@ def test_safe_remove_rejects_paths_outside_output(tmp_path):
     assert outside.exists()
 ```
 
-- [ ] **Step 4: Run the complete builder test file**
+- [x] **Step 4: Run the complete builder test file**
 
 Run: `python -m pytest tests/test_build_release.py -q`
 
 Expected: `5 passed`.
 
-- [ ] **Step 5: Commit failure-safety coverage**
+- [x] **Step 5: Commit failure-safety coverage**
 
 ```powershell
 git add scripts/build_release.py tests/test_build_release.py
@@ -806,7 +806,7 @@ git commit -m "test: verify repeatable release replacement"
 - Preserves: real-Mac runtime verification as pending in `MAC_SETUP.md` and `KNOWN_LIMITATIONS.md`.
 - Records: exact generated artifact names and observed verification commands.
 
-- [ ] **Step 1: Mark completed command-alias plan steps**
+- [x] **Step 1: Mark completed command-alias plan steps**
 
 Mechanically replace every step marker `- [ ]` with `- [x]` in
 `docs/superpowers/plans/2026-07-15-command-alias.md`. Verify the result with:
@@ -817,7 +817,7 @@ if (($plan | Select-String '^- \[ \]').Count -ne 0) { exit 1 }
 if (($plan | Select-String '^- \[x\]').Count -ne 34) { exit 1 }
 ```
 
-- [ ] **Step 2: Add the release section to `POC_REPORT.md`**
+- [x] **Step 2: Add the release section to `POC_REPORT.md`**
 
 Record these facts, replacing command results with exact observed values from
 Task 6 rather than estimates:
@@ -839,7 +839,7 @@ Task 6 rather than estimates:
   extraction, syntax, and checksum command outputs.
 ```
 
-- [ ] **Step 3: Run focused tests and documentation checks**
+- [x] **Step 3: Run focused tests and documentation checks**
 
 Run:
 
@@ -850,7 +850,7 @@ git diff --check
 
 Expected: `8 passed` and diff check exit 0.
 
-- [ ] **Step 4: Commit bookkeeping and evidence structure**
+- [x] **Step 4: Commit bookkeeping and evidence structure**
 
 ```powershell
 git add docs/superpowers/plans/2026-07-15-command-alias.md POC_REPORT.md
@@ -871,13 +871,13 @@ git commit -m "docs: record source release workflow"
 - Consumes: the complete builder, docs, and existing project environment.
 - Produces: real release artifacts and final verification evidence.
 
-- [ ] **Step 1: Run the full suite before building**
+- [x] **Step 1: Run the full suite before building**
 
 Run: `python -m pytest -q`
 
 Expected: all tests pass with zero failures.
 
-- [ ] **Step 2: Build twice to verify real idempotence**
+- [x] **Step 2: Build twice to verify real idempotence**
 
 Run:
 
@@ -888,7 +888,7 @@ python scripts/build_release.py
 
 Expected: both runs exit 0 and print the same three versioned output paths.
 
-- [ ] **Step 3: Verify checksum and inventory**
+- [x] **Step 3: Verify checksum and inventory**
 
 Run:
 
@@ -902,7 +902,7 @@ Get-ChildItem dist/SpeedyType-0.5.0 -Force
 
 Expected: checksum matches and the inventory equals the documented allowlist.
 
-- [ ] **Step 4: Extract and smoke-test the archive**
+- [x] **Step 4: Extract and smoke-test the archive**
 
 Run in a temporary directory:
 
@@ -931,7 +931,7 @@ try {
 
 Expected: compile, CLI help, Bash syntax, and PowerShell parse all exit 0.
 
-- [ ] **Step 5: Update exact evidence and commit if changed**
+- [x] **Step 5: Update exact evidence and commit if changed**
 
 Replace the evidence line in `POC_REPORT.md` with observed test counts, artifact
 names, checksum result, and extraction smoke result, then:
@@ -941,7 +941,7 @@ git add POC_REPORT.md
 git diff --cached --quiet || git commit -m "docs: record verified source release"
 ```
 
-- [ ] **Step 6: Run final verification on committed HEAD**
+- [x] **Step 6: Run final verification on committed HEAD**
 
 Run:
 
