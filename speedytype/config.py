@@ -89,7 +89,12 @@ def resolve_mic_device_setting(device_name: str) -> tuple[str, str]:
     )
 
 
-def load_config(path: str | Path | None = None, settings_path: str | Path | None = None) -> AppConfig:
+def load_config(
+    path: str | Path | None = None,
+    settings_path: str | Path | None = None,
+    *,
+    require_api_keys: bool = True,
+) -> AppConfig:
     env_path = Path(path) if path is not None else default_env_path()
     file_values = _parse_env_file(env_path)
 
@@ -105,7 +110,7 @@ def load_config(path: str | Path | None = None, settings_path: str | Path | None
     openai_api_key = resolution.values.get("OPENAI_API_KEY", "").strip()
     gemini_api_key = resolution.values.get("GEMINI_API_KEY", "").strip()
     missing = [name for name, value in (("OPENAI_API_KEY", openai_api_key), ("GEMINI_API_KEY", gemini_api_key)) if not value]
-    if missing:
+    if missing and require_api_keys:
         raise ConfigError(
             "Missing required configuration: "
             + ", ".join(missing)

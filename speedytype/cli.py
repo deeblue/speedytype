@@ -15,6 +15,7 @@ from speedytype.hotkey import register_hold_hotkey, remove_hotkey, wait_until_ho
 from speedytype.pipeline import process_wav
 from speedytype.paths import default_env_path
 from speedytype.real_voice import guided_recording, validate_real_voice
+from speedytype.settings_launcher import show_settings_dialog
 
 
 def _load_config_or_print(path: str):
@@ -126,6 +127,10 @@ def command_daemon_stop(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def command_settings(args: argparse.Namespace) -> int:
+    return show_settings_dialog(args.env)
+
+
 def command_install_command(args: argparse.Namespace) -> int:
     ok, message = install_command_alias(env_path=args.env)
     print(message)
@@ -221,6 +226,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     daemon_stop = sub.add_parser("daemon-stop")
     daemon_stop.set_defaults(func=command_daemon_stop)
+
+    settings_command = sub.add_parser("settings")
+    settings_command.set_defaults(func=command_settings)
 
     install_command = sub.add_parser("install-command")
     install_command.set_defaults(func=command_install_command)

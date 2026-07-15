@@ -7,6 +7,22 @@ from speedytype.secrets_store import SecretResolution
 from speedytype.settings import AppSettings, save_settings
 
 
+def test_settings_config_allows_missing_required_keys(tmp_path):
+    config = load_config(
+        tmp_path / ".env",
+        settings_path=tmp_path / "settings.json",
+        require_api_keys=False,
+    )
+
+    assert config.openai_api_key == ""
+    assert config.gemini_api_key == ""
+
+
+def test_operational_config_still_rejects_missing_required_keys(tmp_path):
+    with pytest.raises(ConfigError, match="OPENAI_API_KEY, GEMINI_API_KEY"):
+        load_config(tmp_path / ".env", settings_path=tmp_path / "settings.json")
+
+
 def test_load_config_reads_env_file(tmp_path: Path):
     env_file = tmp_path / ".env"
     env_file.write_text(
