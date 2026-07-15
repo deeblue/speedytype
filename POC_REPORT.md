@@ -581,16 +581,18 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
 
 ### Source release verification evidence
 
-- Full automated suite: `python -m pytest -q` → `302 passed in 12.40s`.
+- Full automated suite: `python -m pytest -q` → `303 passed in 13.47s`.
+- On first run, each masked API key field accepts typing and native paste before
+  reveal; **Show** is only needed to inspect the entered value.
 - Repeatability: `python scripts/build_release.py` completed twice and replaced
   the same versioned outputs without duplicate or stale files. A separate
   cross-worktree build with different source mtimes and checkout line endings
   produced the same ZIP bytes and SHA-256.
 - Generated outputs: `dist/SpeedyType-0.5.0/`,
-  `dist/SpeedyType-0.5.0-source.zip` (98,781 bytes), and
+  `dist/SpeedyType-0.5.0-source.zip` (98,849 bytes), and
   `dist/SHA256SUMS.txt`.
 - ZIP SHA-256:
-  `7af4619fbbd92c19f0668135137cbcacfb4ad7f82856e8b68fa9c33dab05c6b0`.
+  `ff30b48db4eedd44eb63d89e9e43514dcfacb25b80d49a6a070bbfcf53927497`.
   The checksum file was parsed and independently matched against the ZIP.
 - Released text uses LF line endings, ZIP entries use a fixed timestamp,
   shell scripts are stored as mode `0755`, and other files as `0644` so

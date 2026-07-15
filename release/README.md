@@ -63,6 +63,9 @@ Open Settings before starting the daemon:
 speedytype settings
 ```
 
+API key fields stay masked but accept typing and native paste immediately; the
+**Show** button is only needed when you want to inspect the entered value.
+
 Enter the OpenAI key and the key for the selected LLM provider, test the
 connections, and save. Keys are stored by Keyring in Windows Credential Manager
 or macOS Keychain. Do not put new keys in `.env`; file keys exist only for

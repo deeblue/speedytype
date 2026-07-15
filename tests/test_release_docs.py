@@ -20,6 +20,8 @@ def test_release_readme_documents_automatic_and_manual_installation():
 
 def test_release_readme_documents_keyring_usage_and_daily_commands():
     content = (ROOT / "release" / "README.md").read_text(encoding="utf-8")
+    assert "paste" in content
+    assert "masked" in content
     required = (
         "Windows Credential Manager",
         "macOS Keychain",
