@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from speedytype.config import ConfigError, load_config, resolve_mic_device_setting
+from speedytype.secrets_store import SecretResolution
 from speedytype.settings import AppSettings, save_settings
 
 
@@ -86,4 +87,61 @@ def test_load_config_reports_missing_required_keys(tmp_path: Path):
     message = str(exc.value)
     assert "Missing required configuration: OPENAI_API_KEY, GEMINI_API_KEY" in message
     assert str(env_file) in message
-    assert "Copy .env.example to .env" in message
+    assert "設定頁面" in message
+    assert ".env" in message
+
+
+def test_load_config_uses_resolved_keyring_values(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "OPENAI_API_KEY=file-openai\nGEMINI_API_KEY=file-gemini\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "speedytype.config.resolve_api_keys",
+        lambda *args, **kwargs: SecretResolution(
+            {
+                "OPENAI_API_KEY": "ring-openai",
+                "GEMINI_API_KEY": "ring-gemini",
+                "MINIMAX_API_KEY": "ring-minimax",
+            }
+        ),
+    )
+
+    config = load_config(env_file, settings_path=tmp_path / "settings.json")
+
+    assert config.openai_api_key == "ring-openai"
+    assert config.gemini_api_key == "ring-gemini"
+    assert config.minimax_api_key == "ring-minimax"
+
+
+def test_load_config_missing_message_mentions_settings_and_env(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "speedytype.config.resolve_api_keys",
+        lambda *args, **kwargs: SecretResolution({}),
+    )
+
+    with pytest.raises(ConfigError) as exc:
+        load_config(tmp_path / ".env", settings_path=tmp_path / "settings.json")
+
+    assert "設定頁面" in str(exc.value)
+    assert ".env" in str(exc.value)
+
+
+def test_load_config_reports_migration_without_printing_secret(tmp_path, monkeypatch, capsys):
+    secret = "sk-do-not-print-this"
+    monkeypatch.setattr(
+        "speedytype.config.resolve_api_keys",
+        lambda *args, **kwargs: SecretResolution(
+            {"OPENAI_API_KEY": secret, "GEMINI_API_KEY": "gem-safe"},
+            migrated=("OPENAI_API_KEY",),
+            warnings=("backend warning",),
+        ),
+    )
+
+    load_config(tmp_path / ".env", settings_path=tmp_path / "settings.json")
+
+    output = capsys.readouterr().out
+    assert "OPENAI_API_KEY" in output
+    assert "backend warning" in output
+    assert secret not in output

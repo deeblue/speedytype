@@ -7,6 +7,7 @@ import shlex
 
 from speedytype.audio import find_input_device_index_by_name
 from speedytype.paths import default_env_path, default_latency_log_path
+from speedytype.secrets_store import resolve_api_keys
 from speedytype.settings import SETTINGS_FILE_NAME, load_settings
 
 
@@ -95,14 +96,24 @@ def load_config(path: str | Path | None = None, settings_path: str | Path | None
     def get(name: str, default: str = "") -> str:
         return os.environ.get(name, file_values.get(name, default)).strip()
 
-    openai_api_key = get("OPENAI_API_KEY")
-    gemini_api_key = get("GEMINI_API_KEY")
+    secret_resolution = resolve_api_keys(env_path, file_values, os.environ)
+    if secret_resolution.migrated:
+        print(
+            "API keys migrated to the OS credential store: "
+            + ", ".join(secret_resolution.migrated)
+        )
+    for warning in secret_resolution.warnings:
+        print(f"Credential-store warning: {warning}")
+
+    openai_api_key = secret_resolution.values.get("OPENAI_API_KEY", "")
+    gemini_api_key = secret_resolution.values.get("GEMINI_API_KEY", "")
     missing = [name for name, value in (("OPENAI_API_KEY", openai_api_key), ("GEMINI_API_KEY", gemini_api_key)) if not value]
     if missing:
         raise ConfigError(
             "Missing required configuration: "
             + ", ".join(missing)
-            + f". Copy .env.example to .env and fill the keys in {env_path.resolve()}."
+            + ". 請從 SpeedyType 設定頁面新增金鑰，"
+            + f"或在 keyring 不可用時於 .env 提供備援值：{env_path.resolve()}."
         )
 
     # Behavior settings (max recording length, hotkey, vocabulary bias, mic
@@ -116,7 +127,7 @@ def load_config(path: str | Path | None = None, settings_path: str | Path | None
     return AppConfig(
         openai_api_key=openai_api_key,
         gemini_api_key=gemini_api_key,
-        minimax_api_key=get("MINIMAX_API_KEY"),
+        minimax_api_key=secret_resolution.values.get("MINIMAX_API_KEY", ""),
         mic_device=mic_device_value,
         mic_device_warning=mic_device_warning,
         whisper_vocab_bias=settings.vocab_bias_string,
