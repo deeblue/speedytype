@@ -99,6 +99,37 @@ It excludes everything not named above, including:
 The secret-safety test uses sentinel values and scans every released text file.
 It does not read or inspect the real OS Keyring.
 
+## Fresh-Install Settings Command
+
+A clean installation has no API keys in Keyring, but the existing daemon loads
+and validates credentials before it exposes the tray Settings action. The
+release therefore adds `speedytype settings` as a bootstrap-safe entry point.
+
+`load_config()` gains a keyword-only `require_api_keys: bool = True` option.
+Its default preserves every existing daemon, diagnose, recording, and API path:
+missing OpenAI or Gemini credentials still raise `ConfigError`. The settings
+launcher alone passes `require_api_keys=False`; it receives the same `AppConfig`
+with missing credential fields represented as empty strings. Keyring lookup,
+process-environment lookup, legacy `.env` fallback/migration, settings parsing,
+and non-secret defaults remain the same in both modes.
+
+Add `speedytype/settings_launcher.py` with:
+
+```python
+def show_settings_dialog(env_path: str | Path | None = None) -> int:
+    """Open Settings without requiring credentials and return a CLI exit code."""
+```
+
+The launcher creates or reuses `QApplication`, constructs the existing
+`SettingsDialog` with the non-strict config and selected `.env` path, executes
+it modally, and returns `0` after the dialog closes. Saving continues through
+the existing Keyring-backed Settings implementation; Cancel continues to write
+nothing. No second credential store or settings model is introduced.
+
+The CLI adds a `settings` subcommand that forwards the globally selected
+`--env` path to this launcher. It does not weaken `diagnose-config`, `daemon`,
+or any command that performs recording/provider work.
+
 ## README Content
 
 The release README begins with prerequisites and a two-path installation guide.
@@ -136,7 +167,8 @@ python3 -m venv .venv
 The README also covers:
 
 - opening a new terminal after command installation
-- first daemon start and the tray Settings entry
+- first-run `speedytype settings`, followed by `diagnose-config` and daemon
+  startup after credentials are saved
 - API key storage in Windows Credential Manager or macOS Keychain through the
   existing Keyring implementation
 - the fact that `.env` is for configuration and legacy credential migration,
@@ -179,6 +211,10 @@ Automated tests will build into a temporary output root and verify:
 - a failed staging build preserves a previous completed release
 - the release README contains automatic setup, manual venv creation,
   `pip install -r requirements.txt`, Keyring guidance, and daily command examples
+- strict config loading still rejects missing required keys while the settings
+  loader accepts empty keys without bypassing the normal resolver
+- the `settings` CLI forwards an explicit `--env` path and opens the existing
+  dialog without starting the daemon
 
 Final release verification will run the full pytest suite, build the real
 release, extract the ZIP into a temporary directory, compile the released
@@ -195,6 +231,8 @@ script, validate the checksum, and inspect the bundle inventory.
 - The release README gives automatic and manual installation instructions,
   including `pip install -r requirements.txt`, plus configuration, Keyring,
   usage, update, troubleshooting, and checksum guidance.
+- A clean installation can run `speedytype settings` before credentials exist;
+  all operational commands retain strict missing-key validation.
 - Rebuilding is safe and idempotent, and an interrupted/failed staging build
   does not damage the last completed artifact.
 - Existing repository references remain valid because historical files are not
