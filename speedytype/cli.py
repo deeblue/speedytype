@@ -8,6 +8,7 @@ import threading
 from speedytype.api import discover_flash_model
 from speedytype.audio import Recorder, list_input_devices, record_diagnostic, temp_wav_path
 from speedytype.autostart import install_autostart, uninstall_autostart
+from speedytype.command_alias import install_command_alias
 from speedytype.config import ConfigError, load_config
 from speedytype.daemon import run_daemon, stop_daemon
 from speedytype.hotkey import register_hold_hotkey, remove_hotkey, wait_until_hotkey_released
@@ -125,6 +126,12 @@ def command_daemon_stop(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def command_install_command(args: argparse.Namespace) -> int:
+    ok, message = install_command_alias(env_path=args.env)
+    print(message)
+    return 0 if ok else 1
+
+
 def command_install_autostart(args: argparse.Namespace) -> int:
     ok, message = install_autostart(env_path=args.env)
     print(message)
@@ -214,6 +221,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     daemon_stop = sub.add_parser("daemon-stop")
     daemon_stop.set_defaults(func=command_daemon_stop)
+
+    install_command = sub.add_parser("install-command")
+    install_command.set_defaults(func=command_install_command)
 
     install_auto = sub.add_parser("install-autostart")
     install_auto.set_defaults(func=command_install_autostart)
