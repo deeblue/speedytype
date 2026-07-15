@@ -534,3 +534,30 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
   `diagnose-config`, parameter forwarding, daemon start, and daemon stop.
 - Real macOS execution remains pending; [MAC_SETUP.md](MAC_SETUP.md) contains
   the target-device checklist.
+
+### Verification evidence
+
+- TDD RED: wrapper tests initially failed during collection because
+  `speedytype.command_alias` did not exist; CLI tests then failed because
+  `install_command_alias` was absent; setup contract tests failed because both
+  setup scripts were absent.
+- Fresh complete suite before live installation: `python -m pytest -q` →
+  `289 passed in 9.09s`.
+- `scripts/setup_windows.ps1` ran twice successfully. The first installed the
+  wrapper and user PATH entry; the second reported that the command directory
+  was already present. Registry inspection found exactly one normalized alias
+  directory entry (`ALIAS_PATH_COUNT=1`).
+- `scripts/verify_command_alias_windows.ps1` ran commands through fresh
+  `cmd.exe` processes. `diagnose-config` printed `Config OK`,
+  `guided-recording --help` displayed both parameter options, daemon PID
+  `16360` was stopped successfully, and the script ended with
+  `COMMAND_ALIAS_WINDOWS_OK`.
+- Explicit override:
+  `speedytype --env C:\WORK\Claude\poc\speedytype\.env diagnose-config`
+  exited `0`, selected that file's distinct `gemini-3.1-flash-lite` model, and
+  printed no credential values.
+- `bash -n scripts/setup_mac.sh`, PowerShell parser checks for both Windows
+  scripts, `python -m compileall -q speedytype scripts`, and
+  `git diff --check` all exited `0` on Windows.
+- The installed wrapper was inspected: it contains only repository, venv
+  Python, and default `.env` paths followed by `%*`; it contains no API key.
