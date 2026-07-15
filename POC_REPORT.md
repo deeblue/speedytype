@@ -419,3 +419,29 @@ The silence-aware hybrid plan was implemented behind a disabled-by-default featu
 The candidate number/repeated-content prompt rule was adopted after reaching 6/6 valid candidate samples preserving `123`, reproducing current-prompt loss versus candidate preservation on the production Gemini model, and confirming no regression in self-correction, filler removal, key-term preservation, list formatting, natural-stutter cleanup, or Chinese-number preservation. The production prompt now keeps numbers, identifiers, and real content while consolidating garbled repetition, with an explicit exception for genuine self-correction.
 
 The separate `API` / `BJ 團隊` over-correction hypothesis was rejected after 17 raw-Whisper-versus-polished comparisons. The old 71.4% / 83.3% figures used an invalid denominator that counted corrected-away terms as required final output. The only observed final-intent failures were two raw-STT `API` substitutions (`NPI` and `AVM`); Gemini introduced no target-term error. The corpus is too small to publish a replacement real-world percentage. Full quota accounting, six-dimension prompt results, and every sentence-level pair are in [COMBINED_LLM_INVESTIGATION_REPORT.md](COMBINED_LLM_INVESTIGATION_REPORT.md).
+
+## Keyring Secrets Part A (2026-07-15)
+
+API-key storage now uses the operating system credential store as the primary source:
+
+- [speedytype/secrets_store.py](speedytype/secrets_store.py) owns keyring reads, verified writes/deletes, startup resolution, and safe `.env` migration. The service name is `SpeedyType`; the provider usernames are `openai_api_key`, `gemini_api_key`, and `minimax_api_key`.
+- [speedytype/config.py](speedytype/config.py) resolves keyring before environment/`.env` fallback and reports migration/backend warnings without printing secret values.
+- [speedytype/settings_dialog.py](speedytype/settings_dialog.py) saves changed values to keyring, deletes cleared credentials, reports per-provider failures, and no longer writes API keys to `.env`.
+- Every pytest case uses an automatic in-memory credential backend, preventing automated tests from reading or mutating real OS credentials.
+
+Safety behavior:
+
+- A file-sourced value is removed from `.env` only after keyring set plus exact read-back equality succeeds.
+- Environment-sourced values are compatibility fallback values and are not migrated automatically.
+- A backend failure keeps the source `.env` byte-for-byte unchanged and returns the fallback value with a non-secret warning.
+- The guarded live verifier may delete only the extra fake username `fallback_test_api_key`; its automated safety test confirms every mutation uses that username and every fallback env path is temporary.
+
+Verification evidence:
+
+- Targeted automated keyring/config/Settings/verifier suite: `36 passed`.
+- Full automated suite after implementation and documentation: `150 passed in 4.02s`.
+- Live Windows Credential Manager: all three provider credentials existed and exactly matched the resolved configuration.
+- Live provider checks: OpenAI `PASS`, Gemini `PASS`, MiniMax `PASS` using model-list endpoints; no secret values were printed.
+- Real untracked `.env`: active plaintext lines for all three API-key names were absent after verification.
+- Isolated fake-key fallback: `PASS`; the fake credential was removed in `finally`.
+- Real background-daemon smoke with keyring-backed config: daemon started, handled one ambient empty-transcript cycle as `PASS_EMPTY_HANDLED`, and stopped normally. This proves daemon startup/config resolution and empty-input handling; because the ambient recording was empty, it did not add a second STT/LLM call beyond the three direct provider authentication checks above.

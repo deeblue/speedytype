@@ -27,12 +27,12 @@ Each item lists: current state, known impact, why it was not addressed, and the 
 - **Why not addressed**: Automating a UAC prompt interaction safely was judged unsafe/unreliable to script, and out of scope for this round.
 - **Trigger to re-evaluate**: The user's daily workflow starts to regularly include elevated windows as a dictation target.
 
-## 4. API keys are stored in plaintext in `.env`
+## 4. Resolved: API keys use the OS credential store
 
-- **Current state**: `OPENAI_API_KEY`, `GEMINI_API_KEY`, and `MINIMAX_API_KEY` are read from a local `.env` file with no OS-level secret protection.
-- **Known impact**: Anyone with filesystem read access to this machine/user profile can read the keys directly.
-- **Why not addressed**: This is a personal single-user POC; the risk is judged acceptable at this stage, and adding e.g. Windows Credential Manager integration was explicitly out of scope for this round.
-- **Trigger to re-evaluate**: The tool moves beyond personal POC use (shared machine, other users, longer-term production use) or the keys' billing scope increases.
+- **Current state**: `OPENAI_API_KEY`, `GEMINI_API_KEY`, and `MINIMAX_API_KEY` are stored under the `SpeedyType` service in Windows Credential Manager or macOS Keychain. Startup resolves keyring first. File-sourced `.env` values are migrated only after a successful set-and-read-back equality check, then their active lines are removed while unrelated content and newline style are preserved.
+- **Compatibility fallback**: Environment variables and `.env` remain supported when keyring is unavailable. A failed keyring write never removes the source value, and startup reports a non-secret warning.
+- **Verification (2026-07-15)**: all three live Windows credentials existed and exactly matched the resolved configuration; OpenAI, Gemini, and MiniMax model-list authentication checks passed; no active plaintext lines for the three API-key names remained in the real untracked `.env`; the isolated fallback check passed using only `fallback_test_api_key` and a temporary `.env`.
+- **Residual risk**: A compatibility fallback is plaintext by definition. Protect filesystem permissions and remove fallback values once the credential backend becomes available.
 
 ## 5. Disambiguation hints show no measurable benefit on the Round 2 dataset
 
@@ -69,12 +69,11 @@ Each item lists: current state, known impact, why it was not addressed, and the 
 - **Why not addressed**: Real-time conflict probing against arbitrary other software was explicitly out of scope ("不需要解決所有可能衝突，但至少要能偵測並提示使用者"); the static list satisfies the "at least detect the obvious/common cases" bar.
 - **Trigger to re-evaluate**: A user reports a hotkey that silently doesn't work or double-triggers another app; add that combo to the static list and/or investigate a more general detection approach.
 
-## 10. Settings-dialog API key editing is a convenience layer only; storage security is unchanged
+## 10. Resolved: Settings API-key editing is keyring-backed
 
-- **Current state**: This round added masked key fields, a reveal toggle, and a "測試連線" button to the Settings dialog, plus a line-preserving `.env` writer (`speedytype/env_writer.py`) so editing a key no longer requires manually opening `.env` in a text editor.
-- **Known impact**: None beyond convenience. The keys are still written to and read from a plaintext `.env` file (see limitation 4); this round did not add any encryption, OS credential-store integration, or access control.
-- **Why not addressed**: Out of scope for this round, same reasoning as limitation 4.
-- **Trigger to re-evaluate**: Same trigger as limitation 4.
+- **Current state**: The masked fields, reveal toggle, and "測試連線" behavior are unchanged, but Save now writes changed non-empty values through verified keyring storage and deletes a keyring credential when a changed field is empty. It never writes secret lines to `.env`.
+- **Failure behavior**: Each provider is saved independently. A backend failure is reported beside the general save result, does not mark that value as saved, and is retried on the next Save. Cancel still writes nothing.
+- **Compatibility note**: `.env` is still read as a fallback when keyring is unavailable; see limitation 4.
 
 ## 11. (Resolved, but note the retroactive impact) Phase 5's Startup-folder autostart likely never actually kept the daemon running
 
