@@ -16,6 +16,7 @@ from speedytype.pipeline import process_wav
 from speedytype.paths import default_env_path
 from speedytype.real_voice import guided_recording, validate_real_voice
 from speedytype.settings_launcher import show_settings_dialog
+from speedytype.version import VERSION
 
 
 def _load_config_or_print(path: str):
@@ -204,6 +205,11 @@ def command_validate_real_voice(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="speedytype", description="SpeedyType Windows voice input POC")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"SpeedyType {VERSION}",
+    )
     parser.add_argument("--env", default=str(default_env_path()), help="Path to .env config file")
     sub = parser.add_subparsers(dest="command", required=True)
 

@@ -1,3 +1,6 @@
-"""SpeedyType Windows voice input POC."""
+"""SpeedyType cross-platform voice input."""
 
-__version__ = "0.1.0"
+from speedytype.version import VERSION
+
+
+__version__ = VERSION
