@@ -271,7 +271,7 @@ Phase 6 extends the daemon with a real system tray menu (setting up the `QSystem
 
 ### Part C: About Dialog
 
-- [speedytype/version.py](speedytype/version.py): `VERSION = "0.5.2"`, `BUILD_DATE = "2026-07-16"`, `STT_MODEL = "whisper-1"`.
+- [speedytype/version.py](speedytype/version.py): `VERSION = "0.5.3"`, `BUILD_DATE = "2026-07-16"`, `STT_MODEL = "whisper-1"`.
 - [speedytype/about_dialog.py](speedytype/about_dialog.py): shows version, build date, current `llm_provider`/`llm_model` (read live from config), STT model, and a pointer to `KNOWN_LIMITATIONS.md`. Verified by test to match the live `AppConfig` rather than hardcoded strings.
 
 ### Part D: Tray Menu Integration
@@ -570,7 +570,7 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
   release inputs.
 - `speedytype/version.py` is the sole runtime version source. Package
   `__version__`, `speedytype --version`, the tray About dialog, and the release
-  builder all resolve the same value. The CLI prints `SpeedyType 0.5.2` without
+  builder all resolve the same value. The CLI prints `SpeedyType 0.5.3` without
   loading configuration or credentials.
 - Release output consists of the versioned source directory, matching source
   ZIP, and `SHA256SUMS.txt`.
@@ -585,18 +585,18 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
 
 ### Source release verification evidence
 
-- Full automated suite: `python -m pytest -q` → `306 passed in 12.24s`.
+- Full automated suite: `python -m pytest -q` → `311 passed in 15.89s`.
 - On first run, each masked API key field accepts typing and native paste before
   reveal; **Show** is only needed to inspect the entered value.
 - Repeatability: `python scripts/build_release.py` completed twice and replaced
-  the same versioned outputs without duplicate or stale files. A separate
-  cross-worktree build with different source mtimes and checkout line endings
-  produced the same ZIP bytes and SHA-256.
-- Generated outputs: `dist/SpeedyType-0.5.2/`,
-  `dist/SpeedyType-0.5.2-source.zip` (100,309 bytes), and
+  the same versioned outputs without duplicate or stale files. Both builds
+  produced the same ZIP length and SHA-256, which also matched
+  `SHA256SUMS.txt`.
+- Generated outputs: `dist/SpeedyType-0.5.3/`,
+  `dist/SpeedyType-0.5.3-source.zip` (101,167 bytes), and
   `dist/SHA256SUMS.txt`.
 - ZIP SHA-256:
-  `2b13c525e82222d24607292e23fe38b5e57a0f833e7160d39073794b55df104f`.
+  `46a22b0d746997fe8a7e5bb7e2bdb52b22a54f2a5e2c2f9c10f56e4ecd8e3ada`.
   The checksum file was parsed and independently matched against the ZIP.
 - Released text uses LF line endings, ZIP entries use a fixed timestamp,
   shell scripts are stored as mode `0755`, and other files as `0644` so
@@ -604,14 +604,22 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
 - Top-level release inventory was exactly `.env.example`,
   `KNOWN_LIMITATIONS.md`, `MAC_SETUP.md`, `README.md`, `pricing.json`,
   `real_voice_script.md`, `requirements.txt`, `scripts/`, and `speedytype/`.
-- The `0.5.2` ZIP was extracted into a guarded temporary directory. From the
+- The `0.5.3` ZIP was extracted into a unique, guarded temporary directory.
+  Before cleanup, the resolved extraction path was required to remain strictly
+  beneath the system temporary root. From the
   extracted release, `python -m compileall -q speedytype`,
   `python -m speedytype --version`, package `__version__`,
   `bash -n scripts/setup_mac.sh`, and Windows PowerShell parser checks for
   `setup_windows.ps1` and `verify_command_alias_windows.ps1` all succeeded.
-  CLI output was exactly `SpeedyType 0.5.2`, package output was `0.5.2`, the
-  released `MAC_SETUP.md` contained the zsh and post-unzip permission guidance,
-  and the combined smoke test printed `EXTRACTED_0_5_2_SMOKE_OK`.
-- macOS shell syntax and path logic are covered by the audit above; actual
-  setup, Keychain, PATH, and command execution on a real Mac remain a
-  user-side verification step.
+  CLI output was exactly `SpeedyType 0.5.3` and package output was `0.5.3`.
+  The released setup and `MAC_SETUP.md` audit found all required Python 3.13
+  preflight, explicit `python@3.13`, pip-upgrade, and stale-venv recovery
+  guidance strings.
+- Real-Mac `0.5.2` setup failed because the default `python3` created a venv
+  with pip 21.2.4, then requirements installation stopped at
+  `audioop-lts==0.2.2` with no matching distribution; the alias/PATH steps did
+  not run. In `0.5.3`, setup now fails early when Python is older than 3.13 or
+  an existing venv is incompatible, with exact `brew install python@3.13` and
+  `.venv` backup/recreation guidance before dependency installation.
+- The macOS `0.5.3` real-device rerun, including setup, Keychain, PATH, and
+  command execution, remains pending.
