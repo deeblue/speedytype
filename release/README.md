@@ -123,13 +123,13 @@ Compare the downloaded ZIP SHA-256 with `SHA256SUMS.txt`.
 Windows:
 
 ```powershell
-Get-FileHash SpeedyType-0.5.1-source.zip -Algorithm SHA256
+Get-FileHash SpeedyType-0.5.2-source.zip -Algorithm SHA256
 ```
 
 macOS:
 
 ```sh
-shasum -a 256 SpeedyType-0.5.1-source.zip
+shasum -a 256 SpeedyType-0.5.2-source.zip
 ```
 
 Real macOS runtime verification remains required before describing Mac command

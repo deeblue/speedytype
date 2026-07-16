@@ -1,3 +1,3 @@
-VERSION = "0.5.1"
+VERSION = "0.5.2"
 BUILD_DATE = "2026-07-16"
 STT_MODEL = "whisper-1"
