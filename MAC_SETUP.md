@@ -4,6 +4,36 @@ macOS Terminal uses zsh by default. These instructions assume the default zsh
 environment and a source release extracted into a local, user-owned directory,
 such as `~/Applications/SpeedyType`.
 
+## Python prerequisite
+
+SpeedyType requires Python 3.13 or newer. Check the default Python before
+running setup:
+
+```sh
+python3 --version
+```
+
+If it is older than 3.13, install a compatible Homebrew Python and select it
+explicitly when running setup:
+
+```sh
+brew install python@3.13
+PYTHON="$(brew --prefix python@3.13)/bin/python3.13" bash scripts/setup_mac.sh
+```
+
+Setup also validates an existing virtual environment without deleting or
+replacing it. If setup reports that `.venv` is incompatible, inspect its
+version and move it aside before recreating it:
+
+```sh
+.venv/bin/python --version
+mv .venv .venv.backup
+PYTHON="$(brew --prefix python@3.13)/bin/python3.13" bash scripts/setup_mac.sh
+```
+
+The `mv` command preserves the old environment for deliberate inspection or
+removal. When setup is rerun, it upgrades pip before installing requirements.
+
 ## After extracting the release
 
 Some ZIP extractors do not preserve Unix executable permissions. From the
