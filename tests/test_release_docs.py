@@ -87,3 +87,28 @@ def test_macos_docs_describe_native_menu_bar_permissions_and_release_gate():
     assert "real-Mac acceptance remains pending" in release
     assert "Quartz event tap" in limitations
     assert "mac_log_002.rtf" in report
+
+
+def test_release_docs_describe_complete_file_flac_lifecycle_and_pending_gates():
+    release = (ROOT / "release" / "README.md").read_text(encoding="utf-8")
+    setup = (ROOT / "MAC_SETUP.md").read_text(encoding="utf-8")
+    limitations = (ROOT / "KNOWN_LIMITATIONS.md").read_text(encoding="utf-8")
+    report = (ROOT / "POC_REPORT.md").read_text(encoding="utf-8")
+    combined = "\n".join((release, setup, limitations, report))
+
+    required = (
+        "25 minutes",
+        "23 MiB",
+        "PCM16 WAV",
+        "lossless FLAC",
+        "response_format=json",
+        "short-WAV fallback",
+        "failed-retained",
+        "real-device release gate",
+        "Windows",
+        "macOS",
+    )
+    for text in required:
+        assert text in combined
+    assert "25 minutes" in release
+    assert "25 minutes" in setup

@@ -13,15 +13,12 @@ from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 from speedytype.audio import Recorder, temp_wav_path
-from speedytype.api import transcribe_audio, transcribe_audio_verbose
-from speedytype.chunking import ChunkingConfig
 from speedytype.config import AppConfig
 from speedytype.console import safe_print
 from speedytype.hotkey import PlatformPermissionError, register_hold_hotkey, remove_hotkey, wait_until_hotkey_released
 from speedytype.icon import build_app_icon
-from speedytype.hybrid_pipeline import HybridTranscriber
 from speedytype.overlay import AudioLevelEmitter, RecordingPill
-from speedytype.pipeline import process_wav, wav_duration_seconds
+from speedytype.pipeline import process_wav
 from speedytype.paths import default_daemon_log_path, default_env_path, default_pid_path, default_settings_path
 from speedytype.platform.app import activate_window, configure_daemon_application
 from speedytype.recording_recovery import RecoveryRecord, discover_recoverable_recordings, mark_recording
@@ -83,7 +80,9 @@ class DaemonController(QObject):
         self._countdown_thread: threading.Thread | None = None
         self._active_path: Path | None = None
         self._hotkey_handle = None
-        self._hybrid_transcriber: HybridTranscriber | None = None
+        # Kept as an inert compatibility attribute for old diagnostics. Daily
+        # production recording always uses one complete-file JSON request.
+        self._hybrid_transcriber = None
 
     def apply_live_vocab_update(self, vocab_bias_string: str) -> None:
         """Vocabulary bias is read fresh on every Whisper call, so it can be
@@ -106,19 +105,7 @@ class DaemonController(QObject):
         self.show_recording_signal.emit()
 
         record_started = time.perf_counter()
-        if self.config.hybrid_transcription_enabled:
-            chunk_config = ChunkingConfig(hybrid_threshold_seconds=self.config.hybrid_threshold_seconds)
-            self._hybrid_transcriber = HybridTranscriber(
-                chunk_config,
-                lambda path, prompt_override="": transcribe_audio_verbose(
-                    path, self.config, prompt_override=prompt_override
-                ),
-                lambda path: transcribe_audio(path, self.config),
-                sample_rate=self.recorder.sample_rate,
-                initial_prompt=self.config.whisper_vocab_bias,
-            )
-        else:
-            self._hybrid_transcriber = None
+        self._hybrid_transcriber = None
 
         self._active_thread = threading.Thread(target=self._record_active_path, daemon=False)
         self._active_thread.start()
@@ -159,7 +146,7 @@ class DaemonController(QObject):
             self.recorder.record_until_stop(
                 self._active_path,
                 on_level=lambda rms: self.level_emitter.level_changed.emit(rms),
-                on_audio=None if self._hybrid_transcriber is None else self._hybrid_transcriber.feed,
+                on_audio=None,
             )
         except Exception as exc:
             if self._active_path is not None:
@@ -175,26 +162,7 @@ class DaemonController(QObject):
 
     def _process_recording(self, active_path: Path) -> None:
         try:
-            is_short = active_path.exists() and wav_duration_seconds(active_path) < 0.1
-            if self._hybrid_transcriber is None or is_short:
-                process_wav(active_path, self.config, do_paste=True, usage_scope="daily")
-            else:
-                hybrid = self._hybrid_transcriber.finish(active_path)
-                process_wav(
-                    active_path,
-                    self.config,
-                    do_paste=True,
-                    usage_scope="daily",
-                    raw_transcript_override=hybrid.raw_text,
-                    whisper_seconds_override=hybrid.tail_seconds,
-                    run_label="hybrid_fallback" if hybrid.fallback_used else "hybrid",
-                    hybrid_request_count=hybrid.request_count,
-                    hybrid_request_seconds=hybrid.request_seconds,
-                    stt_audio_seconds=hybrid.audio_seconds,
-                    hybrid_fallback_used=hybrid.fallback_used,
-                    hybrid_validation_reasons=" | ".join(hybrid.diagnostics.get("validation_reasons", [])),
-                    precomputed_tail_seconds=hybrid.tail_seconds,
-                )
+            process_wav(active_path, self.config, do_paste=True, usage_scope="daily")
         except Exception as exc:
             message = f"Recording processing failed ({type(exc).__name__}). Daemon remains available."
             safe_print(message, flush=True)

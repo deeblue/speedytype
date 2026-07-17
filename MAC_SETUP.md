@@ -172,6 +172,25 @@ speedytype guided-recording --script real_voice_script.md
 speedytype --env /path/to/other.env daemon
 ```
 
+## Long recordings and retained files
+
+Settings permits up to **25 minutes** per recording (the default remains 60
+seconds). Capture is always mono 16 kHz **PCM16 WAV**. After stop, SpeedyType
+creates and validates a temporary **lossless FLAC**, requires its actual size
+to be strictly below **23 MiB**, and submits one complete-file Whisper request
+using `response_format=json` without timestamps. A **short-WAV fallback** is
+allowed only when FLAC preparation fails and the WAV still passes both guards.
+
+If encoding, admission, transcription, polishing, or paste fails, the original
+WAV is preserved with a `failed-retained` sidecar under the SpeedyType
+application-data recordings directory. Daemon startup lists these paths; it
+does not retry or upload them automatically. Allow time after releasing the
+recording key for encoding and transcription to finish.
+
+The ≥24-minute real-device release gate is still pending on macOS. During the
+check, verify the menu-bar daemon remains responsive, the final paste succeeds,
+and an injected processing failure preserves the WAV for manual review.
+
 ## Monthly usage and budget
 
 Open `speedytype settings` and use `設定月預算` in `本月用量與預算`. The
@@ -202,6 +221,8 @@ Mac; the final tag is blocked until they pass:
 13. Confirm no new Python `.ips` report appeared during the test period.
 14. Open Settings at 520 pixels or wider and confirm the monthly capacity card
    renders, scrolls, and can set then clear a pending budget.
+15. Set the limit to 25 minutes and complete a ≥24-minute real-device recording;
+    verify one complete-file result is pasted and no recording is silently lost.
 
 Also rerun setup twice, confirm the PATH entry is not duplicated, confirm the
 wrapper is executable, and confirm Keychain credentials remain unchanged. The

@@ -264,25 +264,25 @@ git commit -m "feat: use complete-file FLAC transcription path"
 **Interfaces:**
 - Produces: one documented production path and an explicit real-device checklist.
 
-- [ ] **Step 1: Write failing path-selection/documentation tests**
+- [x] **Step 1: Write failing path-selection/documentation tests**
 
 Assert daemon daily recording does not construct `HybridTranscriber` even if stale `.env` contains `HYBRID_TRANSCRIPTION_ENABLED=true`; release docs state WAV capture, FLAC JSON upload, 23 MiB strict guard, 25-minute ceiling, short-WAV fallback, and retained oversize recovery.
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 Run: `python -m pytest tests/test_daemon_recovery.py tests/test_release_docs.py tests/test_config.py -q`
 
 Expected: stale hybrid activation and missing documentation failures.
 
-- [ ] **Step 3: Close the obsolete production hybrid switch**
+- [x] **Step 3: Close the obsolete production hybrid switch**
 
 Stop reading `HYBRID_TRANSCRIPTION_ENABLED` and `HYBRID_THRESHOLD_SECONDS` into the daemon production configuration. Keep experimental modules available only to explicit development runners; the normal daemon always calls `process_wav()` once.
 
-- [ ] **Step 4: Update user and release documentation**
+- [x] **Step 4: Update user and release documentation**
 
 Document the exact file lifecycle, JSON request format, safe fallback, preserved-file locations, 25-minute UI/runtime limit, possible post-stop latency, and Windows/macOS real-device release checks. Do not claim those checks have run.
 
-- [ ] **Step 5: Run focused and complete verification**
+- [x] **Step 5: Run focused and complete verification**
 
 Run:
 
@@ -296,7 +296,7 @@ git diff --check
 
 Expected: every command exits 0. Record the real Windows/macOS 24-minute checks as pending release gates.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add speedytype/config.py speedytype/daemon.py release/README.md MAC_SETUP.md KNOWN_LIMITATIONS.md POC_REPORT.md tests/test_daemon_recovery.py tests/test_release_docs.py tests/test_config.py

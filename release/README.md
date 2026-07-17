@@ -86,6 +86,28 @@ speedytype daemon
 
 The tray menu can reopen Settings, restart the daemon, or exit it.
 
+## Recording and long-recording safety
+
+The recording control supports a maximum of **25 minutes**; the default is
+still 60 seconds. SpeedyType always captures mono 16 kHz **PCM16 WAV** first so
+the original recording remains available if later processing fails. After
+recording stops, it encodes a temporary **lossless FLAC**, verifies its audio
+format, exact sample count, and decoded PCM SHA-256, then checks the actual file
+size is strictly below **23 MiB** before sending one complete-file Whisper
+request with `response_format=json` and no timestamps.
+
+A **short-WAV fallback** is used only if FLAC preparation fails and that WAV is
+itself below the duration and byte guards. Oversize, invalid, transcription,
+polishing, and paste failures leave the WAV in SpeedyType's recordings folder
+with a `failed-retained` recovery sidecar. On the next daemon start, SpeedyType
+reports retained paths but never uploads them automatically. Post-stop
+encoding and complete-file transcription can take visible time.
+
+The automated suite validates file/sample conservation and admission rules.
+A real-device release gate remains pending: complete a recording of at least
+24 minutes on both Windows and macOS, verify successful paste and retained-file
+behavior under an injected failure, before publishing the release.
+
 ## Monthly usage and budget
 
 Settings includes a `本月用量與預算` card. Choose `設定月預算` to enter one

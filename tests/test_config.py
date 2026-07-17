@@ -94,6 +94,20 @@ def test_load_config_cannot_expose_recording_limit_above_twenty_five_minutes(tmp
     assert config.max_record_seconds == 1500.0
 
 
+def test_load_config_ignores_obsolete_hybrid_environment_switches(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "OPENAI_API_KEY=sk-test\nGEMINI_API_KEY=gem-test\n"
+        "HYBRID_TRANSCRIPTION_ENABLED=true\nHYBRID_THRESHOLD_SECONDS=1\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(env_file, settings_path=tmp_path / "settings.json")
+
+    assert config.hybrid_transcription_enabled is False
+    assert config.hybrid_threshold_seconds == 90.0
+
+
 def test_resolve_mic_device_setting_empty_means_default():
     value, warning = resolve_mic_device_setting("")
     assert value == ""

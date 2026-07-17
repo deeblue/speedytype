@@ -144,6 +144,4 @@ def load_config(
         max_record_seconds=settings.max_record_seconds,
         latency_log_path=Path(get("LATENCY_LOG_PATH", str(default_latency_log_path())) or default_latency_log_path()),
         clipboard_restore_delay_seconds=float(get("CLIPBOARD_RESTORE_DELAY_SECONDS", "0.3") or "0.3"),
-        hybrid_transcription_enabled=get("HYBRID_TRANSCRIPTION_ENABLED", "false").lower() in {"1", "true", "yes", "on"},
-        hybrid_threshold_seconds=float(get("HYBRID_THRESHOLD_SECONDS", "90") or "90"),
     )

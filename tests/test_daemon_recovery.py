@@ -98,3 +98,33 @@ def test_startup_recovery_reports_paths_without_processing(tmp_path, monkeypatch
 
     assert any(str(wav_path) in line for line in printed)
     assert shown and "1" in shown[0][1]
+
+
+def test_daemon_never_constructs_hybrid_transcriber_for_daily_recording(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    config = AppConfig(
+        openai_api_key="x",
+        gemini_api_key="y",
+        hybrid_transcription_enabled=True,
+        hybrid_threshold_seconds=1.0,
+    )
+    controller = DaemonController(config)
+    controller._active_path = tmp_path / "recording.wav"
+    started = []
+
+    class FakeThread:
+        def __init__(self, *, target, daemon, args=()):
+            self.target = target
+            self.args = args
+
+        def start(self):
+            started.append((self.target, self.args))
+
+    monkeypatch.setattr("speedytype.daemon.temp_wav_path", lambda: controller._active_path)
+    monkeypatch.setattr("speedytype.daemon.threading.Thread", FakeThread)
+
+    controller.on_press()
+
+    assert controller._hybrid_transcriber is None
+    assert started
+    app.processEvents()

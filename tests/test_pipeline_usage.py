@@ -278,8 +278,7 @@ def test_daily_empty_transcript_does_not_record_an_llm_call(tmp_path, monkeypatc
     assert summary.llm_calls == 0
 
 
-@pytest.mark.parametrize("hybrid_enabled", [False, True])
-def test_daemon_processing_paths_mark_usage_daily(tmp_path, monkeypatch, hybrid_enabled) -> None:
+def test_daemon_processing_path_marks_usage_daily(tmp_path, monkeypatch) -> None:
     from PyQt6.QtWidgets import QApplication
     from speedytype.daemon import DaemonController
 
@@ -289,19 +288,7 @@ def test_daemon_processing_paths_mark_usage_daily(tmp_path, monkeypatch, hybrid_
     controller._active_path = tmp_path / "audio.wav"
     controller._active_thread = SimpleNamespace(is_alive=lambda: True, join=lambda: None)
     controller.recorder = SimpleNamespace(stop=lambda: None)
-    if hybrid_enabled:
-        hybrid_result = SimpleNamespace(
-            raw_text="hybrid text",
-            tail_seconds=1.5,
-            fallback_used=False,
-            request_count=2,
-            request_seconds=2.5,
-            audio_seconds=75.0,
-            diagnostics={"validation_reasons": []},
-        )
-        controller._hybrid_transcriber = SimpleNamespace(finish=lambda path: hybrid_result)
-    else:
-        controller._hybrid_transcriber = None
+    controller._hybrid_transcriber = None
 
     calls = []
     monkeypatch.setattr("speedytype.daemon.wait_until_hotkey_released", lambda *args: ("released", 0.1))
@@ -319,8 +306,6 @@ def test_daemon_processing_paths_mark_usage_daily(tmp_path, monkeypatch, hybrid_
     controller._finish_after_release()
 
     assert calls[0]["usage_scope"] == "daily"
-    if hybrid_enabled:
-        assert calls[0]["stt_audio_seconds"] == 75.0
     app.processEvents()
 
 
