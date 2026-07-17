@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 import pyperclip
 
+from ._macos_event_tap import SPEEDYTYPE_EVENT_MARKER
+
 
 @dataclass(frozen=True)
 class ClipboardSnapshot:
@@ -29,10 +31,16 @@ def restore_clipboard(snapshot: ClipboardSnapshot) -> tuple[bool, str]:
     return True, "Clipboard text restored."
 
 
-def send_paste_shortcut() -> None:
-    from pynput.keyboard import Controller, Key
+def send_paste_shortcut(*, quartz=None) -> None:
+    if quartz is None:
+        import Quartz as quartz
 
-    controller = Controller()
-    with controller.pressed(Key.cmd):
-        controller.press("v")
-        controller.release("v")
+    for keycode, is_down in ((55, True), (9, True), (9, False), (55, False)):
+        event = quartz.CGEventCreateKeyboardEvent(None, keycode, is_down)
+        quartz.CGEventSetIntegerValueField(
+            event,
+            quartz.kCGEventSourceUserData,
+            SPEEDYTYPE_EVENT_MARKER,
+        )
+        quartz.CGEventSetFlags(event, quartz.kCGEventFlagMaskCommand)
+        quartz.CGEventPost(quartz.kCGHIDEventTap, event)
