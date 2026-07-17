@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import QApplication
 
 from speedytype.config import AppConfig
 from speedytype.daemon import DaemonController, report_recoverable_recordings
+from speedytype.flac_upload import UploadPreparationError
 from speedytype.recording_recovery import RecoveryRecord, create_recording_path, recording_sidecar_path
 
 
@@ -128,3 +129,24 @@ def test_daemon_never_constructs_hybrid_transcriber_for_daily_recording(tmp_path
     assert controller._hybrid_transcriber is None
     assert started
     app.processEvents()
+
+
+def test_upload_refusal_notification_reports_preserved_wav_and_category(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    controller = DaemonController(AppConfig(openai_api_key="x", gemini_api_key="y"))
+    path = tmp_path / "retained.wav"
+    notifications = []
+    controller.processing_error_signal.connect(notifications.append)
+    monkeypatch.setattr(
+        "speedytype.daemon.process_wav",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            UploadPreparationError("upload_too_large", path)
+        ),
+    )
+
+    controller._process_recording(path)
+    app.processEvents()
+
+    assert len(notifications) == 1
+    assert "upload_too_large" in notifications[0]
+    assert str(path) in notifications[0]

@@ -11,6 +11,7 @@ import wave
 import pytest
 
 from speedytype.config import AppConfig
+from speedytype.flac_upload import UploadPreparationError
 from speedytype.llm import LlmResult, LlmUsage
 from speedytype.pipeline import process_wav
 from speedytype.paths import default_pricing_path
@@ -169,6 +170,24 @@ def test_transcription_failure_marks_owned_wav_failed_retained(tmp_path, monkeyp
     assert '"state": "failed-retained"' in metadata
     assert '"error_category": "RuntimeError"' in metadata
     assert wav_path.exists()
+
+
+def test_upload_refusal_preserves_specific_failure_category(tmp_path, monkeypatch) -> None:
+    wav_path = _owned_wav(tmp_path)
+
+    @contextmanager
+    def refusing_prepare(path):
+        raise UploadPreparationError("upload_too_large", path)
+        yield  # pragma: no cover - keeps this a context manager
+
+    monkeypatch.setattr("speedytype.pipeline.prepare_upload", refusing_prepare)
+
+    with pytest.raises(UploadPreparationError):
+        process_wav(wav_path, _config(tmp_path), do_paste=False)
+
+    metadata = recording_sidecar_path(wav_path).read_text(encoding="utf-8")
+    assert '"state": "failed-retained"' in metadata
+    assert '"error_category": "upload_too_large"' in metadata
 
 
 def test_process_wav_propagates_authoritative_llm_usage(tmp_path, monkeypatch) -> None:

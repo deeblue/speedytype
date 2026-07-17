@@ -164,7 +164,13 @@ class DaemonController(QObject):
         try:
             process_wav(active_path, self.config, do_paste=True, usage_scope="daily")
         except Exception as exc:
-            message = f"Recording processing failed ({type(exc).__name__}). Daemon remains available."
+            category = str(getattr(exc, "category", type(exc).__name__))
+            preserved_path = Path(getattr(exc, "preserved_wav", active_path))
+            mark_recording(active_path, "failed-retained", error_category=category)
+            message = (
+                f"Recording processing failed ({category}). WAV preserved: "
+                f"{preserved_path}. Daemon remains available."
+            )
             safe_print(message, flush=True)
             self.processing_error_signal.emit(message)
         finally:

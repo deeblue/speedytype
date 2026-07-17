@@ -90,6 +90,12 @@ def process_wav(
                 encoding_seconds = prepared.encoding_seconds
                 wav_fallback_used = prepared.fallback_used
                 wav_fallback_reason = prepared.fallback_reason
+                if wav_fallback_used:
+                    safe_print(
+                        "FLAC preparation failed; admissible WAV fallback will be uploaded "
+                        f"({wav_fallback_reason}).",
+                        flush=True,
+                    )
                 mark_recording(audio_path, "ready")
                 mark_recording(audio_path, "processing")
                 processing_started = True
@@ -102,7 +108,8 @@ def process_wav(
             raw = raw_transcript_override
             whisper_seconds = 0.0 if whisper_seconds_override is None else whisper_seconds_override
     except Exception as exc:
-        mark_recording(audio_path, "failed-retained", error_category=type(exc).__name__)
+        category = str(getattr(exc, "category", type(exc).__name__))
+        mark_recording(audio_path, "failed-retained", error_category=category)
         raise
     safe_print(f"Whisper raw transcript: {raw}", flush=True)
 
