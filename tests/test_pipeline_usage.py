@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import argparse
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 import threading
@@ -13,6 +14,11 @@ from speedytype.config import AppConfig
 from speedytype.llm import LlmResult, LlmUsage
 from speedytype.pipeline import process_wav
 from speedytype.paths import default_pricing_path
+from speedytype.recording_recovery import (
+    create_recording_path,
+    mark_recording,
+    recording_sidecar_path,
+)
 from speedytype.usage_stats import calculate_usage
 
 
@@ -37,6 +43,10 @@ def test_sub_tenth_second_recording_skips_all_external_work_and_latency_row(tmp_
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Whisper must not run")),
     )
     monkeypatch.setattr(
+        "speedytype.pipeline.prepare_upload",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("FLAC must not run")),
+    )
+    monkeypatch.setattr(
         "speedytype.pipeline.call_llm_polisher",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("LLM must not run")),
     )
@@ -56,6 +66,109 @@ def test_sub_tenth_second_recording_skips_all_external_work_and_latency_row(tmp_
 
 def _config(tmp_path: Path) -> AppConfig:
     return AppConfig(openai_api_key="x", gemini_api_key="y", latency_log_path=tmp_path / "latency.csv")
+
+
+def _owned_wav(tmp_path: Path) -> Path:
+    path = create_recording_path(directory=tmp_path)
+    _write_wav(path)
+    mark_recording(path, "captured")
+    return path
+
+
+def _llm_result(text: str = "polished") -> LlmResult:
+    return LlmResult(
+        text=text,
+        provider="gemini",
+        model="gemini-test",
+        llm_call_seconds=0.25,
+        retry_wait_seconds=0.0,
+        retry_count=0,
+        usage=LlmUsage(),
+        raw_response={},
+    )
+
+
+def test_owned_recording_prepares_flac_records_upload_and_completes(tmp_path, monkeypatch) -> None:
+    wav_path = _owned_wav(tmp_path)
+    flac_path = tmp_path / "prepared.flac"
+    flac_path.write_bytes(b"flac")
+    prepared = SimpleNamespace(
+        path=flac_path, container="flac", upload_bytes=4, encoding_seconds=1.25,
+        fallback_used=False, fallback_reason="",
+    )
+
+    @contextmanager
+    def fake_prepare(path):
+        assert path == wav_path
+        yield prepared
+
+    sent = []
+    monkeypatch.setattr("speedytype.pipeline.prepare_upload", fake_prepare)
+    monkeypatch.setattr(
+        "speedytype.pipeline.transcribe_audio",
+        lambda path, config, *, model: sent.append(path) or "raw",
+    )
+    monkeypatch.setattr("speedytype.pipeline.call_llm_polisher", lambda *args: _llm_result())
+
+    result = process_wav(wav_path, _config(tmp_path), do_paste=False, usage_scope="daily")
+
+    assert sent == [flac_path]
+    assert result.latency.stt_upload_container == "flac"
+    assert result.latency.stt_upload_bytes == 4
+    assert result.latency.stt_encoding_seconds == pytest.approx(1.25)
+    assert result.latency.stt_wav_fallback_used is False
+    assert '"state": "completed"' in recording_sidecar_path(wav_path).read_text(encoding="utf-8")
+    assert wav_path.exists()
+
+
+def test_pipeline_records_short_wav_fallback_metadata(tmp_path, monkeypatch) -> None:
+    wav_path = _owned_wav(tmp_path)
+    prepared = SimpleNamespace(
+        path=wav_path, container="wav", upload_bytes=wav_path.stat().st_size,
+        encoding_seconds=0.0, fallback_used=True, fallback_reason="FlacEncodingError",
+    )
+
+    @contextmanager
+    def fake_prepare(path):
+        yield prepared
+
+    monkeypatch.setattr("speedytype.pipeline.prepare_upload", fake_prepare)
+    monkeypatch.setattr("speedytype.pipeline.transcribe_audio", lambda *args, **kwargs: "raw")
+    monkeypatch.setattr("speedytype.pipeline.call_llm_polisher", lambda *args: _llm_result())
+
+    result = process_wav(wav_path, _config(tmp_path), do_paste=False)
+
+    assert result.latency.stt_upload_container == "wav"
+    assert result.latency.stt_wav_fallback_used is True
+    assert result.latency.stt_wav_fallback_reason == "FlacEncodingError"
+
+
+def test_transcription_failure_marks_owned_wav_failed_retained(tmp_path, monkeypatch) -> None:
+    wav_path = _owned_wav(tmp_path)
+    flac_path = tmp_path / "prepared.flac"
+    flac_path.write_bytes(b"flac")
+    prepared = SimpleNamespace(
+        path=flac_path, container="flac", upload_bytes=4, encoding_seconds=0.1,
+        fallback_used=False, fallback_reason="",
+    )
+
+    @contextmanager
+    def fake_prepare(path):
+        yield prepared
+
+    monkeypatch.setattr("speedytype.pipeline.prepare_upload", fake_prepare)
+    monkeypatch.setattr(
+        "speedytype.pipeline.transcribe_audio",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("provider detail")),
+    )
+
+    with pytest.raises(RuntimeError, match="provider detail"):
+        process_wav(wav_path, _config(tmp_path), do_paste=False)
+
+    metadata = recording_sidecar_path(wav_path).read_text(encoding="utf-8")
+    assert '"state": "failed-retained"' in metadata
+    assert '"error_category": "RuntimeError"' in metadata
+    assert wav_path.exists()
 
 
 def test_process_wav_propagates_authoritative_llm_usage(tmp_path, monkeypatch) -> None:

@@ -209,39 +209,39 @@ git commit -m "feat: prepare validated lossless FLAC uploads"
 - Consumes: `prepare_upload()` and recovery state functions.
 - Produces: latency fields `stt_upload_container`, `stt_upload_bytes`, `stt_encoding_seconds`, `stt_wav_fallback_used`, and `stt_wav_fallback_reason`.
 
-- [ ] **Step 1: Write failing pipeline request tests**
+- [x] **Step 1: Write failing pipeline request tests**
 
 Assert normal processing transcribes the selected FLAC, fallback processing transcribes WAV, both calls use `whisper-1` through the normal JSON `transcribe_audio()` path, `.flac` MIME is `audio/flac`, and no production call requests verbose/timestamps. Assert short recordings skip before FLAC preparation.
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 Run: `python -m pytest tests/test_pipeline_usage.py tests/test_parsers.py -q`
 
 Expected: selected-upload and diagnostic assertions fail.
 
-- [ ] **Step 3: Integrate the context-managed upload**
+- [x] **Step 3: Integrate the context-managed upload**
 
 In `process_wav()`, mark `encoding`, enter `prepare_upload(audio_path)`, mark `ready`, then `processing`, call `transcribe_audio(prepared.path, config, model=stt_model)`, and write upload diagnostics. Mark `failed-retained` on preparation/transcription/polish exceptions, empty provider text, or a requested paste that returns `paste_ok=False`. Mark `completed` only for a successful requested paste, an intentional `do_paste=False` completion, or the existing local `<0.1 s` no-API skip. Recovery functions are no-ops for arbitrary WAVs outside SpeedyType's owned recordings directory.
 
-- [ ] **Step 4: Extend latency CSV compatibility**
+- [x] **Step 4: Extend latency CSV compatibility**
 
 Append the five new fields to `LATENCY_FIELDS`; defaults preserve old callers and usage calculation. Update tests proving old CSVs remain readable and fallback uploaded seconds/cost remain accurate.
 
-- [ ] **Step 5: Add startup discovery tests and confirm RED**
+- [x] **Step 5: Add startup discovery tests and confirm RED**
 
 Construct recoverable records before `run_daemon()`. Assert one sanitized startup summary is printed/shown, completed records are absent, and neither `transcribe_audio` nor `process_wav` is called.
 
-- [ ] **Step 6: Implement non-submitting recovery notification**
+- [x] **Step 6: Implement non-submitting recovery notification**
 
 Discover after Qt/tray initialization. Print count and preserved paths through `safe_print`; use tray notification copy that says recordings require manual review. Do not add retry/resume buttons or provider calls.
 
-- [ ] **Step 7: Run integration tests and confirm GREEN**
+- [x] **Step 7: Run integration tests and confirm GREEN**
 
 Run: `python -m pytest tests/test_pipeline_usage.py tests/test_usage_stats.py tests/test_daemon_recovery.py tests/test_parsers.py -q`
 
 Expected: all pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```powershell
 git add speedytype/pipeline.py speedytype/latency.py speedytype/daemon.py speedytype/cli.py speedytype/api.py tests/test_pipeline_usage.py tests/test_usage_stats.py tests/test_daemon_recovery.py tests/test_parsers.py

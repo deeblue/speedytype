@@ -35,6 +35,11 @@ LATENCY_FIELDS = [
     "usage_scope",
     "stt_model",
     "stt_audio_seconds",
+    "stt_upload_container",
+    "stt_upload_bytes",
+    "stt_encoding_seconds",
+    "stt_wav_fallback_used",
+    "stt_wav_fallback_reason",
     "llm_input_tokens",
     "llm_output_tokens",
     "llm_total_tokens",
@@ -67,6 +72,11 @@ class LatencyRecord:
     usage_scope: str = "development"
     stt_model: str = "whisper-1"
     stt_audio_seconds: float | None = None
+    stt_upload_container: str = ""
+    stt_upload_bytes: int | None = None
+    stt_encoding_seconds: float = 0.0
+    stt_wav_fallback_used: bool = False
+    stt_wav_fallback_reason: str = ""
     llm_input_tokens: int | None = None
     llm_output_tokens: int | None = None
     llm_total_tokens: int | None = None
@@ -97,6 +107,11 @@ class LatencyRecord:
         usage_scope: str = "development",
         stt_model: str = "whisper-1",
         stt_audio_seconds: float | None = None,
+        stt_upload_container: str = "",
+        stt_upload_bytes: int | None = None,
+        stt_encoding_seconds: float = 0.0,
+        stt_wav_fallback_used: bool = False,
+        stt_wav_fallback_reason: str = "",
         llm_input_tokens: int | None = None,
         llm_output_tokens: int | None = None,
         llm_total_tokens: int | None = None,
@@ -126,6 +141,11 @@ class LatencyRecord:
             usage_scope=usage_scope,
             stt_model=stt_model,
             stt_audio_seconds=stt_audio_seconds,
+            stt_upload_container=stt_upload_container,
+            stt_upload_bytes=stt_upload_bytes,
+            stt_encoding_seconds=stt_encoding_seconds,
+            stt_wav_fallback_used=stt_wav_fallback_used,
+            stt_wav_fallback_reason=stt_wav_fallback_reason,
             llm_input_tokens=llm_input_tokens,
             llm_output_tokens=llm_output_tokens,
             llm_total_tokens=llm_total_tokens,
@@ -160,6 +180,11 @@ def _record_row(record: LatencyRecord) -> dict[str, object]:
         "stt_audio_seconds": (
             "" if record.stt_audio_seconds is None else f"{record.stt_audio_seconds:.6f}"
         ),
+        "stt_upload_container": record.stt_upload_container,
+        "stt_upload_bytes": "" if record.stt_upload_bytes is None else record.stt_upload_bytes,
+        "stt_encoding_seconds": f"{record.stt_encoding_seconds:.6f}",
+        "stt_wav_fallback_used": str(record.stt_wav_fallback_used).lower(),
+        "stt_wav_fallback_reason": record.stt_wav_fallback_reason,
         "llm_input_tokens": "" if record.llm_input_tokens is None else record.llm_input_tokens,
         "llm_output_tokens": "" if record.llm_output_tokens is None else record.llm_output_tokens,
         "llm_total_tokens": "" if record.llm_total_tokens is None else record.llm_total_tokens,

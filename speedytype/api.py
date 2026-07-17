@@ -95,6 +95,10 @@ def transcribe_audio_request(
     prompt_override: str | None = None,
     model: str = "whisper-1",
 ) -> dict[str, Any]:
+    mime_type = {
+        ".flac": "audio/flac",
+        ".wav": "audio/wav",
+    }.get(audio_path.suffix.lower(), "application/octet-stream")
     data: dict[str, Any] = {
         "model": model,
         "prompt": config.whisper_vocab_bias if prompt_override is None else prompt_override,
@@ -108,7 +112,7 @@ def transcribe_audio_request(
         response = requests.post(
             WHISPER_URL,
             headers={"Authorization": f"Bearer {config.openai_api_key}"},
-            files={"file": (audio_path.name, audio_file, "audio/wav")},
+            files={"file": (audio_path.name, audio_file, mime_type)},
             data=data,
             timeout=timeout_seconds,
         )

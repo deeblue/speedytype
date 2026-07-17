@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 
 from speedytype import api
 from speedytype.api import ApiResponseFormatError, parse_gemini_text, parse_whisper_text
@@ -25,6 +26,34 @@ def test_transcribe_audio_forwards_selected_model_to_request(tmp_path, monkeypat
 
     assert result == "ok"
     assert captured == [{"timeout_seconds": 120, "model": "whisper-selected"}]
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected_mime"),
+    [("audio.wav", "audio/wav"), ("audio.flac", "audio/flac")],
+)
+def test_transcription_request_uses_container_mime_and_json_without_timestamps(
+    tmp_path, monkeypatch, filename, expected_mime
+):
+    audio_path = tmp_path / filename
+    audio_path.write_bytes(b"audio")
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(status_code=200, json=lambda: {"text": "ok"})
+
+    monkeypatch.setattr(api.requests, "post", fake_post)
+
+    result = api.transcribe_audio_request(
+        audio_path,
+        AppConfig(openai_api_key="x", gemini_api_key="y"),
+    )
+
+    assert result == {"text": "ok"}
+    assert captured["files"]["file"][2] == expected_mime
+    assert captured["data"]["response_format"] == "json"
+    assert not any(key.startswith("timestamp_granularities") for key in captured["data"])
 
 
 def test_parse_whisper_text_rejects_missing_text_with_raw_response():

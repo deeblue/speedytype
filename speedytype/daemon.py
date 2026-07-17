@@ -24,12 +24,28 @@ from speedytype.overlay import AudioLevelEmitter, RecordingPill
 from speedytype.pipeline import process_wav, wav_duration_seconds
 from speedytype.paths import default_daemon_log_path, default_env_path, default_pid_path, default_settings_path
 from speedytype.platform.app import activate_window, configure_daemon_application
-from speedytype.recording_recovery import mark_recording
+from speedytype.recording_recovery import RecoveryRecord, discover_recoverable_recordings, mark_recording
 from speedytype.platform.process import is_process_running, terminate_process
 
 
 PID_FILE = default_pid_path()
 COUNTDOWN_WARNING_SECONDS = 60.0
+
+
+def report_recoverable_recordings(
+    tray: QSystemTrayIcon, records: tuple[RecoveryRecord, ...]
+) -> None:
+    if not records:
+        return
+    safe_print(f"Found {len(records)} retained SpeedyType recording(s):", flush=True)
+    for record in records:
+        safe_print(f"- [{record.state}] {record.wav_path}", flush=True)
+    tray.showMessage(
+        "SpeedyType 錄音已保留",
+        f"找到 {len(records)} 筆尚未完成的錄音；檔案路徑已寫入 daemon log，不會自動上傳。",
+        QSystemTrayIcon.MessageIcon.Warning,
+        10_000,
+    )
 
 
 class DaemonController(QObject):
@@ -344,6 +360,7 @@ def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_p
 
     tray.setContextMenu(menu)
     tray.show()
+    report_recoverable_recordings(tray, discover_recoverable_recordings())
 
     _write_pid_file()
     safe_print(

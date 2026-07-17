@@ -6,8 +6,8 @@ import wave
 from PyQt6.QtWidgets import QApplication
 
 from speedytype.config import AppConfig
-from speedytype.daemon import DaemonController
-from speedytype.recording_recovery import create_recording_path, recording_sidecar_path
+from speedytype.daemon import DaemonController, report_recoverable_recordings
+from speedytype.recording_recovery import RecoveryRecord, create_recording_path, recording_sidecar_path
 
 
 def test_processing_failure_is_sanitized_hides_overlay_and_controller_is_reusable(tmp_path, monkeypatch):
@@ -84,3 +84,17 @@ def test_short_recording_bypasses_hybrid_finish_before_pipeline_guard(tmp_path, 
 
     assert len(calls) == 1
     assert calls[0][1]["usage_scope"] == "daily"
+
+
+def test_startup_recovery_reports_paths_without_processing(tmp_path, monkeypatch):
+    wav_path = tmp_path / "retained.wav"
+    records = (RecoveryRecord(wav_path, "failed-retained", "id-1", "RuntimeError"),)
+    printed = []
+    shown = []
+    tray = type("Tray", (), {"showMessage": lambda self, *args: shown.append(args)})()
+    monkeypatch.setattr("speedytype.daemon.safe_print", lambda message, **kwargs: printed.append(message))
+
+    report_recoverable_recordings(tray, records)
+
+    assert any(str(wav_path) in line for line in printed)
+    assert shown and "1" in shown[0][1]

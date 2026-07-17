@@ -9,8 +9,10 @@ from speedytype.api import transcribe_audio
 from speedytype.clipboard import paste_text_preserving_clipboard
 from speedytype.console import safe_print
 from speedytype.config import AppConfig
+from speedytype.flac_upload import prepare_upload
 from speedytype.latency import LatencyRecord, append_latency_record
 from speedytype.llm import call_llm_polisher
+from speedytype.recording_recovery import mark_recording
 
 
 @dataclass(frozen=True)
@@ -69,15 +71,39 @@ def process_wav(
             stt_model=stt_model,
             stt_audio_seconds=0.0,
         )
+        mark_recording(audio_path, "processing")
+        mark_recording(audio_path, "completed")
         return PipelineResult("", "", False, message, latency)
 
-    if raw_transcript_override is None:
-        whisper_start = time.perf_counter()
-        raw = transcribe_audio(audio_path, config, model=stt_model)
-        whisper_seconds = time.perf_counter() - whisper_start
-    else:
-        raw = raw_transcript_override
-        whisper_seconds = 0.0 if whisper_seconds_override is None else whisper_seconds_override
+    upload_container = ""
+    upload_bytes: int | None = None
+    encoding_seconds = 0.0
+    wav_fallback_used = False
+    wav_fallback_reason = ""
+    processing_started = False
+    try:
+        if raw_transcript_override is None:
+            mark_recording(audio_path, "encoding")
+            with prepare_upload(audio_path) as prepared:
+                upload_container = prepared.container
+                upload_bytes = prepared.upload_bytes
+                encoding_seconds = prepared.encoding_seconds
+                wav_fallback_used = prepared.fallback_used
+                wav_fallback_reason = prepared.fallback_reason
+                mark_recording(audio_path, "ready")
+                mark_recording(audio_path, "processing")
+                processing_started = True
+                whisper_start = time.perf_counter()
+                raw = transcribe_audio(prepared.path, config, model=stt_model)
+                whisper_seconds = time.perf_counter() - whisper_start
+        else:
+            mark_recording(audio_path, "processing")
+            processing_started = True
+            raw = raw_transcript_override
+            whisper_seconds = 0.0 if whisper_seconds_override is None else whisper_seconds_override
+    except Exception as exc:
+        mark_recording(audio_path, "failed-retained", error_category=type(exc).__name__)
+        raise
     safe_print(f"Whisper raw transcript: {raw}", flush=True)
 
     if not raw.strip():
@@ -99,29 +125,40 @@ def process_wav(
             usage_scope=usage_scope,
             stt_model=stt_model,
             stt_audio_seconds=resolved_stt_audio_seconds,
+            stt_upload_container=upload_container,
+            stt_upload_bytes=upload_bytes,
+            stt_encoding_seconds=encoding_seconds,
+            stt_wav_fallback_used=wav_fallback_used,
+            stt_wav_fallback_reason=wav_fallback_reason,
         )
         append_latency_record(config.latency_log_path, latency)
         message = "Whisper returned empty text; skipped Gemini and paste."
         safe_print(message, flush=True)
+        mark_recording(audio_path, "failed-retained", error_category="EmptyTranscript")
         return PipelineResult("", "", False, message, latency)
 
-    gemini_start = time.perf_counter()
-    llm_result = call_llm_polisher(raw, config)
-    polished = llm_result.text
-    gemini_seconds = time.perf_counter() - gemini_start
-    safe_print(f"Gemini polished text: {polished}", flush=True)
+    try:
+        gemini_start = time.perf_counter()
+        llm_result = call_llm_polisher(raw, config)
+        polished = llm_result.text
+        gemini_seconds = time.perf_counter() - gemini_start
+        safe_print(f"Gemini polished text: {polished}", flush=True)
 
-    paste_start = time.perf_counter()
-    paste_result = None
-    if do_paste and polished.strip():
-        paste_result = paste_text_preserving_clipboard(
-            polished, restore_delay_seconds=config.clipboard_restore_delay_seconds
-        )
-        paste_ok, paste_message = paste_result.ok, paste_result.message
-    else:
-        paste_ok, paste_message = False, "Paste skipped by command option."
-    paste_seconds = time.perf_counter() - paste_start
-    total_tail = precomputed_tail_seconds + time.perf_counter() - tail_start
+        paste_start = time.perf_counter()
+        paste_result = None
+        if do_paste and polished.strip():
+            paste_result = paste_text_preserving_clipboard(
+                polished, restore_delay_seconds=config.clipboard_restore_delay_seconds
+            )
+            paste_ok, paste_message = paste_result.ok, paste_result.message
+        else:
+            paste_ok, paste_message = False, "Paste skipped by command option."
+        paste_seconds = time.perf_counter() - paste_start
+        total_tail = precomputed_tail_seconds + time.perf_counter() - tail_start
+    except Exception as exc:
+        if processing_started:
+            mark_recording(audio_path, "failed-retained", error_category=type(exc).__name__)
+        raise
 
     latency = LatencyRecord.create(
         recording_seconds=recording_seconds,
@@ -147,11 +184,20 @@ def process_wav(
         usage_scope=usage_scope,
         stt_model=stt_model,
         stt_audio_seconds=resolved_stt_audio_seconds,
+        stt_upload_container=upload_container,
+        stt_upload_bytes=upload_bytes,
+        stt_encoding_seconds=encoding_seconds,
+        stt_wav_fallback_used=wav_fallback_used,
+        stt_wav_fallback_reason=wav_fallback_reason,
         llm_input_tokens=llm_result.usage.input_tokens,
         llm_output_tokens=llm_result.usage.output_tokens,
         llm_total_tokens=llm_result.usage.total_tokens,
     )
     append_latency_record(config.latency_log_path, latency)
+    if do_paste and not paste_ok:
+        mark_recording(audio_path, "failed-retained", error_category="PasteFailed")
+    else:
+        mark_recording(audio_path, "completed")
     safe_print(
         "Latency seconds: "
         f"recording={recording_seconds:.3f}, whisper={whisper_seconds:.3f}, "
