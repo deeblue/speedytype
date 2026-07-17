@@ -7,12 +7,17 @@ from speedytype.settings import (
     AppSettings,
     DEFAULT_MAX_RECORD_SECONDS,
     DEFAULT_VOCAB_TERMS,
+    MAX_MAX_RECORD_SECONDS,
     export_vocab,
     hotkey_has_modifier_or_is_function_key,
     import_vocab,
     load_settings,
     save_settings,
 )
+
+
+def test_max_record_limit_is_exactly_twenty_five_minutes():
+    assert MAX_MAX_RECORD_SECONDS == 1500.0
 
 
 def test_load_settings_creates_default_file_when_missing(tmp_path):
@@ -39,6 +44,32 @@ def test_load_settings_roundtrips_saved_values(tmp_path):
     assert loaded.hotkey_combo == ["ctrl", "alt", "space"]
     assert loaded.vocab_terms == ["Foo", "Bar"]
     assert loaded.hotkey_string == "ctrl+alt+space"
+
+
+def test_over_limit_recording_setting_is_clamped_with_visible_warning(tmp_path):
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(json.dumps({"max_record_seconds": 1800}), encoding="utf-8")
+
+    loaded = load_settings(settings_path)
+
+    assert loaded.max_record_seconds == 1500.0
+    assert any("25 分鐘" in warning for warning in loaded.load_warnings)
+
+
+def test_exact_twenty_five_minute_setting_roundtrips(tmp_path):
+    settings_path = tmp_path / "settings.json"
+    save_settings(settings_path, AppSettings(max_record_seconds=1500.0))
+
+    assert load_settings(settings_path).max_record_seconds == 1500.0
+
+
+def test_direct_save_rejects_recording_setting_above_limit(tmp_path):
+    settings_path = tmp_path / "settings.json"
+
+    with pytest.raises(ValueError, match="max_record_seconds"):
+        save_settings(settings_path, AppSettings(max_record_seconds=1500.1))
+
+    assert not settings_path.exists()
 
 
 def test_monthly_budget_roundtrips_as_exact_decimal_string(tmp_path):

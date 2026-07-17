@@ -398,6 +398,7 @@ def test_format_seconds_readable():
     assert format_seconds_readable(90) == "1 分 30 秒"
     assert format_seconds_readable(45) == "45 秒"
     assert format_seconds_readable(540) == "9 分鐘"
+    assert format_seconds_readable(1500) == "25 分鐘"
 
 
 def test_slider_bounds_are_locked(qapp, tmp_path):
@@ -408,8 +409,8 @@ def test_slider_bounds_are_locked(qapp, tmp_path):
     dialog.slider.setValue(5)  # below the 60s floor
     assert dialog.slider.value() == 60
 
-    dialog.slider.setValue(9999)  # above the 540s ceiling
-    assert dialog.slider.value() == 540
+    dialog.slider.setValue(9999)  # above the 1500s ceiling
+    assert dialog.slider.value() == 1500
 
 
 def test_save_max_record_time_uses_default_path_when_cli_omits_settings(qapp, tmp_path, monkeypatch):
@@ -421,11 +422,22 @@ def test_save_max_record_time_uses_default_path_when_cli_omits_settings(qapp, tm
     monkeypatch.setattr("speedytype.settings_dialog.default_env_path", lambda: env_path, raising=False)
 
     dialog = SettingsDialog(make_config(), None, None)
-    dialog.slider.setValue(540)
+    dialog.slider.setValue(1500)
     dialog._save()
 
     saved = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert saved["max_record_seconds"] == 540.0
+    assert saved["max_record_seconds"] == 1500.0
+
+
+def test_recording_slider_caps_and_labels_twenty_five_minutes(qapp, tmp_path):
+    settings_path = tmp_path / "settings.json"
+    save_settings(settings_path, AppSettings(max_record_seconds=1500.0))
+
+    dialog = SettingsDialog(make_config(), tmp_path / ".env", settings_path)
+
+    assert dialog.slider.maximum() == 1500
+    assert dialog.slider.value() == 1500
+    assert dialog.slider_label.text() == "25 分鐘"
 
 
 def test_vocab_add_remove_reset(qapp, tmp_path):

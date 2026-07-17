@@ -35,17 +35,17 @@
 - Produces: `MAX_MAX_RECORD_SECONDS = 1500.0` and `AppSettings.load_warnings` entry for clamped persisted values.
 - Consumed by: Settings slider and `load_config()` runtime bound.
 
-- [ ] **Step 1: Write failing setting/config/UI tests**
+- [x] **Step 1: Write failing setting/config/UI tests**
 
 Add tests asserting an on-disk `max_record_seconds: 1800` loads as `1500.0` with a visible warning, `1500.0` round-trips, direct invalid constructor save is rejected, `load_config()` returns no value above 1500, and the slider maximum/label are `1500` / `25 分鐘`.
 
-- [ ] **Step 2: Run the focused tests and confirm RED**
+- [x] **Step 2: Run the focused tests and confirm RED**
 
 Run: `python -m pytest tests/test_settings.py tests/test_config.py tests/test_settings_dialog.py -q`
 
 Expected: failures showing the current `540.0` maximum and absent clamp warning.
 
-- [ ] **Step 3: Implement exact validation**
+- [x] **Step 3: Implement exact validation**
 
 Use one helper in `settings.py`:
 
@@ -61,11 +61,11 @@ def _validated_record_seconds(raw: object) -> tuple[float, tuple[str, ...]]:
 
 Merge this warning with budget warnings, reject invalid direct saves, and retain the existing 60-second default. The dialog continues to derive its slider maximum from the constant.
 
-- [ ] **Step 4: Run focused tests and confirm GREEN**
+- [x] **Step 4: Run focused tests and confirm GREEN**
 
 Run the Step 2 command. Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add speedytype/settings.py speedytype/config.py speedytype/settings_dialog.py tests/test_settings.py tests/test_config.py tests/test_settings_dialog.py

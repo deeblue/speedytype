@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 import json
+import math
 
 from speedytype.paths import default_settings_path
 from speedytype.platform.hotkey import normalize_hotkey_tokens
@@ -14,11 +15,20 @@ DEFAULT_MAX_RECORD_SECONDS = 60.0
 DEFAULT_HOTKEY_COMBO = ["f9"]
 
 MIN_MAX_RECORD_SECONDS = 60.0
-MAX_MAX_RECORD_SECONDS = 540.0
+MAX_MAX_RECORD_SECONDS = 1500.0
 
 SETTINGS_FILE_NAME = "settings.json"
 
 MODIFIER_KEYS = {"ctrl", "alt", "shift", "cmd"}
+
+
+def _validated_record_seconds(raw: object) -> tuple[float, tuple[str, ...]]:
+    value = float(raw)
+    if not math.isfinite(value) or value < MIN_MAX_RECORD_SECONDS:
+        raise ValueError("max_record_seconds must be finite and at least 60")
+    if value > MAX_MAX_RECORD_SECONDS:
+        return MAX_MAX_RECORD_SECONDS, ("最大錄音時間已限制為 25 分鐘。",)
+    return value, ()
 
 
 def _is_function_key(key: str) -> bool:
@@ -64,8 +74,15 @@ class AppSettings:
         return ", ".join(self.vocab_terms)
 
     def to_dict(self) -> dict:
+        validated_seconds, record_warnings = _validated_record_seconds(
+            self.max_record_seconds
+        )
+        if record_warnings:
+            raise ValueError(
+                f"max_record_seconds must not exceed {MAX_MAX_RECORD_SECONDS:g}"
+            )
         data = {
-            "max_record_seconds": self.max_record_seconds,
+            "max_record_seconds": validated_seconds,
             "hotkey_combo": list(self.hotkey_combo),
             "vocab_terms": list(self.vocab_terms),
             "mic_device_name": self.mic_device_name,
@@ -82,9 +99,12 @@ class AppSettings:
 
     @classmethod
     def from_dict(cls, data: dict) -> "AppSettings":
+        max_record_seconds, record_warnings = _validated_record_seconds(
+            data.get("max_record_seconds", DEFAULT_MAX_RECORD_SECONDS)
+        )
         raw_budget = data.get("monthly_budget")
         budget = None
-        load_warnings: tuple[str, ...] = ()
+        load_warnings: tuple[str, ...] = record_warnings
         if raw_budget not in (None, ""):
             try:
                 if not isinstance(raw_budget, str):
@@ -94,9 +114,9 @@ class AppSettings:
                     raise InvalidOperation
                 budget = parsed_budget
             except (InvalidOperation, ValueError):
-                load_warnings = ("月預算設定無效，已暫時視為未設定。",)
+                load_warnings += ("月預算設定無效，已暫時視為未設定。",)
         return cls(
-            max_record_seconds=float(data.get("max_record_seconds", DEFAULT_MAX_RECORD_SECONDS)),
+            max_record_seconds=max_record_seconds,
             hotkey_combo=normalize_hotkey_tokens(list(data.get("hotkey_combo", DEFAULT_HOTKEY_COMBO))) or list(DEFAULT_HOTKEY_COMBO),
             vocab_terms=list(data.get("vocab_terms", DEFAULT_VOCAB_TERMS)) or list(DEFAULT_VOCAB_TERMS),
             mic_device_name=str(data.get("mic_device_name", "") or ""),
