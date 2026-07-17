@@ -1,6 +1,7 @@
 import csv
 import json
 from dataclasses import replace
+from datetime import datetime
 
 import pytest
 import sounddevice as sd
@@ -13,7 +14,9 @@ from PyQt6.QtWidgets import (
 )
 
 from speedytype.audio import list_input_devices
-from speedytype.settings import AppSettings, DEFAULT_VOCAB_TERMS, save_settings
+from decimal import Decimal
+
+from speedytype.settings import AppSettings, DEFAULT_VOCAB_TERMS, load_settings, save_settings
 from speedytype.settings_dialog import (
     SYSTEM_DEFAULT_DEVICE_LABEL,
     MaskedKeyField,
@@ -77,10 +80,12 @@ def write_test_pricing(path):
 def known_usage_dialog(tmp_path, pricing_path=None):
     csv_path = tmp_path / "latency.csv"
     settings_path = tmp_path / "settings.json"
+    timestamp = datetime.now().astimezone().isoformat()
     write_usage_csv(
         csv_path,
         [
             {
+                "timestamp": timestamp,
                 "usage_scope": "daily",
                 "run_label": "real_voice",
                 "recording_seconds": 60,
@@ -91,6 +96,7 @@ def known_usage_dialog(tmp_path, pricing_path=None):
                 "llm_output_tokens": 200,
             },
             {
+                "timestamp": timestamp,
                 "usage_scope": "daily",
                 "recording_seconds": 30,
                 "hybrid_request_count": 1,
@@ -101,12 +107,14 @@ def known_usage_dialog(tmp_path, pricing_path=None):
                 "llm_output_tokens": 100,
             },
             {
+                "timestamp": timestamp,
                 "usage_scope": "",
                 "run_label": "",
                 "recording_seconds": 30,
                 "stt_model": "",
             },
             {
+                "timestamp": timestamp,
                 "usage_scope": "development",
                 "run_label": "",
                 "recording_seconds": 6000,
@@ -117,6 +125,7 @@ def known_usage_dialog(tmp_path, pricing_path=None):
                 "llm_output_tokens": 9999999,
             },
             {
+                "timestamp": timestamp,
                 "usage_scope": "",
                 "run_label": "real_voice",
                 "recording_seconds": 6000,
@@ -150,8 +159,7 @@ def test_usage_group_shows_known_totals_models_price_date_and_disclaimer(qapp, t
     assert "2.00" in dialog.usage_stt_label.text()
     assert "$0.012000" in dialog.usage_stt_label.text()
     assert "2" in dialog.usage_llm_label.text()
-    assert "1,500" in dialog.usage_llm_label.text()
-    assert "300" in dialog.usage_llm_label.text()
+    assert "1,800" in dialog.usage_llm_label.text()
     assert "$0.000825" in dialog.usage_llm_label.text()
     assert "$0.012825" in dialog.usage_total_label.text()
     assert "2026-07-14" in dialog.usage_pricing_note_label.text()
@@ -160,10 +168,40 @@ def test_usage_group_shows_known_totals_models_price_date_and_disclaimer(qapp, t
     assert "推定" in dialog.usage_warning_label.text()
 
 
+def test_monthly_budget_is_pending_until_parent_settings_is_saved(qapp, tmp_path):
+    pricing_path = tmp_path / "pricing.json"
+    write_test_pricing(pricing_path)
+    dialog = known_usage_dialog(tmp_path, pricing_path)
+    dialog._pending_monthly_budget = Decimal("10.25")
+    dialog._render_monthly_summary()
+
+    assert "10.250000" in dialog.capacity_widget.status_label.text()
+    assert load_settings(dialog.settings_path).monthly_budget is None
+
+    dialog._save()
+    assert load_settings(dialog.settings_path).monthly_budget == Decimal("10.25")
+
+
+def test_invalid_saved_budget_is_visible_but_settings_opens(qapp, tmp_path):
+    pricing_path = tmp_path / "pricing.json"
+    write_test_pricing(pricing_path)
+    dialog = known_usage_dialog(tmp_path, pricing_path)
+    payload = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
+    payload["monthly_budget"] = "NaN"
+    (tmp_path / "settings.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    reopened = SettingsDialog(
+        dialog.config, tmp_path / ".env", tmp_path / "settings.json", pricing_path=pricing_path
+    )
+
+    assert "月預算設定無效" in reopened.usage_warning_label.text()
+    assert reopened._pending_monthly_budget is None
+
+
 def test_usage_is_calculated_exactly_once_when_settings_dialog_is_constructed(
     qapp, tmp_path, monkeypatch
 ):
-    from speedytype.usage_stats import calculate_usage as real_calculate_usage
+    from speedytype.usage_stats import calculate_monthly_usage as real_calculate_usage
 
     pricing_path = tmp_path / "pricing.json"
     write_test_pricing(pricing_path)
@@ -173,7 +211,7 @@ def test_usage_is_calculated_exactly_once_when_settings_dialog_is_constructed(
         calls.append((csv_path, selected_pricing_path))
         return real_calculate_usage(csv_path, selected_pricing_path)
 
-    monkeypatch.setattr("speedytype.settings_dialog.calculate_usage", calculate_once_spy)
+    monkeypatch.setattr("speedytype.settings_dialog.calculate_monthly_usage", calculate_once_spy)
 
     dialog = known_usage_dialog(tmp_path, pricing_path)
 
@@ -227,8 +265,7 @@ def test_usage_group_keeps_usage_visible_when_pricing_is_unavailable(
 
     assert "3" in dialog.usage_stt_label.text()
     assert "2.00" in dialog.usage_stt_label.text()
-    assert "1,500" in dialog.usage_llm_label.text()
-    assert "300" in dialog.usage_llm_label.text()
+    assert "1,800" in dialog.usage_llm_label.text()
     assert "價格資料缺失，無法估算費用" in dialog.usage_warning_label.text()
     assert "$0.000000" not in dialog.usage_total_label.text()
 
@@ -301,7 +338,7 @@ def test_usage_group_skips_malformed_numeric_row_but_keeps_file_available(qapp, 
         csv_path,
         [
             {
-                "timestamp": "broken",
+                "timestamp": datetime.now().astimezone().isoformat(),
                 "usage_scope": "daily",
                 "run_label": "real_voice",
                 "recording_seconds": "not-a-number",

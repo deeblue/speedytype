@@ -81,6 +81,20 @@ speedytype daemon
 
 The tray menu can reopen Settings, restart the daemon, or exit it.
 
+## Monthly usage and budget
+
+Settings includes a `本月用量與預算` card. Choose `設定月預算` to enter one
+combined STT-and-LLM budget in the currency shown by `pricing.json`; use
+`調整月預算` to change or clear it. The card uses the computer's local calendar
+month and shows estimated cost, remaining or exceeded capacity, STT minutes and
+calls, and LLM tokens and calls.
+
+This is an informational estimate, not an OpenAI or other provider bill or
+quota. Exceeding the budget never blocks recording, transcription, or paste.
+If latency or pricing data is missing or invalid, the card avoids showing a
+misleading percentage; check the displayed warning, `latency.csv`, and
+`pricing.json`, then use `編輯價格` separately from the personal budget.
+
 ## Daily commands
 
 ```text

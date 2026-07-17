@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 
 import pytest
 
@@ -38,6 +39,41 @@ def test_load_settings_roundtrips_saved_values(tmp_path):
     assert loaded.hotkey_combo == ["ctrl", "alt", "space"]
     assert loaded.vocab_terms == ["Foo", "Bar"]
     assert loaded.hotkey_string == "ctrl+alt+space"
+
+
+def test_monthly_budget_roundtrips_as_exact_decimal_string(tmp_path):
+    settings_path = tmp_path / "settings.json"
+    save_settings(settings_path, AppSettings(monthly_budget=Decimal("10.2500")))
+
+    loaded = load_settings(settings_path)
+
+    assert loaded.monthly_budget == Decimal("10.2500")
+    assert json.loads(settings_path.read_text(encoding="utf-8"))["monthly_budget"] == "10.2500"
+
+
+@pytest.mark.parametrize("stored", [None, ""])
+def test_absent_or_empty_monthly_budget_is_unconfigured(tmp_path, stored):
+    settings_path = tmp_path / "settings.json"
+    payload = {}
+    if stored is not None:
+        payload["monthly_budget"] = stored
+    settings_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = load_settings(settings_path)
+
+    assert loaded.monthly_budget is None
+    assert loaded.load_warnings == ()
+
+
+@pytest.mark.parametrize("stored", ["0", "-1", "NaN", "Infinity", "oops", 5])
+def test_invalid_persisted_monthly_budget_is_safe_and_warned(tmp_path, stored):
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(json.dumps({"monthly_budget": stored}), encoding="utf-8")
+
+    loaded = load_settings(settings_path)
+
+    assert loaded.monthly_budget is None
+    assert any("月預算" in warning for warning in loaded.load_warnings)
 
 
 def test_load_settings_falls_back_to_defaults_on_malformed_json(tmp_path, capsys):

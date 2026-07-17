@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import json
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
@@ -16,9 +16,77 @@ from speedytype.usage_stats import (
     LlmPricing,
     PricingData,
     calculate_usage,
+    calculate_budget_capacity,
+    calculate_monthly_usage,
     load_pricing,
     save_pricing,
 )
+
+
+def test_monthly_usage_uses_local_calendar_month_rollover(tmp_path):
+    csv_path = tmp_path / "latency.csv"
+    pricing_path = tmp_path / "pricing.json"
+    write_pricing(pricing_path)
+    write_csv(
+        csv_path,
+        [
+            {"timestamp": "2026-07-31T16:30:00+00:00", "usage_scope": "daily", "recording_seconds": "60"},
+            {"timestamp": "2026-07-31T15:30:00+00:00", "usage_scope": "daily", "recording_seconds": "120"},
+        ],
+    )
+
+    result = calculate_monthly_usage(
+        csv_path,
+        pricing_path,
+        now=datetime(2026, 8, 10, tzinfo=timezone(timedelta(hours=8))),
+        local_timezone=timezone(timedelta(hours=8)),
+    )
+
+    assert (result.year, result.month) == (2026, 8)
+    assert result.usage.stt_calls == 1
+    assert result.usage.stt_minutes == Decimal("1")
+
+
+def test_monthly_usage_skips_missing_naive_and_malformed_timestamps(tmp_path):
+    csv_path = tmp_path / "latency.csv"
+    pricing_path = tmp_path / "pricing.json"
+    write_pricing(pricing_path)
+    write_csv(
+        csv_path,
+        [
+            {"timestamp": "", "usage_scope": "daily", "recording_seconds": "60"},
+            {"timestamp": "2026-07-10T10:00:00", "usage_scope": "daily", "recording_seconds": "60"},
+            {"timestamp": "broken", "usage_scope": "daily", "recording_seconds": "60"},
+            {"timestamp": "2026-07-10T10:00:00+00:00", "usage_scope": "daily", "recording_seconds": "60"},
+        ],
+    )
+
+    with pytest.warns(UserWarning, match="timezone-unsafe"):
+        result = calculate_monthly_usage(
+            csv_path, pricing_path, now=datetime(2026, 7, 15, tzinfo=timezone.utc), local_timezone=timezone.utc
+        )
+
+    assert result.skipped_timestamp_rows == 3
+    assert result.usage.stt_calls == 1
+    assert sum("timezone-unsafe" in warning for warning in result.usage.warnings) == 3
+
+
+def test_all_time_usage_still_includes_rows_with_unsafe_timestamps(tmp_path):
+    csv_path = tmp_path / "latency.csv"
+    pricing_path = tmp_path / "pricing.json"
+    write_pricing(pricing_path)
+    write_csv(csv_path, [{"timestamp": "broken", "usage_scope": "daily", "recording_seconds": "60"}])
+
+    assert calculate_usage(csv_path, pricing_path).stt_calls == 1
+
+
+def test_budget_capacity_keeps_exact_uncapped_percentage():
+    capacity = calculate_budget_capacity(Decimal("12.50"), Decimal("10.00"))
+
+    assert capacity is not None
+    assert capacity.percentage == Decimal("125.00")
+    assert capacity.remaining == Decimal("0")
+    assert capacity.exceeded == Decimal("2.50")
 
 
 CSV_FIELDS = [

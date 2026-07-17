@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 import json
 
@@ -50,6 +51,8 @@ class AppSettings:
     # index, since device indices can shift across reboots/replugs; the name
     # is re-resolved to a live index at startup (see config.load_config).
     mic_device_name: str = ""
+    monthly_budget: Decimal | None = None
+    load_warnings: tuple[str, ...] = field(default=(), compare=False, repr=False)
 
     @property
     def hotkey_string(self) -> str:
@@ -61,20 +64,44 @@ class AppSettings:
         return ", ".join(self.vocab_terms)
 
     def to_dict(self) -> dict:
-        return {
+        data = {
             "max_record_seconds": self.max_record_seconds,
             "hotkey_combo": list(self.hotkey_combo),
             "vocab_terms": list(self.vocab_terms),
             "mic_device_name": self.mic_device_name,
         }
+        if self.monthly_budget is not None:
+            if (
+                not isinstance(self.monthly_budget, Decimal)
+                or not self.monthly_budget.is_finite()
+                or self.monthly_budget <= 0
+            ):
+                raise ValueError("monthly_budget must be a finite positive Decimal or None")
+            data["monthly_budget"] = self.monthly_budget.to_eng_string()
+        return data
 
     @classmethod
     def from_dict(cls, data: dict) -> "AppSettings":
+        raw_budget = data.get("monthly_budget")
+        budget = None
+        load_warnings: tuple[str, ...] = ()
+        if raw_budget not in (None, ""):
+            try:
+                if not isinstance(raw_budget, str):
+                    raise InvalidOperation
+                parsed_budget = Decimal(raw_budget)
+                if not parsed_budget.is_finite() or parsed_budget <= 0:
+                    raise InvalidOperation
+                budget = parsed_budget
+            except (InvalidOperation, ValueError):
+                load_warnings = ("月預算設定無效，已暫時視為未設定。",)
         return cls(
             max_record_seconds=float(data.get("max_record_seconds", DEFAULT_MAX_RECORD_SECONDS)),
             hotkey_combo=normalize_hotkey_tokens(list(data.get("hotkey_combo", DEFAULT_HOTKEY_COMBO))) or list(DEFAULT_HOTKEY_COMBO),
             vocab_terms=list(data.get("vocab_terms", DEFAULT_VOCAB_TERMS)) or list(DEFAULT_VOCAB_TERMS),
             mic_device_name=str(data.get("mic_device_name", "") or ""),
+            monthly_budget=budget,
+            load_warnings=load_warnings,
         )
 
     @classmethod
