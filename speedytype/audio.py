@@ -2,13 +2,20 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Callable
-import tempfile
 import threading
 import time
 
 import sounddevice as sd
 import soundfile as sf
 import numpy as np
+
+from speedytype.capture_writer import (
+    CaptureQueueFull,
+    CaptureWriteError,
+    CaptureWriteStats,
+    SampleIndexedWavWriter,
+)
+from speedytype.recording_recovery import create_recording_path, mark_recording
 
 
 SAMPLE_RATE = 16000
@@ -66,11 +73,19 @@ def resolve_input_device(device_hint: str | int | None) -> int | None:
 
 
 class Recorder:
-    def __init__(self, sample_rate: int = SAMPLE_RATE, channels: int = CHANNELS, device: str | int | None = None):
+    def __init__(
+        self,
+        sample_rate: int = SAMPLE_RATE,
+        channels: int = CHANNELS,
+        device: str | int | None = None,
+        writer_queue_capacity: int = 256,
+    ):
         self.sample_rate = sample_rate
         self.channels = channels
         self.device = resolve_input_device(device)
+        self.writer_queue_capacity = writer_queue_capacity
         self._stop_event = threading.Event()
+        self.last_write_stats: CaptureWriteStats | None = None
 
     def record_until_stop(
         self,
@@ -88,14 +103,27 @@ class Recorder:
         callback.
         """
         self._stop_event.clear()
+        self.last_write_stats = None
         started = time.perf_counter()
         last_level_emit = 0.0
-        with sf.SoundFile(output_path, mode="w", samplerate=self.sample_rate, channels=self.channels, subtype="PCM_16") as wav_file:
+        capture_error: BaseException | None = None
+        writer = SampleIndexedWavWriter(
+            output_path,
+            sample_rate=self.sample_rate,
+            channels=self.channels,
+            queue_capacity=self.writer_queue_capacity,
+        )
+        try:
             def callback(indata, frames, time_info, status):
-                nonlocal last_level_emit
+                nonlocal last_level_emit, capture_error
                 if status:
                     print(f"Recording warning: {status}", flush=True)
-                wav_file.write(indata.copy())
+                try:
+                    writer.submit(indata)
+                except (CaptureQueueFull, CaptureWriteError) as exc:
+                    capture_error = exc
+                    self._stop_event.set()
+                    raise sd.CallbackAbort from exc
                 if on_audio is not None:
                     on_audio(indata.copy(), time.perf_counter() - started)
                 if on_level is not None:
@@ -108,18 +136,26 @@ class Recorder:
             with sd.InputStream(samplerate=self.sample_rate, channels=self.channels, device=self.device, callback=callback):
                 while not self._stop_event.is_set():
                     time.sleep(0.02)
-            wav_file.flush()
+            self.last_write_stats = writer.finish()
+            if capture_error is not None:
+                raise capture_error
+            mark_recording(output_path, "captured")
+        except BaseException as exc:
+            try:
+                if self.last_write_stats is None:
+                    self.last_write_stats = writer.finish()
+            except CaptureWriteError as writer_exc:
+                exc = writer_exc
+            mark_recording(output_path, "failed-retained", error_category=type(exc).__name__)
+            raise exc
         return time.perf_counter() - started
 
     def stop(self) -> None:
         self._stop_event.set()
 
 
-def temp_wav_path(prefix: str = "speedytype_") -> Path:
-    handle = tempfile.NamedTemporaryFile(prefix=prefix, suffix=".wav", delete=False)
-    path = Path(handle.name)
-    handle.close()
-    return path
+def temp_wav_path(prefix: str = "speedytype_", directory: Path | None = None) -> Path:
+    return create_recording_path(prefix, directory=directory)
 
 
 def record_diagnostic(output_path: Path, seconds: float = 2.0, device: str | int | None = None) -> dict[str, float | int | str]:

@@ -24,6 +24,7 @@ from speedytype.overlay import AudioLevelEmitter, RecordingPill
 from speedytype.pipeline import process_wav, wav_duration_seconds
 from speedytype.paths import default_daemon_log_path, default_env_path, default_pid_path, default_settings_path
 from speedytype.platform.app import activate_window, configure_daemon_application
+from speedytype.recording_recovery import mark_recording
 from speedytype.platform.process import is_process_running, terminate_process
 
 
@@ -145,6 +146,12 @@ class DaemonController(QObject):
                 on_audio=None if self._hybrid_transcriber is None else self._hybrid_transcriber.feed,
             )
         except Exception as exc:
+            if self._active_path is not None:
+                mark_recording(
+                    self._active_path,
+                    "failed-retained",
+                    error_category=type(exc).__name__,
+                )
             message = f"Recording failed ({type(exc).__name__}). Daemon remains available."
             safe_print(message, flush=True)
             self.processing_error_signal.emit(message)

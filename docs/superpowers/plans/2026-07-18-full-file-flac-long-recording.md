@@ -92,17 +92,17 @@ git commit -m "feat: enforce 25 minute recording limit"
 - Produces: `SampleIndexedWavWriter.submit(block)`, `.finish() -> CaptureWriteStats`, `create_recording_path() -> Path`, `mark_recording(path, state, error_category="")`, and `discover_recoverable_recordings() -> tuple[RecoveryRecord, ...]`.
 - Consumed by: recorder, daemon, CLI, and Task 4 pipeline.
 
-- [ ] **Step 1: Write failing writer tests**
+- [x] **Step 1: Write failing writer tests**
 
 Cover exact submitted/written frames, ordered blocks, queue-full abort, background write error, `finish()` drain, and a synthetic 28.8-million-frame stress with zero loss. Tests must use generated arrays and temporary directories, not microphone input.
 
-- [ ] **Step 2: Confirm writer tests RED**
+- [x] **Step 2: Confirm writer tests RED**
 
 Run: `python -m pytest tests/test_capture_writer.py tests/test_audio_recording.py -q`
 
 Expected: import/interface failures because the writer does not exist.
 
-- [ ] **Step 3: Implement the bounded writer and recordings path**
+- [x] **Step 3: Implement the bounded writer and recordings path**
 
 `SampleIndexedWavWriter` owns a bounded `queue.Queue`, one writer thread, an expected next-frame index, and a terminal error. `submit()` copies the block and assigns its frame range; `finish()` enqueues a sentinel, joins, flushes/closes, and raises any stored error. Add:
 
@@ -113,11 +113,11 @@ def default_recordings_dir() -> Path:
 
 Change `temp_wav_path()` to create owned WAV paths there and change `Recorder.record_until_stop()` to route callback blocks through the writer, then drain on exit.
 
-- [ ] **Step 4: Write recovery-state tests and confirm RED**
+- [x] **Step 4: Write recovery-state tests and confirm RED**
 
 Test atomic JSON sidecars, allowed state transitions, sanitized error categories, discovery of `capturing`, `captured`, `encoding`, `ready`, `processing`, and `failed-retained`, exclusion of `completed`, corrupt-sidecar reporting, and proof that discovery never imports/calls the API module.
 
-- [ ] **Step 5: Implement recovery metadata and capture transitions**
+- [x] **Step 5: Implement recovery metadata and capture transitions**
 
 Use `<wav>.speedytype.json`, atomic temporary write/replace, and these exact states:
 
@@ -129,13 +129,13 @@ RECOVERABLE_STATES = frozenset({
 
 Create the `capturing` sidecar with the path, UUID, timestamp, and state; mark `captured` only after writer drain. Daemon/CLI recording exceptions mark `failed-retained` and report the WAV path without deleting it.
 
-- [ ] **Step 6: Run Task 2 tests and confirm GREEN**
+- [x] **Step 6: Run Task 2 tests and confirm GREEN**
 
 Run: `python -m pytest tests/test_capture_writer.py tests/test_audio_recording.py tests/test_recording_recovery.py tests/test_daemon_recovery.py -q`
 
 Expected: all pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add speedytype/capture_writer.py speedytype/recording_recovery.py speedytype/paths.py speedytype/audio.py speedytype/daemon.py speedytype/cli.py tests/test_capture_writer.py tests/test_recording_recovery.py tests/test_audio_recording.py tests/test_daemon_recovery.py

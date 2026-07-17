@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import QApplication
 
 from speedytype.config import AppConfig
 from speedytype.daemon import DaemonController
+from speedytype.recording_recovery import create_recording_path, recording_sidecar_path
 
 
 def test_processing_failure_is_sanitized_hides_overlay_and_controller_is_reusable(tmp_path, monkeypatch):
@@ -44,7 +45,7 @@ def test_recording_worker_failure_is_sanitized_and_hides_overlay(tmp_path, monke
     hidden = []
     controller.processing_error_signal.connect(notifications.append)
     controller.hide_signal.connect(lambda: hidden.append(True))
-    controller._active_path = tmp_path / "preserved.wav"
+    controller._active_path = create_recording_path(directory=tmp_path)
     monkeypatch.setattr(
         controller.recorder,
         "record_until_stop",
@@ -56,6 +57,9 @@ def test_recording_worker_failure_is_sanitized_and_hides_overlay(tmp_path, monke
 
     assert hidden == [True]
     assert notifications == ["Recording failed (OSError). Daemon remains available."]
+    assert '"state": "failed-retained"' in recording_sidecar_path(
+        controller._active_path
+    ).read_text(encoding="utf-8")
 
 
 def test_short_recording_bypasses_hybrid_finish_before_pipeline_guard(tmp_path, monkeypatch):

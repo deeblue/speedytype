@@ -31,3 +31,7 @@ def default_latency_log_path() -> Path:
 
 def default_pricing_path() -> Path:
     return Path(__file__).resolve().parent.parent / "pricing.json"
+
+
+def default_recordings_dir() -> Path:
+    return app_data_dir() / "recordings"
