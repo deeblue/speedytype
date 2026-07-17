@@ -21,7 +21,37 @@ def _write_wav(path: Path) -> None:
         wav_file.setnchannels(1)
         wav_file.setsampwidth(2)
         wav_file.setframerate(16_000)
+        wav_file.writeframes(b"\x00\x00" * 1600)
+
+
+def test_sub_tenth_second_recording_skips_all_external_work_and_latency_row(tmp_path, monkeypatch):
+    wav_path = tmp_path / "empty.wav"
+    with wave.open(str(wav_path), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(16_000)
         wav_file.writeframes(b"\x00\x00" * 160)
+    config = _config(tmp_path)
+    monkeypatch.setattr(
+        "speedytype.pipeline.transcribe_audio",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Whisper must not run")),
+    )
+    monkeypatch.setattr(
+        "speedytype.pipeline.call_llm_polisher",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("LLM must not run")),
+    )
+    monkeypatch.setattr(
+        "speedytype.pipeline.paste_text_preserving_clipboard",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("paste must not run")),
+    )
+
+    result = process_wav(wav_path, config, do_paste=True, usage_scope="daily")
+
+    assert result.raw_transcript == result.polished_text == ""
+    assert result.paste_ok is False
+    assert result.paste_message == "Recording too short; skipped."
+    assert result.latency.recording_seconds == pytest.approx(0.01)
+    assert not config.latency_log_path.exists()
 
 
 def _config(tmp_path: Path) -> AppConfig:

@@ -21,8 +21,9 @@ from speedytype.hotkey import PlatformPermissionError, register_hold_hotkey, rem
 from speedytype.icon import build_app_icon
 from speedytype.hybrid_pipeline import HybridTranscriber
 from speedytype.overlay import AudioLevelEmitter, RecordingPill
-from speedytype.pipeline import process_wav
+from speedytype.pipeline import process_wav, wav_duration_seconds
 from speedytype.paths import default_daemon_log_path, default_env_path, default_pid_path, default_settings_path
+from speedytype.platform.app import activate_window, configure_daemon_application
 from speedytype.platform.process import is_process_running, terminate_process
 
 
@@ -41,6 +42,7 @@ class DaemonController(QObject):
     show_processing_signal = pyqtSignal()
     show_countdown_signal = pyqtSignal(int)
     hide_signal = pyqtSignal()
+    processing_error_signal = pyqtSignal(str)
 
     def __init__(self, config: AppConfig, env_path: str | Path | None = None, settings_path: str | Path | None = None,
                  countdown_warning_seconds: float = COUNTDOWN_WARNING_SECONDS) -> None:
@@ -101,14 +103,7 @@ class DaemonController(QObject):
         else:
             self._hybrid_transcriber = None
 
-        def record() -> None:
-            self.recorder.record_until_stop(
-                self._active_path,
-                on_level=lambda rms: self.level_emitter.level_changed.emit(rms),
-                on_audio=None if self._hybrid_transcriber is None else self._hybrid_transcriber.feed,
-            )
-
-        self._active_thread = threading.Thread(target=record, daemon=False)
+        self._active_thread = threading.Thread(target=self._record_active_path, daemon=False)
         self._active_thread.start()
         self._stop_wait_thread = threading.Thread(target=self._finish_after_release, daemon=True)
         self._stop_wait_thread.start()
@@ -138,31 +133,51 @@ class DaemonController(QObject):
 
         active_path = self._active_path
 
-        def process() -> None:
-            try:
-                if self._hybrid_transcriber is None:
-                    process_wav(active_path, self.config, do_paste=True, usage_scope="daily")
-                else:
-                    hybrid = self._hybrid_transcriber.finish(active_path)
-                    process_wav(
-                        active_path,
-                        self.config,
-                        do_paste=True,
-                        usage_scope="daily",
-                        raw_transcript_override=hybrid.raw_text,
-                        whisper_seconds_override=hybrid.tail_seconds,
-                        run_label="hybrid_fallback" if hybrid.fallback_used else "hybrid",
-                        hybrid_request_count=hybrid.request_count,
-                        hybrid_request_seconds=hybrid.request_seconds,
-                        stt_audio_seconds=hybrid.audio_seconds,
-                        hybrid_fallback_used=hybrid.fallback_used,
-                        hybrid_validation_reasons=" | ".join(hybrid.diagnostics.get("validation_reasons", [])),
-                        precomputed_tail_seconds=hybrid.tail_seconds,
-                    )
-            finally:
-                self.hide_signal.emit()
+        threading.Thread(target=lambda: self._process_recording(active_path), daemon=True).start()
 
-        threading.Thread(target=process, daemon=True).start()
+    def _record_active_path(self) -> None:
+        if self._active_path is None:
+            return
+        try:
+            self.recorder.record_until_stop(
+                self._active_path,
+                on_level=lambda rms: self.level_emitter.level_changed.emit(rms),
+                on_audio=None if self._hybrid_transcriber is None else self._hybrid_transcriber.feed,
+            )
+        except Exception as exc:
+            message = f"Recording failed ({type(exc).__name__}). Daemon remains available."
+            safe_print(message, flush=True)
+            self.processing_error_signal.emit(message)
+            self.hide_signal.emit()
+
+    def _process_recording(self, active_path: Path) -> None:
+        try:
+            is_short = active_path.exists() and wav_duration_seconds(active_path) < 0.1
+            if self._hybrid_transcriber is None or is_short:
+                process_wav(active_path, self.config, do_paste=True, usage_scope="daily")
+            else:
+                hybrid = self._hybrid_transcriber.finish(active_path)
+                process_wav(
+                    active_path,
+                    self.config,
+                    do_paste=True,
+                    usage_scope="daily",
+                    raw_transcript_override=hybrid.raw_text,
+                    whisper_seconds_override=hybrid.tail_seconds,
+                    run_label="hybrid_fallback" if hybrid.fallback_used else "hybrid",
+                    hybrid_request_count=hybrid.request_count,
+                    hybrid_request_seconds=hybrid.request_seconds,
+                    stt_audio_seconds=hybrid.audio_seconds,
+                    hybrid_fallback_used=hybrid.fallback_used,
+                    hybrid_validation_reasons=" | ".join(hybrid.diagnostics.get("validation_reasons", [])),
+                    precomputed_tail_seconds=hybrid.tail_seconds,
+                )
+        except Exception as exc:
+            message = f"Recording processing failed ({type(exc).__name__}). Daemon remains available."
+            safe_print(message, flush=True)
+            self.processing_error_signal.emit(message)
+        finally:
+            self.hide_signal.emit()
 
 
 def _write_pid_file() -> None:
@@ -252,6 +267,7 @@ def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_p
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+    configure_daemon_application()
     controller = DaemonController(config, env_path=env_path, settings_path=settings_path)
     try:
         controller.register_hotkey()
@@ -265,6 +281,13 @@ def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_p
 
     tray = QSystemTrayIcon(build_app_icon())
     tray.setToolTip("SpeedyType")
+    controller.processing_error_signal.connect(
+        lambda message: tray.showMessage(
+            "SpeedyType",
+            message,
+            QSystemTrayIcon.MessageIcon.Warning,
+        )
+    )
     menu = QMenu()
 
     settings_dialogs: list = []
@@ -276,14 +299,14 @@ def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_p
         dialog = SettingsDialog(controller.config, controller.env_path, controller.settings_path)
         dialog.vocab_applied.connect(controller.apply_live_vocab_update)
         settings_dialogs.append(dialog)  # keep a reference so it isn't garbage-collected
-        dialog.show()
+        activate_window(dialog)
 
     def open_about() -> None:
         from speedytype.about_dialog import AboutDialog
 
         dialog = AboutDialog(controller.config)
         about_dialogs.append(dialog)
-        dialog.show()
+        activate_window(dialog)
 
     def restart_daemon() -> None:
         safe_print("Restarting daemon...", flush=True)
@@ -324,6 +347,11 @@ def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_p
     try:
         return app.exec()
     finally:
+        if controller._hotkey_handle is not None:
+            try:
+                remove_hotkey(controller._hotkey_handle)
+            except Exception:
+                pass
         _remove_pid_file_if_mine()
 
 
