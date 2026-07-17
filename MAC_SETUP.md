@@ -145,7 +145,22 @@ Grant access only to the terminal application or Python executable that runs
 SpeedyType. A newly extracted release can have a different `.venv/bin/python`
 path, so macOS may request permission again after an update. If a feature stops
 working after an update, review these three permission lists and reauthorize
-the executable for the current release when necessary.
+the executable for the current release when necessary. Fully stop and restart the daemon
+after changing Accessibility or Input Monitoring permission:
+
+```sh
+speedytype daemon-stop
+speedytype daemon
+```
+
+The source-release daemon is an accessory application: normal operation shows
+the SpeedyType menu-bar icon and no Python icon in the Dock. Settings and About
+opened from that menu-bar icon should be brought to the foreground. A
+standalone `speedytype settings` process remains a normal foreground app.
+
+If Python crashes, open **Console > Crash Reports** or inspect
+`~/Library/Logs/DiagnosticReports/` for a recent Python .ips report. Preserve
+that report together with the SpeedyType daemon log before restarting.
 
 ## Daily commands
 
@@ -159,16 +174,24 @@ speedytype --env /path/to/other.env daemon
 
 ## Real Mac verification
 
-On the target Mac:
+The v0.5.4 release candidate must complete all of these checks on the target
+Mac; the final tag is blocked until they pass:
 
-1. Run `./scripts/setup_mac.sh` twice.
-2. Run `source ~/.zshrc`, then run the daily command examples above.
-3. Confirm the PATH command does not add duplicate `~/.zshrc` entries.
-4. Confirm `test -x "$HOME/.local/bin/speedytype"` succeeds.
-5. Confirm existing Keychain credentials remain available and unchanged.
-6. Confirm Accessibility, Input Monitoring, and Microphone behavior for the
-   features that use them.
+1. Update an existing v0.5.3 source install and rerun `./scripts/setup_mac.sh`.
+2. Start `speedytype daemon` from a new zsh terminal.
+3. Confirm the menu-bar icon appears with no Python icon in the Dock.
+4. Open Settings and About from the menu bar and confirm both come forward.
+5. Hold and release F9 and confirm there is no macOS warning sound.
+6. Complete a normal recording, paste, and clipboard restoration.
+7. Tap F9 for less than 0.1 seconds, observe a safe skip, then record normally.
+8. Capture F9 and a modified chord in Settings without recording or crashing.
+9. Save, restart, and make a recording with the new chord.
+10. Complete ten consecutive recording/paste cycles.
+11. Use menu-bar Restart and Quit and confirm no Python process is left behind.
+12. Run standalone `speedytype settings` and capture a chord.
+13. Confirm no new Python `.ips` report appeared during the test period.
 
-The script logic and Bash syntax are audited on Windows, but these runtime
-checks must be completed on real macOS hardware before describing Mac command
-installation as fully verified.
+Also rerun setup twice, confirm the PATH entry is not duplicated, confirm the
+wrapper is executable, and confirm Keychain credentials remain unchanged. The
+script logic and Bash syntax are audited on Windows, but these runtime checks
+must be completed on real macOS hardware before v0.5.4 is released.

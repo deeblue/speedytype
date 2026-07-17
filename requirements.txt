@@ -13,7 +13,8 @@ pytest==8.4.1
 python-dotenv==1.1.1
 pywin32==312; sys_platform == "win32"
 pywinauto==0.6.9; sys_platform == "win32"
-pynput==1.8.1; sys_platform == "darwin"
+pyobjc-framework-Cocoa==12.2.1; sys_platform == "darwin"
+pyobjc-framework-Quartz==12.2.1; sys_platform == "darwin"
 requests==2.32.4
 sounddevice==0.5.2
 soundfile==0.13.1

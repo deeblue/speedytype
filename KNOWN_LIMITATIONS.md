@@ -1,5 +1,19 @@
 # Known Limitations
 
+## 0. macOS v0.5.4 native stability changes await real-device acceptance
+
+- **Implemented candidate:** macOS hotkey listening and shortcut capture now
+  use one native Quartz event tap instead of `pynput`; native paste events are
+  marked so they pass through the tap; AppKit accessory policy removes the
+  daemon's Python Dock icon while the menu-bar item remains.
+- **Automated evidence:** injected Quartz/AppKit tests cover selective key
+  suppression, repeat/release handling, capture restoration, marked paste,
+  app activation, short-recording skip, and recoverable daemon failures.
+- **Remaining limitation:** these tests cannot prove macOS permission prompts,
+  CFRunLoop behavior, menu-bar/Dock presentation, or absence of native `.ips`
+  crashes on real hardware. The `MAC_SETUP.md` acceptance checklist blocks the
+  final v0.5.4 tag.
+
 This document records limitations that have already been discussed and deliberately deferred, so future work (including future sessions on this project) does not rediscover them as new problems or assume they were simply missed.
 
 Each item lists: current state, known impact, why it was not addressed, and the condition that should trigger re-evaluation.

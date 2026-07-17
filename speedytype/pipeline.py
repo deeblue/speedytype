@@ -55,6 +55,22 @@ def process_wav(
     tail_start = time.perf_counter()
     safe_print("Recording ended.", flush=True)
 
+    if recording_seconds < 0.1 and raw_transcript_override is None:
+        message = "Recording too short; skipped."
+        safe_print(message, flush=True)
+        latency = LatencyRecord.create(
+            recording_seconds=recording_seconds,
+            whisper_seconds=0.0,
+            gemini_seconds=0.0,
+            paste_seconds=0.0,
+            total_tail_latency_seconds=time.perf_counter() - tail_start,
+            run_label="recording_too_short",
+            usage_scope=usage_scope,
+            stt_model=stt_model,
+            stt_audio_seconds=0.0,
+        )
+        return PipelineResult("", "", False, message, latency)
+
     if raw_transcript_override is None:
         whisper_start = time.perf_counter()
         raw = transcribe_audio(audio_path, config, model=stt_model)

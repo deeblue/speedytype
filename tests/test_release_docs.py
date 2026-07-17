@@ -63,3 +63,27 @@ def test_release_checklist_documents_verified_annotated_tag_workflow():
     )
     for text in required:
         assert text in content
+
+
+def test_macos_docs_describe_native_menu_bar_permissions_and_release_gate():
+    setup = (ROOT / "MAC_SETUP.md").read_text(encoding="utf-8")
+    release = (ROOT / "release" / "README.md").read_text(encoding="utf-8")
+    limitations = (ROOT / "KNOWN_LIMITATIONS.md").read_text(encoding="utf-8")
+    report = (ROOT / "POC_REPORT.md").read_text(encoding="utf-8")
+
+    required_setup = (
+        "menu-bar icon",
+        "no Python icon in the Dock",
+        "Input Monitoring",
+        "Accessibility",
+        "Microphone",
+        "restart the daemon",
+        "Python .ips",
+        "ten consecutive recording/paste cycles",
+        "v0.5.4",
+    )
+    for text in required_setup:
+        assert text in setup
+    assert "real-Mac acceptance remains pending" in release
+    assert "Quartz event tap" in limitations
+    assert "mac_log_002.rtf" in report
