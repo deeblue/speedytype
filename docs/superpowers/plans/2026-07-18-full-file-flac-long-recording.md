@@ -155,35 +155,35 @@ git commit -m "feat: preserve durable WAV recordings"
 - `PreparedUpload` fields: `path`, `container`, `source_wav`, `source_bytes`, `upload_bytes`, `duration_seconds`, `encoding_seconds`, `fallback_used`, `fallback_reason`, `validation`.
 - Raises: `UploadPreparationError(category, preserved_wav)` when neither FLAC nor WAV is admissible.
 
-- [ ] **Step 1: Write failing FLAC tests**
+- [x] **Step 1: Write failing FLAC tests**
 
 Cover real lossless encode/decode, atomic promotion, cleanup of owned partial files, readable mono/16-kHz/PCM16 validation, frame mismatch, PCM mismatch, exact `<23 MiB` boundary, 1500-second inclusive boundary, 1500.001 rejection, and non-empty regular-file checks.
 
-- [ ] **Step 2: Confirm RED**
+- [x] **Step 2: Confirm RED**
 
 Run: `python -m pytest tests/test_flac_upload.py -q`
 
 Expected: import/interface failures.
 
-- [ ] **Step 3: Implement three-layer validation**
+- [x] **Step 3: Implement three-layer validation**
 
 Encode to a unique `.partial.flac`, run ffmpeg with `-c:a flac -sample_fmt s16 -ac 1 -ar 16000 -map_metadata -1`, close it, validate through `soundfile`, calculate blockwise PCM SHA-256 for source and decoded FLAC, then `replace()` to the final owned artifact. Admission uses strict `< max_bytes`.
 
-- [ ] **Step 4: Add failing fallback tests**
+- [x] **Step 4: Add failing fallback tests**
 
 Inject encoder/validation failures. Assert an admissible WAV returns `container="wav"` and `fallback_used=True`; an oversize or over-duration WAV raises `UploadPreparationError`; no failure deletes the WAV; successful context exit deletes only the FLAC.
 
-- [ ] **Step 5: Implement fallback selection and cleanup**
+- [x] **Step 5: Implement fallback selection and cleanup**
 
 Catch only classified FLAC preparation errors. Check the WAV's actual byte count and duration against the same guards before selecting it. Keep source WAV outside every cleanup list.
 
-- [ ] **Step 6: Run Task 3 tests and confirm GREEN**
+- [x] **Step 6: Run Task 3 tests and confirm GREEN**
 
 Run: `python -m pytest tests/test_flac_upload.py -q`
 
 Expected: all pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add speedytype/flac_upload.py tests/test_flac_upload.py
