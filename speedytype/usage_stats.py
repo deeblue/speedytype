@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, tzinfo
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from types import MappingProxyType
-from typing import Iterator, Mapping, TextIO
+from typing import Callable, Iterator, Mapping, TextIO
 import csv
 import json
 import os
@@ -49,6 +49,23 @@ class UsageSummary:
     currency: str
     warnings: tuple[str, ...] = ()
     usage_available: bool = True
+
+
+@dataclass(frozen=True)
+class MonthlyUsageSummary:
+    year: int
+    month: int
+    usage: UsageSummary
+    skipped_timestamp_rows: int = 0
+
+
+@dataclass(frozen=True)
+class BudgetCapacity:
+    budget: Decimal
+    used: Decimal
+    percentage: Decimal
+    remaining: Decimal
+    exceeded: Decimal
 
 
 def _price(value: object, label: str) -> Decimal:
@@ -305,7 +322,11 @@ def _usage_rows(
         warning_messages.append(f"Usage data unavailable: {exc}")
 
 
-def calculate_usage(csv_path: str | Path, pricing_path: str | Path) -> UsageSummary:
+def _calculate_usage(
+    csv_path: str | Path,
+    pricing_path: str | Path,
+    row_filter: Callable[[Mapping[str, object], int, list[str]], bool] | None = None,
+) -> UsageSummary:
     warning_messages: list[str] = []
     try:
         pricing = load_pricing(pricing_path)
@@ -339,6 +360,8 @@ def calculate_usage(csv_path: str | Path, pricing_path: str | Path) -> UsageSumm
                 try:
                     is_daily, inferred = _is_daily_row(row)
                     if not is_daily:
+                        continue
+                    if row_filter is not None and not row_filter(row, line_number, warning_messages):
                         continue
                     recording_seconds = _decimal_field(row, "recording_seconds")
                     request_count = _integer_field(row, "hybrid_request_count")
@@ -424,4 +447,75 @@ def calculate_usage(csv_path: str | Path, pricing_path: str | Path) -> UsageSumm
         currency=pricing.currency if pricing is not None else "",
         warnings=tuple(warning_messages),
         usage_available=availability[0],
+    )
+
+
+def calculate_usage(csv_path: str | Path, pricing_path: str | Path) -> UsageSummary:
+    """Calculate all-time daily usage. Kept backward compatible for callers."""
+    return _calculate_usage(csv_path, pricing_path)
+
+
+def calculate_monthly_usage(
+    csv_path: str | Path,
+    pricing_path: str | Path,
+    *,
+    now: datetime | None = None,
+    local_timezone: tzinfo | None = None,
+) -> MonthlyUsageSummary:
+    selected_now = now or datetime.now().astimezone()
+    if selected_now.tzinfo is None or selected_now.utcoffset() is None:
+        raise ValueError("now must be timezone-aware")
+    selected_timezone = local_timezone or selected_now.astimezone().tzinfo
+    if selected_timezone is None:
+        raise ValueError("local timezone is unavailable")
+    local_now = selected_now.astimezone(selected_timezone)
+    skipped = [0]
+
+    def in_selected_month(
+        row: Mapping[str, object], line_number: int, warning_messages: list[str]
+    ) -> bool:
+        try:
+            raw = _text_field(row, "timestamp")
+            if not raw:
+                raise ValueError
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            if parsed.tzinfo is None or parsed.utcoffset() is None:
+                raise ValueError
+            local_timestamp = parsed.astimezone(selected_timezone)
+        except (ValueError, OverflowError):
+            skipped[0] += 1
+            message = f"Skipped timezone-unsafe CSV row {line_number}."
+            warning_messages.append(message)
+            runtime_warnings.warn(message, UserWarning, stacklevel=2)
+            return False
+        return (local_timestamp.year, local_timestamp.month) == (
+            local_now.year,
+            local_now.month,
+        )
+
+    usage = _calculate_usage(csv_path, pricing_path, in_selected_month)
+    return MonthlyUsageSummary(
+        year=local_now.year,
+        month=local_now.month,
+        usage=usage,
+        skipped_timestamp_rows=skipped[0],
+    )
+
+
+def calculate_budget_capacity(
+    total_cost: Decimal | None, budget: Decimal | None
+) -> BudgetCapacity | None:
+    if total_cost is None or budget is None:
+        return None
+    if not isinstance(budget, Decimal) or not budget.is_finite() or budget <= 0:
+        raise ValueError("budget must be a finite positive Decimal")
+    if not isinstance(total_cost, Decimal) or not total_cost.is_finite() or total_cost < 0:
+        raise ValueError("total_cost must be a finite non-negative Decimal")
+    difference = budget - total_cost
+    return BudgetCapacity(
+        budget=budget,
+        used=total_cost,
+        percentage=total_cost / budget * Decimal("100"),
+        remaining=max(difference, Decimal("0")),
+        exceeded=max(-difference, Decimal("0")),
     )

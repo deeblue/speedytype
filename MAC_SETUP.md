@@ -172,6 +172,16 @@ speedytype guided-recording --script real_voice_script.md
 speedytype --env /path/to/other.env daemon
 ```
 
+## Monthly usage and budget
+
+Open `speedytype settings` and use `設定月預算` in `本月用量與預算`. The
+single budget combines STT and LLM estimates in the currency from
+`pricing.json`; it can be adjusted or cleared without changing API pricing.
+The month follows the Mac's current local timezone. Values are estimates, not
+provider billing or quota, and exceeding the budget does not interrupt
+recording or processing. If no percentage is shown, review the visible warning
+and confirm that the latency log and `pricing.json` are readable and valid.
+
 ## Real Mac verification
 
 The v0.5.4 release candidate must complete all of these checks on the target
@@ -190,6 +200,8 @@ Mac; the final tag is blocked until they pass:
 11. Use menu-bar Restart and Quit and confirm no Python process is left behind.
 12. Run standalone `speedytype settings` and capture a chord.
 13. Confirm no new Python `.ips` report appeared during the test period.
+14. Open Settings at 520 pixels or wider and confirm the monthly capacity card
+   renders, scrolls, and can set then clear a pending budget.
 
 Also rerun setup twice, confirm the PATH entry is not duplicated, confirm the
 wrapper is executable, and confirm Keychain credentials remain unchanged. The

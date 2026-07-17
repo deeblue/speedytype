@@ -25,6 +25,8 @@ from PyQt6.QtWidgets import (
 
 from speedytype.audio import list_input_devices
 from speedytype.autostart import install_autostart, query_autostart, uninstall_autostart
+from speedytype.budget_dialog import BudgetDialog
+from speedytype.capacity_widget import BudgetCapacityWidget
 from speedytype.config import AppConfig
 from speedytype.env_writer import (
     test_gemini_key,
@@ -47,7 +49,7 @@ from speedytype.settings import (
     load_settings,
     save_settings,
 )
-from speedytype.usage_stats import calculate_usage
+from speedytype.usage_stats import calculate_monthly_usage
 
 
 # Best-effort, non-exhaustive: a static denylist of well-known Windows/common
@@ -191,6 +193,7 @@ class SettingsDialog(QDialog):
         self.setMinimumWidth(520)
 
         self._settings = load_settings(self.settings_path)
+        self._pending_monthly_budget = self._settings.monthly_budget
         self._pending_hotkey_combo = list(self._settings.hotkey_combo)
         self._vocab_terms = list(self._settings.vocab_terms)
         self._hotkey_capture_signal = HotkeyCaptureSignal()
@@ -253,29 +256,34 @@ class SettingsDialog(QDialog):
     # --- usage and estimated costs -----------------------------------------
 
     def _build_usage_group(self) -> QGroupBox:
-        group = QGroupBox("用量與估算費用")
+        group = QGroupBox("本月用量與預算")
         group_layout = QVBoxLayout(group)
-
-        self.usage_models_label = QLabel("")
-        self.usage_stt_label = QLabel("")
-        self.usage_llm_label = QLabel("")
-        self.usage_total_label = QLabel("")
-        self.usage_pricing_note_label = QLabel("")
-        self.usage_warning_label = QLabel("")
-        for label in (
-            self.usage_models_label,
-            self.usage_stt_label,
-            self.usage_llm_label,
-            self.usage_total_label,
-            self.usage_pricing_note_label,
-            self.usage_warning_label,
-        ):
-            label.setWordWrap(True)
-            group_layout.addWidget(label)
-        self.edit_pricing_button = QPushButton("編輯價格")
-        self.edit_pricing_button.clicked.connect(self._edit_pricing)
-        group_layout.addWidget(self.edit_pricing_button)
+        self.capacity_widget = BudgetCapacityWidget()
+        group_layout.addWidget(self.capacity_widget)
+        self.capacity_widget.budget_button.clicked.connect(self._edit_budget)
+        self.capacity_widget.pricing_button.clicked.connect(self._edit_pricing)
+        # Compatibility aliases for extensions/tests that used the former
+        # text-only usage block.
+        self.usage_models_label = self.capacity_widget.models_label
+        self.usage_stt_label = self.capacity_widget.stt_label
+        self.usage_llm_label = self.capacity_widget.llm_label
+        self.usage_total_label = self.capacity_widget.detail_label
+        self.usage_pricing_note_label = self.capacity_widget.pricing_note_label
+        self.usage_warning_label = self.capacity_widget.warning_label
+        self.edit_pricing_button = self.capacity_widget.pricing_button
+        self.edit_budget_button = self.capacity_widget.budget_button
         return group
+
+    def _edit_budget(self) -> None:
+        currency = getattr(getattr(self, "_monthly_summary", None), "usage", None)
+        dialog = BudgetDialog(
+            self._pending_monthly_budget,
+            currency.currency if currency is not None else "",
+            parent=self,
+        )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._pending_monthly_budget = dialog.value
+            self._render_monthly_summary()
 
     def _edit_pricing(self) -> None:
         dialog = PriceEditorDialog(self.pricing_path, parent=self)
@@ -295,76 +303,32 @@ class SettingsDialog(QDialog):
         # visibly in the dialog.
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
-            summary = calculate_usage(self.config.latency_log_path, self.pricing_path)
-
-        usage_unavailable = not summary.usage_available
-        stt_cost = None if usage_unavailable else summary.stt_cost
-        llm_cost = None if usage_unavailable else summary.llm_cost
-        total_cost = None if usage_unavailable else summary.total_cost
-        if usage_unavailable:
-            self.usage_models_label.setText("目前使用模型：用量無法取得")
-            self.usage_stt_label.setText("STT：用量無法取得，估算費用 無法估算")
-            self.usage_llm_label.setText("LLM：用量無法取得，估算費用 無法估算")
-        else:
-            stt_models = ", ".join(summary.stt_models) or "無紀錄"
-            llm_models = ", ".join(summary.llm_models) or "無紀錄"
-            self.usage_models_label.setText(f"目前使用模型：STT {stt_models}；LLM {llm_models}")
-            self.usage_stt_label.setText(
-                f"STT：{summary.stt_calls:,} 次呼叫，{summary.stt_minutes:.2f} 分鐘，"
-                f"估算費用 {self._format_usage_cost(stt_cost, summary.currency)}"
+            self._monthly_summary = calculate_monthly_usage(
+                self.config.latency_log_path, self.pricing_path
             )
-            self.usage_llm_label.setText(
-                f"LLM：{summary.llm_calls:,} 次呼叫，輸入 {summary.llm_input_tokens:,} tokens，"
-                f"輸出 {summary.llm_output_tokens:,} tokens，"
-                f"估算費用 {self._format_usage_cost(llm_cost, summary.currency)}"
-            )
-        self.usage_total_label.setText(
-            f"總估算費用：{self._format_usage_cost(total_cost, summary.currency)}"
-        )
+        self._render_monthly_summary()
 
-        pricing_date = summary.pricing_updated_date or "無法取得"
-        self.usage_pricing_note_label.setText(
-            f"價格更新日期：{pricing_date}\n估算費用，非實際帳單，價格可能已變動"
-        )
-
-        warning_messages = []
-        pricing_warning_prefixes = (
-            "Pricing data unavailable:",
-            "Invalid price for ",
-            "STT price unavailable for used model ",
-            "LLM price unavailable for used model ",
-        )
-        pricing_warning_count = sum(
-            message.startswith(pricing_warning_prefixes) for message in summary.warnings
-        )
-        if pricing_warning_count or (
-            not usage_unavailable
-            and (summary.stt_cost is None or summary.llm_cost is None or summary.total_cost is None)
-        ):
-            warning_messages.append("價格資料缺失，無法估算費用")
+    def _render_monthly_summary(self) -> None:
+        summary = self._monthly_summary.usage
+        warnings_zh = list(self._settings.load_warnings)
+        if not summary.usage_available:
+            warnings_zh.append("用量資料缺失，無法確認實際用量與費用")
+        if summary.total_cost is None:
+            warnings_zh.append("價格資料缺失，無法估算費用")
         if summary.legacy_inferred_rows:
-            warning_messages.append(
+            warnings_zh.append(
                 f"有 {summary.legacy_inferred_rows:,} 筆舊版紀錄依標籤推定為每日用量"
             )
-        usage_unavailable_warning_count = sum(
-            message.startswith("Usage data unavailable:") for message in summary.warnings
+        malformed = sum(message.startswith("Skipped malformed CSV row") for message in summary.warnings)
+        if malformed:
+            warnings_zh.append(f"已略過 {malformed:,} 筆格式錯誤的用量紀錄")
+        if self._monthly_summary.skipped_timestamp_rows:
+            warnings_zh.append(
+                f"已略過 {self._monthly_summary.skipped_timestamp_rows:,} 筆缺少有效時區時間戳的紀錄"
+            )
+        self.capacity_widget.set_summary(
+            self._monthly_summary, self._pending_monthly_budget, tuple(warnings_zh)
         )
-        if usage_unavailable:
-            warning_messages.append("用量資料缺失，無法確認實際用量與費用")
-        skipped_rows = sum(
-            message.startswith("Skipped malformed CSV row") for message in summary.warnings
-        )
-        if skipped_rows:
-            warning_messages.append(f"已略過 {skipped_rows:,} 筆格式錯誤的用量紀錄")
-        uncategorized_warnings = (
-            len(summary.warnings)
-            - pricing_warning_count
-            - usage_unavailable_warning_count
-            - skipped_rows
-        )
-        if uncategorized_warnings > 0:
-            warning_messages.append(f"其他用量或價格資料警告：{uncategorized_warnings:,} 筆")
-        self.usage_warning_label.setText("；".join(warning_messages))
 
     def _on_slider_changed(self, value: int) -> None:
         self.slider_label.setText(format_seconds_readable(value))
@@ -568,6 +532,7 @@ class SettingsDialog(QDialog):
             hotkey_combo=list(self._pending_hotkey_combo),
             vocab_terms=list(self._vocab_terms),
             mic_device_name=chosen_device_name,
+            monthly_budget=self._pending_monthly_budget,
         )
         save_settings(self.settings_path, new_settings)
         messages.append("一般設定已儲存")

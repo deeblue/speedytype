@@ -639,3 +639,23 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
   `.venv` backup/recreation guidance before dependency installation.
 - The macOS `0.5.3` real-device rerun, including setup, Keychain, PATH, and
   command execution, remains pending.
+
+## Monthly budget capacity (implemented 2026-07-17; 0.5.4 candidate)
+
+- Settings now presents current-local-calendar-month usage as a capacity card
+  with compact STT and LLM metrics. A user may set, adjust, or clear one
+  combined budget; exact values are stored as decimal strings.
+- The numeric percentage remains uncapped for over-budget reporting while the
+  visual bar caps at 100%. Remaining and exceeded amounts use exact Decimal
+  arithmetic. The feature is informational only and is not read by recording,
+  provider, or paste paths.
+- Aware latency timestamps are converted to the computer's timezone before
+  month selection. Missing, naive, and malformed timestamps are excluded from
+  the monthly view with a visible count; the existing all-time calculator is
+  unchanged.
+- Invalid saved budgets open safely as unconfigured with a visible warning.
+  Missing usage or pricing suppresses the percentage while retaining trusted
+  metrics and both budget/pricing actions.
+- Windows automated validation covers calculation and Qt display states. The
+  combined real-Mac 0.5.4 release gate must still confirm rendering, scrolling,
+  and editing under accessory-mode daemon operation.
