@@ -1,5 +1,10 @@
 # SpeedyType Source Release
 
+> macOS v0.5.4 release-candidate note: the daemon now uses a native Quartz
+> keyboard event tap and AppKit accessory policy. Automated contracts pass on
+> Windows, but real-Mac acceptance remains pending; do not publish the final
+> v0.5.4 tag until the checklist in `MAC_SETUP.md` passes on the target Mac.
+
 SpeedyType is a local Windows/macOS voice-input daemon. It records from a
 configurable hotkey, transcribes speech, optionally polishes text, and pastes
 the result into the active application.

@@ -78,6 +78,14 @@ def test_macos_setup_upgrades_pip_before_requirements_and_command_alias():
     assert upgrade < requirements < alias
 
 
+def test_macos_dependencies_use_pyobjc_and_remove_pynput():
+    content = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+
+    assert 'pyobjc-framework-Cocoa==12.2.1; sys_platform == "darwin"' in content
+    assert 'pyobjc-framework-Quartz==12.2.1; sys_platform == "darwin"' in content
+    assert 'pynput' not in content
+
+
 def test_mac_setup_documentation_has_python_313_recovery_flow():
     content = (ROOT / "MAC_SETUP.md").read_text(encoding="utf-8")
     required = (

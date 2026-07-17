@@ -1,5 +1,21 @@
 # SpeedyType POC Report
 
+## 2026-07-17 macOS native stability candidate
+
+`docs/log/mac_log_002.rtf` records the confirmed Settings crash path through
+`TSMGetInputSourceProperty`/ctypes on a Python worker thread while Qt was
+executing the dialog. The former macOS implementation started a
+`pynput.keyboard.Listener` from that path. `mac_log_001.rtf` is consistent with
+the same unsafe native path after daemon processing, but remains an inference
+without its matching `.ips` report.
+
+The v0.5.4 candidate removes `pynput` from macOS keyboard and paste paths,
+uses a process-wide Quartz event tap, configures the daemon as an AppKit
+accessory application, and locally skips sub-0.1-second recordings. Automated
+tests use fake Quartz/AppKit adapters and therefore do not claim real-Mac
+success. Final release remains blocked on the exact acceptance checklist in
+`MAC_SETUP.md`.
+
 Date: 2026-07-09
 
 ## Current Status
