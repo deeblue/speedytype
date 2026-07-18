@@ -34,7 +34,7 @@ def _validated_record_seconds(raw: object) -> tuple[float, tuple[str, ...]]:
 
 
 def _validated_recording_mode(raw: object) -> tuple[str, tuple[str, ...]]:
-    value = str(raw or DEFAULT_RECORDING_MODE).strip().lower()
+    value = str(raw).strip().lower()
     if value not in RECORDING_MODES:
         return DEFAULT_RECORDING_MODE, ("錄音模式設定無效，已改用按住錄音。",)
     return value, ()

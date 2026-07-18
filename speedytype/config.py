@@ -8,7 +8,7 @@ import shlex
 from speedytype.audio import find_input_device_index_by_name
 from speedytype.paths import default_env_path, default_latency_log_path
 from speedytype.secrets_store import SecretResolution, resolve_api_keys
-from speedytype.settings import SETTINGS_FILE_NAME, load_settings
+from speedytype.settings import DEFAULT_RECORDING_MODE, SETTINGS_FILE_NAME, load_settings
 
 
 DEFAULT_VOCAB_BIAS = "BIOS, Firmware, NPI, QA, API, PD, USB, Thunderbolt, TPE 團隊, BJ 團隊"
@@ -36,7 +36,7 @@ class AppConfig:
     llm_thinking_type: str = ""
     llm_disambiguation_hints: str = "on"
     max_record_seconds: float = 60.0
-    recording_mode: str = "hold"
+    recording_mode: str = DEFAULT_RECORDING_MODE
     latency_log_path: Path = field(default_factory=default_latency_log_path)
     clipboard_restore_delay_seconds: float = 0.3
     hybrid_transcription_enabled: bool = False
