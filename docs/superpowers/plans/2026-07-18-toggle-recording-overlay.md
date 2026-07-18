@@ -197,7 +197,7 @@ git commit -m "feat: show persistent recording time and timeout"
 - Consumes: Task 1 `AppConfig.recording_mode`, Task 2 `RecordingControl`, and Task 3 pill slots.
 - Produces: one daemon start/rearm/stop/deadline path and documented real-device gates.
 
-- [ ] **Step 1: Write failing daemon orchestration tests**
+- [x] **Step 1: Write failing daemon orchestration tests**
 
 Use fake recorder/thread/clock objects without OS key injection. Assert:
 
@@ -208,13 +208,13 @@ Use fake recorder/thread/clock objects without OS key injection. Assert:
 - Timeout emits `show_auto_stopped_signal` before `show_processing_signal`, but the processing worker starts immediately.
 - Recorder failure moves control to idle/reusable and later deadline cannot process the failed recording.
 
-- [ ] **Step 2: Confirm daemon tests fail**
+- [x] **Step 2: Confirm daemon tests fail**
 
 Run: `python -m pytest tests/test_daemon_recovery.py tests/test_pipeline_usage.py -q`
 
 Expected: Toggle activation and elapsed/auto-stop signal assertions fail.
 
-- [ ] **Step 3: Implement one idempotent stop path**
+- [x] **Step 3: Implement one idempotent stop path**
 
 Add signals `show_elapsed_signal = pyqtSignal(int)` and `show_auto_stopped_signal = pyqtSignal()`. The state-machine event handler calls one side-effect method only after receiving `RecordingAction.STOP`:
 
@@ -238,17 +238,17 @@ warning threshold, emits remaining time inside it, and calls `timeout()` at
 `_process_recording()` always calls `processing_finished()` in `finally`.
 Recorder failure calls `recording_failed()` before hiding.
 
-- [ ] **Step 4: Run orchestration and existing FLAC tests**
+- [x] **Step 4: Run orchestration and existing FLAC tests**
 
 Run: `python -m pytest tests/test_recording_control.py tests/test_daemon_recovery.py tests/test_pipeline_usage.py tests/test_flac_upload.py tests/test_audio_recording.py -q`
 
 Expected: all pass and no duplicate processing calls.
 
-- [ ] **Step 5: Write failing release-document tests, then update docs**
+- [x] **Step 5: Write failing release-document tests, then update docs**
 
 Require documentation to state both recording modes, default Hold, Toggle release/repress behavior, persistent `MM:SS`, final 60-second countdown, pill-local automatic-stop warning, 25-minute stop, daemon restart requirement, guided-recording exclusion, and pending Windows/macOS real-device gates. Update the four user/engineering documents without claiming real-hardware completion.
 
-- [ ] **Step 6: Run complete verification**
+- [x] **Step 6: Run complete verification**
 
 ```powershell
 python -m pytest tests/test_settings.py tests/test_config.py tests/test_settings_dialog.py tests/test_recording_control.py tests/test_overlay.py tests/test_daemon_recovery.py tests/test_pipeline_usage.py tests/test_release_docs.py -q
@@ -260,7 +260,7 @@ git diff --check
 
 Expected: every command exits 0. Record real Windows/macOS Toggle and ≥24-minute checks as pending release gates.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add speedytype/daemon.py tests/test_daemon_recovery.py tests/test_pipeline_usage.py release/README.md MAC_SETUP.md KNOWN_LIMITATIONS.md POC_REPORT.md tests/test_release_docs.py docs/superpowers/plans/2026-07-18-toggle-recording-overlay.md
