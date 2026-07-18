@@ -308,6 +308,7 @@ def test_daemon_processing_path_marks_usage_daily(tmp_path, monkeypatch) -> None
     controller._active_thread = SimpleNamespace(is_alive=lambda: True, join=lambda: None)
     controller.recorder = SimpleNamespace(stop=lambda: None)
     controller._hybrid_transcriber = None
+    controller._recording_control.activate()
 
     calls = []
     monkeypatch.setattr("speedytype.daemon.wait_until_hotkey_released", lambda *args: ("released", 0.1))

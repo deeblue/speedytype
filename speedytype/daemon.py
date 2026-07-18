@@ -21,6 +21,7 @@ from speedytype.overlay import AudioLevelEmitter, RecordingPill
 from speedytype.pipeline import process_wav
 from speedytype.paths import default_daemon_log_path, default_env_path, default_pid_path, default_settings_path
 from speedytype.platform.app import activate_window, configure_daemon_application
+from speedytype.recording_control import RecordingAction, RecordingControl, RecordingPhase
 from speedytype.recording_recovery import RecoveryRecord, discover_recoverable_recordings, mark_recording
 from speedytype.platform.process import is_process_running, terminate_process
 
@@ -54,7 +55,9 @@ class DaemonController(QObject):
 
     show_recording_signal = pyqtSignal()
     show_processing_signal = pyqtSignal()
+    show_elapsed_signal = pyqtSignal(int)
     show_countdown_signal = pyqtSignal(int)
+    show_auto_stopped_signal = pyqtSignal()
     hide_signal = pyqtSignal()
     processing_error_signal = pyqtSignal(str)
 
@@ -71,10 +74,13 @@ class DaemonController(QObject):
         self.level_emitter.level_changed.connect(self.pill.update_level)
         self.show_recording_signal.connect(self.pill.show_recording)
         self.show_processing_signal.connect(self.pill.show_processing)
+        self.show_elapsed_signal.connect(self.pill.show_elapsed)
         self.show_countdown_signal.connect(self.pill.show_countdown)
+        self.show_auto_stopped_signal.connect(self.pill.show_auto_stopped)
         self.hide_signal.connect(self.pill.hide_pill)
 
         self.recorder = Recorder(device=config.mic_device)
+        self._recording_control = RecordingControl(config.recording_mode)
         self._active_thread: threading.Thread | None = None
         self._stop_wait_thread: threading.Thread | None = None
         self._countdown_thread: threading.Thread | None = None
@@ -98,8 +104,13 @@ class DaemonController(QObject):
         self._hotkey_handle = register_hold_hotkey(self.config.hotkey, self.on_press)
 
     def on_press(self) -> None:
-        if self._active_thread and self._active_thread.is_alive():
+        action = self._recording_control.activate()
+        if action is RecordingAction.STOP:
+            self._finish_recording("activation")
             return
+        if action is not RecordingAction.START:
+            return
+
         self._active_path = temp_wav_path()
         safe_print("Recording...", flush=True)
         self.show_recording_signal.emit()
@@ -120,23 +131,44 @@ class DaemonController(QObject):
         while self._active_thread and self._active_thread.is_alive():
             elapsed = time.perf_counter() - record_started
             remaining = self.config.max_record_seconds - elapsed
+            if remaining <= 0:
+                self.show_countdown_signal.emit(0)
+                if self._recording_control.timeout() is RecordingAction.STOP:
+                    self._finish_recording("timeout")
+                return
             if remaining <= self.countdown_warning_seconds:
                 self.show_countdown_signal.emit(max(0, round(remaining)))
+            else:
+                self.show_elapsed_signal.emit(max(0, round(elapsed)))
             time.sleep(0.2)
 
     def _finish_after_release(self) -> None:
         reason, elapsed = wait_until_hotkey_released(self.config.hotkey, self.config.max_record_seconds)
-        if not self._active_thread or not self._active_thread.is_alive() or self._active_path is None:
-            return
         if reason == "timeout":
-            safe_print(f"Recording timed out after {elapsed:.1f}s; stopping automatically.", flush=True)
+            action = self._recording_control.timeout()
+            if action is RecordingAction.STOP:
+                safe_print(f"Recording timed out after {elapsed:.1f}s; stopping automatically.", flush=True)
+                self._finish_recording("timeout")
+            return
+
+        action = self._recording_control.hotkey_released()
+        if action is RecordingAction.STOP:
+            self._finish_recording("release")
+
+    def _finish_recording(self, reason: str) -> None:
         self.recorder.stop()
         self._active_thread.join()
-        safe_print("Processing...", flush=True)
-        self.show_processing_signal.emit()
-
+        if self._recording_control.phase is RecordingPhase.IDLE:
+            return
         active_path = self._active_path
-
+        if active_path is None:
+            self._recording_control.recording_failed()
+            return
+        safe_print("Processing...", flush=True)
+        if reason == "timeout":
+            self.show_auto_stopped_signal.emit()
+        self.show_processing_signal.emit()
+        self._recording_control.mark_processing()
         threading.Thread(target=lambda: self._process_recording(active_path), daemon=True).start()
 
     def _record_active_path(self) -> None:
@@ -158,6 +190,7 @@ class DaemonController(QObject):
             message = f"Recording failed ({type(exc).__name__}). Daemon remains available."
             safe_print(message, flush=True)
             self.processing_error_signal.emit(message)
+            self._recording_control.recording_failed()
             self.hide_signal.emit()
 
     def _process_recording(self, active_path: Path) -> None:
@@ -174,6 +207,7 @@ class DaemonController(QObject):
             safe_print(message, flush=True)
             self.processing_error_signal.emit(message)
         finally:
+            self._recording_control.processing_finished()
             self.hide_signal.emit()
 
 

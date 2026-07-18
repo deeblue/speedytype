@@ -1,5 +1,19 @@
 # Known Limitations
 
+## Hold/Toggle daemon recording awaits real-device release gates
+
+- The daily daemon now supports **Hold mode** and **Toggle mode**; the default
+  recording mode is Hold. Toggle starts on first activation, then requires a
+  release and repress to stop. A Settings change requires users to restart the
+  daemon. The `guided-recording` command is excluded from this mode setting.
+- The recording pill displays persistent `MM:SS`, switches to the final
+  60-second countdown, and shows a pill-local automatic-stop warning at the
+  25-minute stop while processing begins immediately.
+- Automated state-machine and daemon tests cover competing release, activation,
+  timeout, and recorder-failure paths. The Windows Toggle real-device gate is
+  pending, and the macOS Toggle real-device gate is pending. Neither platform's
+  real-hotkey or ≥24-minute result is claimed complete.
+
 ## 0. macOS v0.5.4 native stability changes await real-device acceptance
 
 - **Implemented candidate:** macOS hotkey listening and shortcut capture now

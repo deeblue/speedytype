@@ -88,6 +88,21 @@ The tray menu can reopen Settings, restart the daemon, or exit it.
 
 ## Recording and long-recording safety
 
+Daily daemon recording offers **Hold mode** and **Toggle mode**; the default
+recording mode is Hold. In Hold mode, press and hold the configured hotkey to
+record, then release it to stop. In Toggle mode, press and release once to
+start; release and repress the hotkey to stop. Duplicate activation while the
+first Toggle press is still held is ignored. Changing the recording mode in
+Settings requires you to restart the daemon before it takes effect.
+
+While recording, the pill shows persistent elapsed time in `MM:SS`, then a
+final 60-second countdown before the configured limit. Reaching the limit
+uses the same stop-and-process path as a manual stop: the pill-local
+automatic-stop warning remains visible briefly while processing starts
+immediately in the background. The hard upper bound is a 25-minute stop.
+The guided-recording is excluded from these daemon Hold/Toggle
+controls and retains its existing guided workflow.
+
 The recording control supports a maximum of **25 minutes**; the default is
 still 60 seconds. SpeedyType always captures mono 16 kHz **PCM16 WAV** first so
 the original recording remains available if later processing fails. After
@@ -107,6 +122,9 @@ The automated suite validates file/sample conservation and admission rules.
 A real-device release gate remains pending: complete a recording of at least
 24 minutes on both Windows and macOS, verify successful paste and retained-file
 behavior under an injected failure, before publishing the release.
+The Windows Toggle real-device gate is pending, and the macOS Toggle
+real-device gate is pending; each must cover start, release/rearm, repress to
+stop, the 25-minute automatic stop, visible pill transitions, and one paste.
 
 ## Monthly usage and budget
 

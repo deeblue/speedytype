@@ -112,3 +112,31 @@ def test_release_docs_describe_complete_file_flac_lifecycle_and_pending_gates():
         assert text in combined
     assert "25 minutes" in release
     assert "25 minutes" in setup
+
+
+def test_release_docs_describe_hold_toggle_overlay_timeout_and_pending_device_gates():
+    release = (ROOT / "release" / "README.md").read_text(encoding="utf-8")
+    setup = (ROOT / "MAC_SETUP.md").read_text(encoding="utf-8")
+    limitations = (ROOT / "KNOWN_LIMITATIONS.md").read_text(encoding="utf-8")
+    report = (ROOT / "POC_REPORT.md").read_text(encoding="utf-8")
+    combined = "\n".join((release, setup, limitations, report))
+
+    required = (
+        "Hold mode",
+        "Toggle mode",
+        "default recording mode is Hold",
+        "release and repress",
+        "MM:SS",
+        "final 60-second countdown",
+        "pill-local automatic-stop warning",
+        "25-minute stop",
+        "restart the daemon",
+        "guided-recording is excluded",
+        "Windows Toggle real-device gate is pending",
+        "macOS Toggle real-device gate is pending",
+    )
+    for text in required:
+        assert text in combined
+
+    assert "Hold mode" in release and "Toggle mode" in release
+    assert "Hold mode" in setup and "Toggle mode" in setup

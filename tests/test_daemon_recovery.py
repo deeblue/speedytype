@@ -1,14 +1,196 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 import wave
 
+import pytest
 from PyQt6.QtWidgets import QApplication
 
 from speedytype.config import AppConfig
 from speedytype.daemon import DaemonController, report_recoverable_recordings
 from speedytype.flac_upload import UploadPreparationError
 from speedytype.recording_recovery import RecoveryRecord, create_recording_path, recording_sidecar_path
+
+
+class _ControlledThread:
+    def __init__(self, *, target, daemon, args=()):
+        self.target = target
+        self.args = args
+        self.daemon = daemon
+        self.started = False
+        self.joined = False
+
+    def start(self):
+        self.started = True
+        if getattr(self.target, "__name__", "") == "<lambda>":
+            self.target(*self.args)
+
+    def is_alive(self):
+        return self.started and not self.joined
+
+    def join(self):
+        self.joined = True
+
+
+def _orchestration_controller(tmp_path, monkeypatch, *, mode="hold", max_seconds=100.0):
+    app = QApplication.instance() or QApplication([])
+    controller = DaemonController(
+        AppConfig(
+            openai_api_key="x",
+            gemini_api_key="y",
+            recording_mode=mode,
+            max_record_seconds=max_seconds,
+        )
+    )
+    paths = iter(tmp_path / f"recording-{index}.wav" for index in range(10))
+    recorder_calls = []
+    processed = []
+    threads = []
+
+    def thread_factory(*, target, daemon, args=()):
+        thread = _ControlledThread(target=target, daemon=daemon, args=args)
+        threads.append(thread)
+        return thread
+
+    controller.recorder = SimpleNamespace(
+        stop=lambda: recorder_calls.append("stop"),
+        record_until_stop=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr("speedytype.daemon.temp_wav_path", lambda: next(paths))
+    monkeypatch.setattr("speedytype.daemon.threading.Thread", thread_factory)
+    monkeypatch.setattr(
+        "speedytype.daemon.process_wav",
+        lambda path, *args, **kwargs: processed.append(path),
+    )
+    return app, controller, recorder_calls, processed, threads
+
+
+def test_hold_activation_starts_once_and_release_processes_once(tmp_path, monkeypatch):
+    _, controller, recorder_calls, processed, threads = _orchestration_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr("speedytype.daemon.wait_until_hotkey_released", lambda *args: ("released", 1.0))
+
+    controller.on_press()
+    controller.on_press()
+    controller._finish_after_release()
+    controller._finish_after_release()
+
+    assert len([thread for thread in threads if not thread.daemon]) == 1
+    assert recorder_calls == ["stop"]
+    assert processed == [tmp_path / "recording-0.wav"]
+
+
+def test_toggle_release_rearms_and_second_activation_processes_once(tmp_path, monkeypatch):
+    _, controller, recorder_calls, processed, threads = _orchestration_controller(
+        tmp_path, monkeypatch, mode="toggle"
+    )
+    monkeypatch.setattr("speedytype.daemon.wait_until_hotkey_released", lambda *args: ("released", 1.0))
+
+    controller.on_press()
+    controller.on_press()
+    controller._finish_after_release()
+    controller.on_press()
+
+    assert len([thread for thread in threads if not thread.daemon]) == 1
+    assert recorder_calls == ["stop"]
+    assert processed == [tmp_path / "recording-0.wav"]
+
+
+@pytest.mark.parametrize("mode", ["hold", "toggle"])
+def test_deadline_uses_idempotent_stop_path_and_later_events_do_not_reprocess(
+    tmp_path, monkeypatch, mode
+):
+    app, controller, recorder_calls, processed, _ = _orchestration_controller(
+        tmp_path, monkeypatch, mode=mode
+    )
+    events = []
+    controller.show_auto_stopped_signal.connect(lambda: events.append("auto-stopped"))
+    controller.show_processing_signal.connect(lambda: events.append("processing"))
+    monkeypatch.setattr("speedytype.daemon.wait_until_hotkey_released", lambda *args: ("timeout", 100.0))
+
+    controller.on_press()
+    controller._finish_after_release()
+    controller._finish_after_release()
+    controller.on_press()
+    app.processEvents()
+
+    assert recorder_calls == ["stop"]
+    assert processed == [tmp_path / "recording-0.wav"]
+    assert events == ["auto-stopped", "processing"]
+
+
+def test_ticker_emits_elapsed_then_final_minute_countdown_and_times_out(tmp_path, monkeypatch):
+    app, controller, recorder_calls, processed, _ = _orchestration_controller(tmp_path, monkeypatch)
+    elapsed_updates = []
+    countdown_updates = []
+    controller.show_elapsed_signal.connect(elapsed_updates.append)
+    controller.show_countdown_signal.connect(countdown_updates.append)
+    clock = iter([0.0, 1.0, 39.0, 40.0, 100.0])
+    monkeypatch.setattr("speedytype.daemon.time.perf_counter", lambda: next(clock))
+    monkeypatch.setattr("speedytype.daemon.time.sleep", lambda _seconds: None)
+
+    controller.on_press()
+    controller._run_countdown_ticker(0.0)
+
+    assert elapsed_updates == [1, 39]
+    assert countdown_updates == [60, 0]
+    assert recorder_calls == ["stop"]
+    assert processed == [tmp_path / "recording-0.wav"]
+    app.processEvents()
+
+
+def test_timeout_warning_does_not_delay_processing_worker(tmp_path, monkeypatch):
+    app, controller, _, processed, _ = _orchestration_controller(tmp_path, monkeypatch)
+    signal_order = []
+    controller.show_auto_stopped_signal.connect(lambda: signal_order.append("auto-stopped"))
+    controller.show_processing_signal.connect(lambda: signal_order.append("processing"))
+    monkeypatch.setattr("speedytype.daemon.wait_until_hotkey_released", lambda *args: ("timeout", 100.0))
+
+    controller.on_press()
+    controller._finish_after_release()
+
+    assert processed == [tmp_path / "recording-0.wav"]
+    app.processEvents()
+    assert signal_order == ["auto-stopped", "processing"]
+
+
+def test_recording_worker_failure_returns_idle_and_deadline_cannot_process_failed_take(
+    tmp_path, monkeypatch
+):
+    _, controller, recorder_calls, processed, threads = _orchestration_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        controller.recorder,
+        "record_until_stop",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("microphone failed")),
+    )
+    monkeypatch.setattr("speedytype.daemon.wait_until_hotkey_released", lambda *args: ("timeout", 100.0))
+
+    controller.on_press()
+    controller._record_active_path()
+    controller._finish_after_release()
+    controller.on_press()
+
+    assert recorder_calls == []
+    assert processed == []
+    assert len([thread for thread in threads if not thread.daemon]) == 2
+
+
+def test_recording_worker_failure_while_stop_joins_does_not_start_processing(tmp_path, monkeypatch):
+    app, controller, recorder_calls, processed, _ = _orchestration_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        controller.recorder,
+        "record_until_stop",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("microphone failed during stop")),
+    )
+    monkeypatch.setattr("speedytype.daemon.wait_until_hotkey_released", lambda *args: ("timeout", 100.0))
+
+    controller.on_press()
+    controller._active_thread.join = controller._record_active_path
+    controller._finish_after_release()
+
+    assert recorder_calls == ["stop"]
+    assert processed == []
+    app.processEvents()
 
 
 def test_processing_failure_is_sanitized_hides_overlay_and_controller_is_reusable(tmp_path, monkeypatch):

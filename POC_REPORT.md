@@ -677,3 +677,26 @@ reports these files and never auto-submits them. Automated synthetic capture,
 FLAC equivalence/admission, request-selection, and recovery tests are complete.
 The ≥24-minute Windows and macOS real-device release gate, including failure
 injection and paste verification, remains pending and is not claimed here.
+
+## Hold/Toggle daemon orchestration (implemented 2026-07-18)
+
+The production daemon consumes the canonical recording-mode setting through a
+single `RecordingControl` transition owner. **Hold mode** stops on release;
+**Toggle mode** ignores duplicate activation, rearms on release, and stops on
+release and repress. The default recording mode is Hold, mode changes require
+the user to restart the daemon, and `guided-recording` is excluded from the
+daemon-mode contract.
+
+The overlay now receives persistent `MM:SS` elapsed updates followed by the
+final 60-second countdown. Both modes share the same idempotent 25-minute stop
+path. On timeout, the pill-local automatic-stop warning is signaled before the
+processing display, while the processing worker starts immediately rather than
+waiting for the warning's two-second presentation. Recorder failure returns
+the state machine to reusable idle and prevents a later deadline from
+processing that failed take.
+
+Automated fake-recorder/thread/clock coverage exercises Hold, Toggle, deadline
+races, signal ordering, and controller reuse without OS key injection. The
+Windows Toggle real-device gate is pending, and the macOS Toggle real-device
+gate is pending; both also retain the ≥24-minute complete-file recording, paste,
+and injected-failure checks as release blockers.

@@ -174,6 +174,16 @@ speedytype --env /path/to/other.env daemon
 
 ## Long recordings and retained files
 
+The daily daemon supports **Hold mode** and **Toggle mode**, and the default
+recording mode is Hold. Hold mode records only while the configured hotkey is
+held. Toggle mode starts on the first activation; release and repress the
+hotkey to stop. After changing modes in Settings, fully stop and restart the
+daemon. The overlay shows persistent `MM:SS` elapsed time followed by the
+final 60-second countdown. At the limit, a pill-local automatic-stop warning
+appears while processing starts immediately; the limit is a 25-minute stop.
+The `guided-recording` command is excluded from this setting and keeps its
+existing guided-recording behavior.
+
 Settings permits up to **25 minutes** per recording (the default remains 60
 seconds). Capture is always mono 16 kHz **PCM16 WAV**. After stop, SpeedyType
 creates and validates a temporary **lossless FLAC**, requires its actual size
@@ -190,6 +200,9 @@ recording key for encoding and transcription to finish.
 The ≥24-minute real-device release gate is still pending on macOS. During the
 check, verify the menu-bar daemon remains responsive, the final paste succeeds,
 and an injected processing failure preserves the WAV for manual review.
+The macOS Toggle real-device gate is pending and must additionally verify that
+release rearms the shortcut, repress stops exactly once, and timeout cannot
+trigger duplicate processing.
 
 ## Monthly usage and budget
 
@@ -223,6 +236,8 @@ Mac; the final tag is blocked until they pass:
    renders, scrolls, and can set then clear a pending budget.
 15. Set the limit to 25 minutes and complete a ≥24-minute real-device recording;
     verify one complete-file result is pasted and no recording is silently lost.
+16. Select Toggle mode, restart the daemon, then verify first activation starts,
+    release rearms, repress stops once, and timeout cannot process twice.
 
 Also rerun setup twice, confirm the PATH entry is not duplicated, confirm the
 wrapper is executable, and confirm Keychain credentials remain unchanged. The
