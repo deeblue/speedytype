@@ -152,23 +152,23 @@ git commit -m "feat: coordinate recording mode transitions"
 - Produces: `format_recording_elapsed(seconds: int) -> str`, `RecordingPill.show_elapsed(int)`, `show_auto_stopped()`, warning-aware `show_processing()`, and warning-aware `hide_pill()`.
 - Consumed by: Task 4 daemon signals.
 
-- [ ] **Step 1: Write failing formatting and visual-state tests**
+- [x] **Step 1: Write failing formatting and visual-state tests**
 
 Assert `0 -> "00:00"`, `65 -> "01:05"`, `1500 -> "25:00"`; `show_elapsed(65)` stores recording mode/text; countdown supersedes elapsed; `show_auto_stopped()` stores the exact approved text; immediate `show_processing()` remains warning-pending; immediate `hide_pill()` remains visible until the warning timer expires.
 
 Use an injectable `warning_duration_ms=2000` constructor argument and call a focused `_finish_warning()` slot in tests rather than sleeping.
 
-- [ ] **Step 2: Confirm overlay tests fail**
+- [x] **Step 2: Confirm overlay tests fail**
 
 Run: `python -m pytest tests/test_overlay.py -q`
 
 Expected: missing formatter and slots.
 
-- [ ] **Step 3: Implement the pill states**
+- [x] **Step 3: Implement the pill states**
 
 Keep the current bottom-center geometry. In recording mode, reserve the left portion for bars and draw elapsed text on the right. Add `auto_stopped` warning styling with `COUNTDOWN_COLOR`. `show_auto_stopped()` starts a single-shot `QTimer`; `show_processing()` during the warning sets `_processing_pending`; `hide_pill()` sets `_hide_pending`; `_finish_warning()` hides when completion is pending, otherwise enters processing.
 
-- [ ] **Step 4: Run overlay regressions and commit**
+- [x] **Step 4: Run overlay regressions and commit**
 
 Run: `python -m pytest tests/test_overlay.py tests/test_settings_dialog.py -q`
 
