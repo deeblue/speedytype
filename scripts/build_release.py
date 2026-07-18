@@ -14,9 +14,9 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_FILES = {
-    "release/README.md": "README.md",
-    "MAC_SETUP.md": "MAC_SETUP.md",
-    "KNOWN_LIMITATIONS.md": "KNOWN_LIMITATIONS.md",
+    "docs/current/user/README.md": "README.md",
+    "docs/current/user/MAC_SETUP.md": "MAC_SETUP.md",
+    "docs/current/engineering/KNOWN_LIMITATIONS.md": "KNOWN_LIMITATIONS.md",
     "requirements.txt": "requirements.txt",
     "pricing.json": "pricing.json",
     ".env.example": ".env.example",

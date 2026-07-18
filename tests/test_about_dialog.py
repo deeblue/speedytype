@@ -28,3 +28,4 @@ def test_about_dialog_shows_current_config(qapp):
     assert STT_MODEL in all_text
     assert "gemini" in all_text
     assert "gemini-3.1-flash-lite" in all_text
+    assert "KNOWN_LIMITATIONS.md" in all_text
