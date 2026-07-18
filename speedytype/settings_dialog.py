@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from speedytype.audio import list_input_devices
+from speedytype.audio import list_selectable_input_devices
 from speedytype.autostart import install_autostart, query_autostart, uninstall_autostart
 from speedytype.budget_dialog import BudgetDialog
 from speedytype.capacity_widget import BudgetCapacityWidget
@@ -427,7 +427,7 @@ class SettingsDialog(QDialog):
         # the exact device name) corresponds to device_combo item i.
         self._device_values: list[str] = [""]
         self.device_combo.addItem(SYSTEM_DEFAULT_DEVICE_LABEL)
-        for device in list_input_devices():
+        for device in list_selectable_input_devices():
             name = str(device["name"])
             self._device_values.append(name)
             self.device_combo.addItem(name)

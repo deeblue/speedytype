@@ -21,6 +21,11 @@ from speedytype.recording_recovery import create_recording_path, mark_recording
 SAMPLE_RATE = 16000
 CHANNELS = 1
 
+GENERIC_INPUT_DEVICE_NAMES = {
+    "microsoft sound mapper - input",
+    "primary sound capture driver",
+}
+
 
 def list_input_devices() -> list[dict[str, object]]:
     devices = []
@@ -35,6 +40,44 @@ def list_input_devices() -> list[dict[str, object]]:
                     "default_samplerate": device["default_samplerate"],
                 }
             )
+    return devices
+
+
+def _is_generic_input_alias(name: str) -> bool:
+    return name.strip().lower() in GENERIC_INPUT_DEVICE_NAMES
+
+
+def _can_open_input_device(index: int) -> bool:
+    try:
+        sd.check_input_settings(device=index, samplerate=SAMPLE_RATE, channels=CHANNELS)
+    except Exception:
+        return False
+    return True
+
+
+def list_selectable_input_devices() -> list[dict[str, object]]:
+    devices = []
+    seen_names: set[str] = set()
+    for index, device in enumerate(sd.query_devices()):
+        name = str(device["name"])
+        if device["max_input_channels"] <= 0:
+            continue
+        if _is_generic_input_alias(name):
+            continue
+        if not _can_open_input_device(index):
+            continue
+        if name in seen_names:
+            continue
+        seen_names.add(name)
+        devices.append(
+            {
+                "index": index,
+                "name": name,
+                "hostapi": device["hostapi"],
+                "max_input_channels": device["max_input_channels"],
+                "default_samplerate": device["default_samplerate"],
+            }
+        )
     return devices
 
 

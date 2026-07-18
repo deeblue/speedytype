@@ -4,7 +4,6 @@ from dataclasses import replace
 from datetime import datetime
 
 import pytest
-import sounddevice as sd
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
@@ -14,7 +13,7 @@ from PyQt6.QtWidgets import (
     QScrollArea,
 )
 
-from speedytype.audio import list_input_devices
+from speedytype.audio import list_input_devices, list_selectable_input_devices
 from decimal import Decimal
 
 from speedytype.settings import AppSettings, DEFAULT_VOCAB_TERMS, load_settings, save_settings
@@ -758,26 +757,37 @@ def make_config_with_warning(warning=""):
     )
 
 
-def test_device_combo_lists_current_input_devices_matching_sounddevice(qapp, tmp_path):
+def test_device_combo_lists_selectable_input_devices(qapp, tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "speedytype.settings_dialog.list_selectable_input_devices",
+        lambda: [{"name": "Usable USB Mic"}, {"name": "Built-in Microphone"}],
+    )
     settings_path = tmp_path / "settings.json"
     save_settings(settings_path, AppSettings())
     dialog = SettingsDialog(make_config_with_warning(), str(tmp_path / ".env"), str(settings_path))
 
-    expected_names = [SYSTEM_DEFAULT_DEVICE_LABEL] + [str(d["name"]) for d in list_input_devices()]
     actual_names = [dialog.device_combo.itemText(i) for i in range(dialog.device_combo.count())]
 
-    assert actual_names == expected_names
-    # Cross-check directly against the raw sounddevice query too, not just our own wrapper.
-    raw_input_names = [
-        str(d["name"]) for d in sd.query_devices() if d["max_input_channels"] > 0
+    assert actual_names == [
+        SYSTEM_DEFAULT_DEVICE_LABEL,
+        "Usable USB Mic",
+        "Built-in Microphone",
     ]
-    assert actual_names[1:] == raw_input_names
 
 
-def test_device_combo_preselects_saved_device(qapp, tmp_path):
-    real_devices = list_input_devices()
-    assert real_devices, "test machine must have at least one input device"
-    target_name = str(real_devices[0]["name"])
+def test_raw_audio_device_listing_remains_available_for_diagnostics():
+    raw_names = [str(d["name"]) for d in list_input_devices()]
+    selectable_names = [str(d["name"]) for d in list_selectable_input_devices()]
+
+    assert set(selectable_names).issubset(set(raw_names))
+
+
+def test_device_combo_preselects_saved_device(qapp, tmp_path, monkeypatch):
+    target_name = "Usable USB Mic"
+    monkeypatch.setattr(
+        "speedytype.settings_dialog.list_selectable_input_devices",
+        lambda: [{"name": target_name}],
+    )
 
     settings_path = tmp_path / "settings.json"
     save_settings(settings_path, AppSettings(mic_device_name=target_name))
@@ -798,10 +808,12 @@ def test_device_combo_falls_back_to_default_when_saved_device_missing(qapp, tmp_
     assert dialog.device_combo.currentText() == SYSTEM_DEFAULT_DEVICE_LABEL
 
 
-def test_save_persists_chosen_device_name(qapp, tmp_path):
-    real_devices = list_input_devices()
-    assert real_devices, "test machine must have at least one input device"
-    target_name = str(real_devices[0]["name"])
+def test_save_persists_chosen_device_name(qapp, tmp_path, monkeypatch):
+    target_name = "Usable USB Mic"
+    monkeypatch.setattr(
+        "speedytype.settings_dialog.list_selectable_input_devices",
+        lambda: [{"name": target_name}],
+    )
 
     settings_path = tmp_path / "settings.json"
     save_settings(settings_path, AppSettings())
