@@ -102,7 +102,7 @@ git commit -m "feat: configure hold or toggle recording"
 - Produces: `RecordingAction` enum (`START`, `STOP`, `NONE`), `RecordingPhase` enum, and `RecordingControl(mode: str)` with `activate()`, `hotkey_released()`, `timeout()`, `mark_processing()`, `recording_failed()`, `processing_finished()`, and `.phase`.
 - Consumed by: Task 4 `DaemonController`.
 
-- [ ] **Step 1: Write failing state-transition tests**
+- [x] **Step 1: Write failing state-transition tests**
 
 Cover these exact sequences:
 
@@ -119,17 +119,17 @@ assert toggle.timeout() is RecordingAction.NONE         # stop already won
 
 Also test Hold release returns `STOP`, timeout returns `STOP` exactly once in both modes, failure makes later events no-ops, activations during processing are ignored, and `processing_finished()` returns to idle for the next recording.
 
-- [ ] **Step 2: Confirm the new module tests fail**
+- [x] **Step 2: Confirm the new module tests fail**
 
 Run: `python -m pytest tests/test_recording_control.py -q`
 
 Expected: import failure because `recording_control.py` does not exist.
 
-- [ ] **Step 3: Implement the locked state machine**
+- [x] **Step 3: Implement the locked state machine**
 
 Use one `threading.Lock`; every public transition acquires it. Exact phases are `IDLE`, `RECORDING_UNARMED`, `RECORDING_ARMED`, `STOPPING`, and `PROCESSING`. Hold starts directly in `RECORDING_ARMED`; Toggle starts in `RECORDING_UNARMED`. A successful stop transition moves to `STOPPING`; `mark_processing()` (also required) moves only `STOPPING -> PROCESSING`.
 
-- [ ] **Step 4: Run Task 2 tests and commit**
+- [x] **Step 4: Run Task 2 tests and commit**
 
 Run: `python -m pytest tests/test_recording_control.py -q`
 
