@@ -233,3 +233,27 @@ def test_release_duration_is_measured_from_raw_activation(tmp_path, monkeypatch)
     assert processed == []  # controlled processing thread has not executed
     assert session.path == path
     assert controller._recording_control.phase is RecordingPhase.PROCESSING
+
+
+def test_toggle_stop_worker_setup_failure_rearms_recording(tmp_path, monkeypatch):
+    controller, _, recorder_calls, processed, _ = _controller(
+        tmp_path, monkeypatch, mode="toggle"
+    )
+    controller.on_press()
+    session = controller._active_session
+    start = session.candidate
+    controller._resolve_candidate(session, start, key_active=True, held_seconds=0.08)
+    controller._release_candidate(session, start, held_seconds=0.1)
+
+    monkeypatch.setattr(
+        "speedytype.daemon.threading.Thread",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("thread unavailable")),
+    )
+
+    controller.on_press()
+
+    assert controller._active_session is session
+    assert controller._recording_control.phase is RecordingPhase.RECORDING_ARMED
+    assert session.candidate is None
+    assert recorder_calls == []
+    assert processed == []

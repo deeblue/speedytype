@@ -56,9 +56,10 @@ def test_rejection_record_has_exact_privacy_safe_fields(tmp_path):
     assert ".wav" not in line
 
 
-def test_rejection_logging_is_best_effort(tmp_path):
+def test_rejection_logging_creates_manual_daemon_log_directory(tmp_path):
+    log_path = tmp_path / "missing" / "speedytype_daemon.log"
     append_rejection_record(
-        tmp_path / "missing" / "speedytype_daemon.log",
+        log_path,
         platform="darwin",
         mode="toggle",
         hotkey="f9",
@@ -66,6 +67,9 @@ def test_rejection_logging_is_best_effort(tmp_path):
         held_ms=10,
         cleanup="not-applicable",
     )
+
+    assert log_path.is_file()
+    assert '"platform":"darwin"' in log_path.read_text(encoding="utf-8")
 
 
 def test_concurrent_rejections_append_complete_individual_lines(tmp_path):

@@ -39,7 +39,9 @@ def append_rejection_record(
     )
     try:
         with _LOG_LOCK:
-            with Path(log_path).open("a", encoding="utf-8", newline="\n") as stream:
+            target = Path(log_path)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("a", encoding="utf-8", newline="\n") as stream:
                 stream.write(line + "\n")
                 stream.flush()
     except OSError:

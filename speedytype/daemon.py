@@ -158,18 +158,30 @@ class DaemonController(QObject):
                         ) is RecordingAction.STOP:
                             session_to_finish = session
                     else:
-                        session.stop_thread = threading.Thread(
-                            target=self._finish_after_release,
-                            args=(session, candidate),
-                            daemon=True,
-                        )
-                        session.confirmation_thread = threading.Thread(
-                            target=self._confirm_candidate,
-                            args=(session, candidate),
-                            daemon=True,
-                        )
-                        session.stop_thread.start()
-                        session.confirmation_thread.start()
+                        try:
+                            session.stop_thread = threading.Thread(
+                                target=self._finish_after_release,
+                                args=(session, candidate),
+                                daemon=True,
+                            )
+                            session.confirmation_thread = threading.Thread(
+                                target=self._confirm_candidate,
+                                args=(session, candidate),
+                                daemon=True,
+                            )
+                            session.stop_thread.start()
+                            session.confirmation_thread.start()
+                        except Exception as exc:
+                            rollback = self._recording_control.hotkey_released(
+                                candidate.token
+                            )
+                            if rollback is RecordingAction.CANCEL_STOP:
+                                session.candidate = None
+                            safe_print(
+                                "Hotkey qualification failed "
+                                f"({type(exc).__name__}); recording continues.",
+                                flush=True,
+                            )
             elif action is RecordingAction.BEGIN_START and activation_token is not None:
                 path = None
                 session = None
