@@ -366,7 +366,7 @@ def test_settings_content_scrolls_to_keep_actions_reachable_on_short_screens(
     settings_path = tmp_path / "settings.json"
     save_settings(settings_path, AppSettings())
     monkeypatch.setattr(
-        "speedytype.settings_dialog.list_input_devices",
+        "speedytype.settings_dialog.list_selectable_input_devices",
         lambda: [{"name": "Very long audio input device " + "X" * 300}],
     )
 
