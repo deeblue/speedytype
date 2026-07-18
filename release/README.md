@@ -119,12 +119,13 @@ reports retained paths but never uploads them automatically. Post-stop
 encoding and complete-file transcription can take visible time.
 
 The automated suite validates file/sample conservation and admission rules.
-A real-device release gate remains pending: complete a recording of at least
-24 minutes on both Windows and macOS, verify successful paste and retained-file
-behavior under an injected failure, before publishing the release.
-The Windows Toggle real-device gate is pending, and the macOS Toggle
-real-device gate is pending; each must cover start, release/rearm, repress to
-stop, the 25-minute automatic stop, visible pill transitions, and one paste.
+Windows simulation/automation is completion evidence and is not a hardware
+release gate. macOS is the only hardware release gate. It covers permissions,
+Hold/Toggle start, release/rearm, repress to stop, bounded-duration
+automatic-stop behavior, visible pill transitions, menu-bar/Dock behavior,
+shutdown, paste, and retained failure recovery. No 24- or 25-minute real
+recording is required on either platform. Sudden-power-loss survival is not
+claimed and is not a separate release gate.
 
 ## Monthly usage and budget
 

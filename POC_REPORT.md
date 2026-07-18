@@ -675,8 +675,10 @@ also passes the 25-minute and 23 MiB guards. All other processing failures keep
 the original WAV and mark its sidecar `failed-retained`; startup discovery only
 reports these files and never auto-submits them. Automated synthetic capture,
 FLAC equivalence/admission, request-selection, and recovery tests are complete.
-The ≥24-minute Windows and macOS real-device release gate, including failure
-injection and paste verification, remains pending and is not claimed here.
+Windows simulation/automation is completion evidence and is not a hardware
+release gate. macOS is the only hardware release gate, covering native
+permissions/UI/hotkey behavior, paste, shutdown, and retained failure recovery.
+No 24- or 25-minute real recording is required on either platform.
 
 ## Hold/Toggle daemon orchestration (implemented 2026-07-18)
 
@@ -696,10 +698,10 @@ the state machine to reusable idle and prevents a later deadline from
 processing that failed take.
 
 Automated fake-recorder/thread/clock coverage exercises Hold, Toggle, deadline
-races, signal ordering, and controller reuse without OS key injection. The
-Windows Toggle real-device gate is pending, and the macOS Toggle real-device
-gate is pending; both also retain the ≥24-minute complete-file recording, paste,
-and injected-failure checks as release blockers.
+races, signal ordering, controller reuse, and Windows platform behavior without
+OS key injection. macOS is the only hardware release gate; it retains native
+permission, menu-bar/Dock, Toggle, bounded-duration automatic-stop, paste,
+shutdown, and injected-failure checks. No minimum live duration is required.
 
 ## Retained-recording file durability (implemented 2026-07-18)
 
@@ -710,5 +712,4 @@ exists; synthetic sinks with no file remain supported. These changes strengthen
 process/OS crash durability without making a broader power-loss guarantee.
 
 Windows directory fsync is not portable and is intentionally not attempted.
-The sudden-power-loss real-device gate remains pending on Windows and macOS;
-no real sudden-power survival result is claimed.
+Sudden-power-loss survival is not claimed and is not a separate release gate.

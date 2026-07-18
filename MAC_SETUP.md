@@ -197,12 +197,14 @@ application-data recordings directory. Daemon startup lists these paths; it
 does not retry or upload them automatically. Allow time after releasing the
 recording key for encoding and transcription to finish.
 
-The ≥24-minute real-device release gate is still pending on macOS. During the
-check, verify the menu-bar daemon remains responsive, the final paste succeeds,
-and an injected processing failure preserves the WAV for manual review.
-The macOS Toggle real-device gate is pending and must additionally verify that
-release rearms the shortcut, repress stops exactly once, and timeout cannot
-trigger duplicate processing.
+Windows simulation/automation is completion evidence and is not a hardware
+release gate. macOS is the only hardware release gate. No 24- or 25-minute real
+recording is required on either platform. The macOS check must verify that the
+menu-bar daemon remains responsive, the final paste succeeds, an injected
+processing failure preserves the WAV, release rearms the Toggle shortcut,
+repress stops exactly once, and bounded-duration automatic-stop cannot trigger
+duplicate processing. Sudden-power-loss survival is not claimed and is not a
+separate release gate.
 
 ## Monthly usage and budget
 
@@ -234,10 +236,10 @@ Mac; the final tag is blocked until they pass:
 13. Confirm no new Python `.ips` report appeared during the test period.
 14. Open Settings at 520 pixels or wider and confirm the monthly capacity card
    renders, scrolls, and can set then clear a pending budget.
-15. Set the limit to 25 minutes and complete a ≥24-minute real-device recording;
-    verify one complete-file result is pasted and no recording is silently lost.
-16. Select Toggle mode, restart the daemon, then verify first activation starts,
-    release rearms, repress stops once, and timeout cannot process twice.
+15. Select Toggle mode, restart the daemon, then verify first activation starts,
+    release rearms, repress stops once, and a bounded-duration automatic-stop
+    cannot process twice. Verify failure recovery preserves the WAV for manual
+    review; no 24- or 25-minute live recording is required.
 
 Also rerun setup twice, confirm the PATH entry is not duplicated, confirm the
 wrapper is executable, and confirm Keychain credentials remain unchanged. The

@@ -89,7 +89,7 @@ def test_macos_docs_describe_native_menu_bar_permissions_and_release_gate():
     assert "mac_log_002.rtf" in report
 
 
-def test_release_docs_describe_complete_file_flac_lifecycle_and_pending_gates():
+def test_release_docs_describe_complete_file_flac_lifecycle_and_macos_only_gate():
     release = (ROOT / "release" / "README.md").read_text(encoding="utf-8")
     setup = (ROOT / "MAC_SETUP.md").read_text(encoding="utf-8")
     limitations = (ROOT / "KNOWN_LIMITATIONS.md").read_text(encoding="utf-8")
@@ -104,7 +104,8 @@ def test_release_docs_describe_complete_file_flac_lifecycle_and_pending_gates():
         "response_format=json",
         "short-WAV fallback",
         "failed-retained",
-        "real-device release gate",
+        "macOS is the only hardware release gate",
+        "Windows simulation/automation",
         "Windows",
         "macOS",
     )
@@ -114,7 +115,7 @@ def test_release_docs_describe_complete_file_flac_lifecycle_and_pending_gates():
     assert "25 minutes" in setup
 
 
-def test_release_docs_describe_hold_toggle_overlay_timeout_and_pending_device_gates():
+def test_release_docs_describe_hold_toggle_overlay_timeout_and_macos_gate():
     release = (ROOT / "release" / "README.md").read_text(encoding="utf-8")
     setup = (ROOT / "MAC_SETUP.md").read_text(encoding="utf-8")
     limitations = (ROOT / "KNOWN_LIMITATIONS.md").read_text(encoding="utf-8")
@@ -132,8 +133,8 @@ def test_release_docs_describe_hold_toggle_overlay_timeout_and_pending_device_ga
         "25-minute stop",
         "restart the daemon",
         "guided-recording is excluded",
-        "Windows Toggle real-device gate is pending",
-        "macOS Toggle real-device gate is pending",
+        "macOS is the only hardware release gate",
+        "bounded-duration automatic-stop",
     )
     for text in required:
         assert text in combined
@@ -142,4 +143,8 @@ def test_release_docs_describe_hold_toggle_overlay_timeout_and_pending_device_ga
     assert "Hold mode" in setup and "Toggle mode" in setup
     assert "release rearms; next press stops" in report
     assert "process/OS crash durability" in combined
-    assert "sudden-power-loss real-device gate remains pending" in combined
+    assert "No 24- or 25-minute real recording is required" in combined
+    assert "Sudden-power-loss survival is not claimed and is not a separate release gate" in combined
+    assert "Windows Toggle real-device gate is pending" not in combined
+    assert "≥24-minute" not in combined
+    assert "sudden-power-loss real-device gate" not in combined

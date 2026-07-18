@@ -34,7 +34,7 @@
 - Consumes: approved release-gate language in the two design specs.
 - Produces: one consistent macOS-only hardware gate contract checked by pytest.
 
-- [ ] **Step 1: Write failing documentation-contract tests**
+- [x] **Step 1: Write failing documentation-contract tests**
 
 Replace obsolete assertions with exact positive and negative contracts:
 
@@ -50,17 +50,17 @@ assert "sudden-power-loss real-device gate" not in combined
 
 Retain assertions for macOS permissions, Hold/Toggle, menu-bar/Dock, bounded automatic stop, shutdown, retained WAV recovery, and the statement that real-Mac acceptance remains pending.
 
-- [ ] **Step 2: Run the release-doc tests and confirm RED**
+- [x] **Step 2: Run the release-doc tests and confirm RED**
 
 Run: `python -m pytest tests/test_release_docs.py -q`
 
 Expected: failures identify obsolete Windows/≥24-minute/sudden-power gate text and missing macOS-only language.
 
-- [ ] **Step 3: Update both implementation plans**
+- [x] **Step 3: Update both implementation plans**
 
 Change only gate statements, preserving completed implementation checkboxes and historical test commands. State Windows automation is completion evidence, remove all ≥24-minute requirements, and make the real macOS integration checklist the only pending hardware gate.
 
-- [ ] **Step 4: Update release, Mac, limitations, and POC documents**
+- [x] **Step 4: Update release, Mac, limitations, and POC documents**
 
 Use these exact relationships everywhere:
 
@@ -71,7 +71,7 @@ Use these exact relationships everywhere:
 
 In `MAC_SETUP.md`, remove the ≥24-minute checklist item and retain a bounded-duration automatic-stop check. Preserve all permission, zsh, unzip, executable-bit, Keychain, menu-bar, no-Dock-icon, crash-report, Toggle, restart, and retained-WAV checks.
 
-- [ ] **Step 5: Run focused and broad verification**
+- [x] **Step 5: Run focused and broad verification**
 
 ```powershell
 python -m pytest tests/test_release_docs.py -q
@@ -82,7 +82,7 @@ git diff --check
 
 Expected: every command exits 0; no production Python file differs from the pre-task commit.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add docs/superpowers/plans/2026-07-18-full-file-flac-long-recording.md docs/superpowers/plans/2026-07-18-toggle-recording-overlay.md release/README.md MAC_SETUP.md KNOWN_LIMITATIONS.md POC_REPORT.md tests/test_release_docs.py docs/superpowers/plans/2026-07-18-macos-only-release-gate.md

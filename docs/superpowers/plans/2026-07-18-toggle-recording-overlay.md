@@ -17,7 +17,9 @@
 - Normal overlay shows elapsed `MM:SS`; the final 60 seconds show remaining time.
 - Automatic stop renders `已達錄音上限，自動停止` at the pill location for at least two seconds while processing starts immediately.
 - Guided recording remains Hold-only; do not change platform hotkey backends or the complete-file FLAC pipeline.
-- Real Windows/macOS long-recording checks remain release gates and must not be reported as automated proof.
+- Windows simulation/automation is completion evidence and is not a hardware
+  release gate; real macOS integration is the only pending hardware gate and
+  has no minimum live-recording duration.
 
 ---
 
@@ -195,7 +197,8 @@ git commit -m "feat: show persistent recording time and timeout"
 
 **Interfaces:**
 - Consumes: Task 1 `AppConfig.recording_mode`, Task 2 `RecordingControl`, and Task 3 pill slots.
-- Produces: one daemon start/rearm/stop/deadline path and documented real-device gates.
+- Produces: one daemon start/rearm/stop/deadline path and one documented macOS
+  hardware release gate.
 
 - [x] **Step 1: Write failing daemon orchestration tests**
 
@@ -246,7 +249,7 @@ Expected: all pass and no duplicate processing calls.
 
 - [x] **Step 5: Write failing release-document tests, then update docs**
 
-Require documentation to state both recording modes, default Hold, Toggle release/repress behavior, persistent `MM:SS`, final 60-second countdown, pill-local automatic-stop warning, 25-minute stop, daemon restart requirement, guided-recording exclusion, and pending Windows/macOS real-device gates. Update the four user/engineering documents without claiming real-hardware completion.
+Require documentation to state both recording modes, default Hold, Toggle release/repress behavior, persistent `MM:SS`, final 60-second countdown, pill-local automatic-stop warning, 25-minute product stop, daemon restart requirement, guided-recording exclusion, Windows simulation completion evidence, and the sole pending macOS hardware gate. Update the four user/engineering documents without claiming real-Mac completion or requiring a minimum live-recording duration.
 
 - [x] **Step 6: Run complete verification**
 
@@ -258,7 +261,9 @@ python -m compileall -q speedytype scripts
 git diff --check
 ```
 
-Expected: every command exits 0. Record real Windows/macOS Toggle and ≥24-minute checks as pending release gates.
+Expected: every command exits 0. Record Windows simulation as completion
+evidence and only real macOS integration as pending; do not require a 24- or
+25-minute live recording.
 
 - [x] **Step 7: Commit**
 

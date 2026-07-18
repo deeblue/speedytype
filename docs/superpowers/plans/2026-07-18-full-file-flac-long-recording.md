@@ -294,7 +294,9 @@ python -m compileall -q speedytype scripts
 git diff --check
 ```
 
-Expected: every command exits 0. Record the real Windows/macOS 24-minute checks as pending release gates.
+Expected: every command exits 0. Windows simulation/automation is completion
+evidence; record only the real macOS integration checklist as the pending
+hardware release gate, with no minimum live-recording duration.
 
 - [x] **Step 6: Commit**
 

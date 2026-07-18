@@ -1,6 +1,6 @@
 # Known Limitations
 
-## Hold/Toggle daemon recording awaits real-device release gates
+## Hold/Toggle daemon recording awaits the macOS hardware release gate
 
 - The daily daemon now supports **Hold mode** and **Toggle mode**; the default
   recording mode is Hold. Toggle starts on first activation, then requires a
@@ -10,9 +10,10 @@
   60-second countdown, and shows a pill-local automatic-stop warning at the
   25-minute stop while processing begins immediately.
 - Automated state-machine and daemon tests cover competing release, activation,
-  timeout, and recorder-failure paths. The Windows Toggle real-device gate is
-  pending, and the macOS Toggle real-device gate is pending. Neither platform's
-  real-hotkey or ≥24-minute result is claimed complete.
+  timeout, recorder-failure, and Windows platform paths. Windows
+  simulation/automation is completion evidence and is not a hardware release
+  gate. macOS is the only hardware release gate. It uses a bounded-duration
+  automatic-stop check; no 24- or 25-minute real recording is required.
 
 ## Recording durability boundary
 
@@ -21,7 +22,7 @@
   closes it. This strengthens process/OS crash durability for retained takes.
 - SpeedyType does not attempt unsupported Windows directory fsync and does not
   claim survival across every storage-controller cache or abrupt power event.
-  The sudden-power-loss real-device gate remains pending on Windows and macOS.
+  Sudden-power-loss survival is not claimed and is not a separate release gate.
 
 ## 0. macOS v0.5.4 native stability changes await real-device acceptance
 
@@ -256,9 +257,9 @@ Three fixes were made and independently re-verified with a fresh 3x-per-case bat
   reports it without automatically retrying an API request.
 - Post-stop encoding and complete-file API latency remain visible. Progressive
   display has not been implemented.
-- The synthetic capture/conservation suite passes, but a ≥24-minute Windows and
-  macOS real-device release gate remains pending. No claim of real-device
-  completion should be made until both checks and failure injection pass.
+- The synthetic capture/conservation and Windows simulation suites pass. macOS
+  is the only hardware release gate, covering failure retention and native UI,
+  permission, hotkey, and shutdown integration without a minimum duration.
 
 ## 20. macOS short-command installation requires real-Mac verification
 
