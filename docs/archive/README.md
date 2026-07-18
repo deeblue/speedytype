@@ -20,5 +20,9 @@ document, the current document is authoritative.
 - [`experiments/macos/`](experiments/macos/) contains preserved real-macOS setup
   and crash logs.
 
+The design and execution record for this organization are preserved as the
+[documentation information architecture design](specs/2026-07-18-documentation-information-architecture-design.md)
+and [documentation information architecture implementation plan](plans/2026-07-18-documentation-information-architecture.md).
+
 For active product behavior, release gates, and next actions, return to the
 [documentation hub](../README.md).

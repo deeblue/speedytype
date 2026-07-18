@@ -31,15 +31,9 @@ def test_canonical_documents_exist_and_legacy_trees_are_absent():
     assert {path.name for path in ROOT.glob("*.md")} == ALLOWED_ROOT_MARKDOWN
 
 
-def test_only_active_migration_docs_remain_in_superpowers():
-    active = ROOT / "docs" / "superpowers"
-    assert {
-        path.relative_to(active).as_posix()
-        for path in active.rglob("*.md")
-    } == {
-        "plans/2026-07-18-documentation-information-architecture.md",
-        "specs/2026-07-18-documentation-information-architecture-design.md",
-    }
+def test_legacy_documentation_trees_are_absent():
+    assert not (ROOT / "docs" / "superpowers").exists()
+    assert not (ROOT / "docs" / "log").exists()
 
 
 def test_current_document_relative_links_resolve():
