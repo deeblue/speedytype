@@ -65,3 +65,42 @@ def test_windows_adapter_preserves_existing_window_behavior():
     _windows_app.activate_window(window)
 
     assert window.calls == ["show", "raise", "activate"]
+
+
+def test_windows_standalone_identity_sets_app_user_model_id(monkeypatch):
+    calls = []
+
+    class FakeShell32:
+        def SetCurrentProcessExplicitAppUserModelID(self, value):
+            calls.append(value)
+            return 0
+
+    class FakeWindll:
+        shell32 = FakeShell32()
+
+    monkeypatch.setattr(_windows_app.ctypes, "windll", FakeWindll(), raising=False)
+
+    _windows_app.configure_standalone_application_identity()
+
+    assert calls == ["SpeedyType.SpeedyType"]
+
+
+def test_windows_standalone_identity_is_best_effort(monkeypatch):
+    class BrokenShell32:
+        def SetCurrentProcessExplicitAppUserModelID(self, value):
+            raise OSError("shell unavailable")
+
+    class FakeWindll:
+        shell32 = BrokenShell32()
+
+    monkeypatch.setattr(_windows_app.ctypes, "windll", FakeWindll(), raising=False)
+
+    assert _windows_app.configure_standalone_application_identity() is None
+
+
+def test_macos_standalone_identity_does_not_force_accessory_policy():
+    appkit = FakeAppKit()
+
+    assert _macos_app.configure_standalone_application_identity(appkit=appkit) is None
+
+    assert appkit.app.calls == []

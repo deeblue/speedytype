@@ -16,6 +16,10 @@ def configure_daemon_application(*, appkit=None) -> None:
     )
 
 
+def configure_standalone_application_identity(*, appkit=None) -> None:
+    return None
+
+
 def activate_window(window, *, appkit=None) -> None:
     window.show()
     window.raise_()

@@ -19,7 +19,16 @@ def test_settings_launcher_uses_non_strict_config_and_selected_env(
     class FakeApplication:
         @staticmethod
         def instance():
-            return object()
+            return None
+
+        def __init__(self, argv):
+            calls.append(("app", argv))
+
+        def setApplicationName(self, name):
+            calls.append(("name", name))
+
+        def setWindowIcon(self, icon):
+            calls.append(("icon", icon))
 
     class FakeDialog:
         def __init__(self, actual_config, actual_env, settings_path):
@@ -30,10 +39,19 @@ def test_settings_launcher_uses_non_strict_config_and_selected_env(
 
     monkeypatch.setattr(launcher, "QApplication", FakeApplication)
     monkeypatch.setattr(launcher, "SettingsDialog", FakeDialog)
+    monkeypatch.setattr(
+        launcher,
+        "configure_standalone_application_identity",
+        lambda: calls.append("identity"),
+    )
+    monkeypatch.setattr(launcher, "build_app_icon", lambda: "icon")
 
     assert launcher.show_settings_dialog(env_path) == 0
-    assert calls == [
-        (env_path, False),
+    assert calls[0:2] == [(env_path, False), "identity"]
+    assert calls[2][0] == "app"
+    assert calls[3:] == [
+        ("name", "SpeedyType"),
+        ("icon", "icon"),
         (config, env_path, None),
         "exec",
     ]

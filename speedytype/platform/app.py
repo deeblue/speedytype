@@ -13,6 +13,16 @@ def configure_daemon_application() -> None:
     return implementation()
 
 
+def configure_standalone_application_identity() -> None:
+    if sys.platform == "darwin":
+        from ._macos_app import configure_standalone_application_identity as implementation
+    elif sys.platform == "win32":
+        from ._windows_app import configure_standalone_application_identity as implementation
+    else:
+        return None
+    return implementation()
+
+
 def activate_window(window) -> None:
     if sys.platform == "darwin":
         from ._macos_app import activate_window as implementation
