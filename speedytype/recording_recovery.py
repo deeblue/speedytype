@@ -98,6 +98,32 @@ def mark_recording(wav_path: Path, state: str, *, error_category: str = "") -> b
     return True
 
 
+def remove_unconfirmed_recording(wav_path: Path) -> bool:
+    """Remove one explicitly owned provisional recording and its sidecar."""
+    wav = Path(wav_path)
+    sidecar = recording_sidecar_path(wav)
+    if not sidecar.is_file():
+        raise ValueError("refusing to remove recording without owned sidecar")
+
+    payload = json.loads(sidecar.read_text(encoding="utf-8"))
+    recorded_path = Path(str(payload.get("wav_path", "")))
+    if recorded_path.resolve() != wav.resolve():
+        raise ValueError("recording sidecar does not own requested WAV")
+    state = str(payload.get("state", ""))
+    if state not in {"capturing", "captured"}:
+        raise ValueError(f"refusing to remove protected recording state: {state}")
+
+    # Remove metadata first and restore it if deleting the WAV fails. This
+    # keeps a failed cleanup discoverable instead of silently orphaning audio.
+    sidecar.unlink()
+    try:
+        wav.unlink(missing_ok=True)
+    except OSError:
+        _write_atomic(sidecar, payload)
+        raise
+    return True
+
+
 def discover_recoverable_recordings(directory: Path | None = None) -> tuple[RecoveryRecord, ...]:
     root = Path(directory) if directory is not None else default_recordings_dir()
     if not root.exists():

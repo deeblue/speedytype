@@ -10,6 +10,7 @@ from speedytype.recording_recovery import (
     discover_recoverable_recordings,
     mark_recording,
     recording_sidecar_path,
+    remove_unconfirmed_recording,
 )
 
 
@@ -92,3 +93,58 @@ def test_discovery_reports_corrupt_sidecar_without_importing_provider_api(tmp_pa
     assert records[0].wav_path == wav
     assert records[0].state == "corrupt"
     assert records[0].metadata_valid is False
+
+
+@pytest.mark.parametrize("state", ["capturing", "captured"])
+def test_remove_unconfirmed_recording_deletes_only_owned_provisional_pair(
+    tmp_path, state
+):
+    wav = create_recording_path(directory=tmp_path)
+    wav.write_bytes(b"wav")
+    if state == "captured":
+        mark_recording(wav, "captured")
+    sidecar = recording_sidecar_path(wav)
+
+    assert remove_unconfirmed_recording(wav) is True
+    assert not wav.exists()
+    assert not sidecar.exists()
+
+
+@pytest.mark.parametrize(
+    "state",
+    ["encoding", "ready", "processing", "failed-retained"],
+)
+def test_remove_unconfirmed_recording_refuses_protected_states(tmp_path, state):
+    wav = create_recording_path(directory=tmp_path)
+    wav.write_bytes(b"valid evidence")
+    mark_recording(wav, "captured")
+    if state == "encoding":
+        mark_recording(wav, "encoding")
+    elif state == "ready":
+        mark_recording(wav, "encoding")
+        mark_recording(wav, "ready")
+    elif state == "processing":
+        mark_recording(wav, "processing")
+    else:
+        mark_recording(wav, "failed-retained", error_category="CaptureError")
+
+    with pytest.raises(ValueError, match="refusing to remove"):
+        remove_unconfirmed_recording(wav)
+
+    assert wav.exists()
+    assert recording_sidecar_path(wav).exists()
+
+
+def test_remove_unconfirmed_recording_refuses_foreign_sidecar(tmp_path):
+    wav = create_recording_path(directory=tmp_path)
+    wav.write_bytes(b"valid evidence")
+    sidecar = recording_sidecar_path(wav)
+    payload = json.loads(sidecar.read_text(encoding="utf-8"))
+    payload["wav_path"] = str((tmp_path / "other.wav").resolve())
+    sidecar.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="does not own"):
+        remove_unconfirmed_recording(wav)
+
+    assert wav.exists()
+    assert sidecar.exists()
