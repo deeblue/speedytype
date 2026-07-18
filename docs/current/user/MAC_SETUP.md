@@ -239,7 +239,8 @@ Mac; the final tag is blocked until they pass:
 9. Save, restart, and make a recording with the new chord.
 10. Complete ten consecutive recording/paste cycles.
 11. Use menu-bar Restart and Quit and confirm no Python process is left behind.
-12. Run standalone `speedytype settings` and capture a chord.
+12. Run standalone `speedytype settings`, confirm no unintended Python icon
+    appears in the Dock, and capture a chord.
 13. Confirm no new Python `.ips` report appeared during the test period.
 14. Open Settings at 520 pixels or wider and confirm the monthly capacity card
    renders, scrolls, and can set then clear a pending budget.
@@ -252,6 +253,18 @@ Mac; the final tag is blocked until they pass:
 17. In Toggle mode, verify a short Toggle start does not begin a visible
     recording, then begin a normal recording and verify a short Toggle stop
     does not stop it. Confirm the normal second press still stops once.
+18. Open the recording-device picker and confirm it lists the system default
+    plus usable input devices, not generic or unopenable endpoints. If diagnosis
+    is needed, compare against `speedytype list-audio-devices`.
+19. Scroll the Settings page with the pointer over the recording-mode and
+    recording-device selectors. Confirm trackpad or mouse-wheel scrolling does
+    not change either selected value.
+20. In Hold mode, record for at least 5 seconds and confirm the recording pill
+    shows elapsed `MM:SS`. In Toggle mode, start recording, wait at least 5
+    seconds, and confirm the pill remains visible with updating elapsed time.
+    Temporarily lower the maximum recording time for test only, then confirm the
+    final countdown and pill-local automatic-stop warning are visible and not
+    clipped.
 
 Also rerun setup twice, confirm the PATH entry is not duplicated, confirm the
 wrapper is executable, and confirm Keychain credentials remain unchanged. The

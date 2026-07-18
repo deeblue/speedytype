@@ -73,10 +73,12 @@ preserved in the [2026-07-18 snapshot](../../archive/reports/KNOWN_LIMITATIONS-2
 
 ## Duplicate recording-device names select the first match
 
-- **Impact:** If multiple host APIs expose the same microphone name, exact-name
-  configuration can select the first enumerated device rather than the intended
-  instance.
+- **Impact:** Settings hides duplicate display names after the first selectable
+  mono 16 kHz input device. If multiple host APIs expose the same microphone
+  name, exact-name configuration can still resolve to the first enumerated
+  matching device rather than the intended instance.
 - **Workaround:** Choose a uniquely named device where possible and verify it in
-  Settings before a long recording.
+  Settings before a long recording. Use `speedytype list-audio-devices` when raw
+  PortAudio evidence is needed.
 - **Removal condition:** Device configuration persists a stable backend/device
   identifier in addition to the display name.

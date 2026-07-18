@@ -106,6 +106,14 @@ speedytype daemon
 The Windows system-tray or macOS menu-bar menu can reopen Settings, restart the
 daemon, show About, or exit.
 
+Settings uses the SpeedyType application identity and icon for standalone and
+daemon-opened windows. The recording-device picker always includes the system
+default option, then lists devices that PortAudio reports as usable with
+SpeedyType's production mono 16 kHz input format. Raw device enumeration remains
+available through `speedytype list-audio-devices` for diagnosis. Combo boxes in
+Settings ignore mouse-wheel and trackpad scroll events, so scrolling the settings
+page does not silently change the recording mode or selected microphone.
+
 ## Daily Commands
 
 ```text

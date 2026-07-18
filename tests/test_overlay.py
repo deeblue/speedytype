@@ -78,3 +78,29 @@ def test_hide_waits_for_auto_stop_warning_to_finish(pill):
     assert pill._hide_pending is False
     assert pill._processing_pending is False
     assert not pill.isVisible()
+
+
+@pytest.mark.parametrize(
+    ("name", "action"),
+    [
+        ("recording_start", lambda widget: widget.show_recording()),
+        ("recording_25min", lambda widget: widget.show_elapsed(1500)),
+        ("countdown_60", lambda widget: widget.show_countdown(60)),
+        ("countdown_0", lambda widget: widget.show_countdown(0)),
+        ("auto_stopped", lambda widget: widget.show_auto_stopped()),
+        ("processing", lambda widget: widget._show_processing_now()),
+    ],
+)
+def test_recording_pill_states_render_nonblank(qapp, pill, name, action):
+    action(pill)
+    qapp.processEvents()
+
+    image = pill.grab().toImage()
+
+    assert not image.isNull(), name
+    colors = {
+        image.pixelColor(x, y).rgba()
+        for x in range(0, image.width(), 8)
+        for y in range(0, image.height(), 8)
+    }
+    assert len(colors) > 1, name
