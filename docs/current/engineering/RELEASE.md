@@ -1,5 +1,9 @@
 # SpeedyType Release Checklist
 
+Current release state: [STATUS.md](../STATUS.md)
+
+Remaining limitations: [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md)
+
 Release tags are immutable markers of verified `master` commits.
 Never move or force-update an existing release tag. Investigate and
 deliberately correct a mistaken release instead.
