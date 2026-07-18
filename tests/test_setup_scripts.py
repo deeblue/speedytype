@@ -87,7 +87,9 @@ def test_macos_dependencies_use_pyobjc_and_remove_pynput():
 
 
 def test_mac_setup_documentation_has_python_313_recovery_flow():
-    content = (ROOT / "MAC_SETUP.md").read_text(encoding="utf-8")
+    content = (
+        ROOT / "docs" / "current" / "user" / "MAC_SETUP.md"
+    ).read_text(encoding="utf-8")
     required = (
         "Python 3.13 or newer",
         "python3 --version",

@@ -2,10 +2,20 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
+USER_README = ROOT / "docs" / "current" / "user" / "README.md"
+MAC_SETUP = ROOT / "docs" / "current" / "user" / "MAC_SETUP.md"
+LIMITATIONS = (
+    ROOT / "docs" / "current" / "engineering" / "KNOWN_LIMITATIONS.md"
+)
+RELEASE = ROOT / "docs" / "current" / "engineering" / "RELEASE.md"
+STATUS = ROOT / "docs" / "current" / "STATUS.md"
+ARCHIVED_POC_REPORT = (
+    ROOT / "docs" / "archive" / "reports" / "POC_REPORT.md"
+)
 
 
 def test_release_readme_documents_automatic_and_manual_installation():
-    content = (ROOT / "release" / "README.md").read_text(encoding="utf-8")
+    content = USER_README.read_text(encoding="utf-8")
     required = (
         "scripts/setup_windows.ps1",
         "scripts/setup_mac.sh",
@@ -19,7 +29,7 @@ def test_release_readme_documents_automatic_and_manual_installation():
 
 
 def test_release_readme_documents_keyring_usage_and_daily_commands():
-    content = (ROOT / "release" / "README.md").read_text(encoding="utf-8")
+    content = USER_README.read_text(encoding="utf-8")
     assert "paste" in content
     assert "masked" in content
     required = (
@@ -49,7 +59,7 @@ def test_root_readme_distinguishes_development_tree_from_release():
 
 
 def test_release_checklist_documents_verified_annotated_tag_workflow():
-    content = (ROOT / "RELEASE.md").read_text(encoding="utf-8")
+    content = RELEASE.read_text(encoding="utf-8")
     required = (
         'VERSION = "0.5.3"',
         'BUILD_DATE = "2026-07-16"',
@@ -66,10 +76,10 @@ def test_release_checklist_documents_verified_annotated_tag_workflow():
 
 
 def test_macos_docs_describe_native_menu_bar_permissions_and_release_gate():
-    setup = (ROOT / "MAC_SETUP.md").read_text(encoding="utf-8")
-    release = (ROOT / "release" / "README.md").read_text(encoding="utf-8")
-    limitations = (ROOT / "KNOWN_LIMITATIONS.md").read_text(encoding="utf-8")
-    report = (ROOT / "POC_REPORT.md").read_text(encoding="utf-8")
+    setup = MAC_SETUP.read_text(encoding="utf-8")
+    release = USER_README.read_text(encoding="utf-8")
+    limitations = LIMITATIONS.read_text(encoding="utf-8")
+    report = ARCHIVED_POC_REPORT.read_text(encoding="utf-8")
 
     required_setup = (
         "menu-bar icon",
@@ -90,10 +100,10 @@ def test_macos_docs_describe_native_menu_bar_permissions_and_release_gate():
 
 
 def test_release_docs_describe_complete_file_flac_lifecycle_and_macos_only_gate():
-    release = (ROOT / "release" / "README.md").read_text(encoding="utf-8")
-    setup = (ROOT / "MAC_SETUP.md").read_text(encoding="utf-8")
-    limitations = (ROOT / "KNOWN_LIMITATIONS.md").read_text(encoding="utf-8")
-    report = (ROOT / "POC_REPORT.md").read_text(encoding="utf-8")
+    release = USER_README.read_text(encoding="utf-8")
+    setup = MAC_SETUP.read_text(encoding="utf-8")
+    limitations = LIMITATIONS.read_text(encoding="utf-8")
+    report = ARCHIVED_POC_REPORT.read_text(encoding="utf-8")
     combined = "\n".join((release, setup, limitations, report))
 
     required = (
@@ -116,10 +126,10 @@ def test_release_docs_describe_complete_file_flac_lifecycle_and_macos_only_gate(
 
 
 def test_release_docs_describe_hold_toggle_overlay_timeout_and_macos_gate():
-    release = (ROOT / "release" / "README.md").read_text(encoding="utf-8")
-    setup = (ROOT / "MAC_SETUP.md").read_text(encoding="utf-8")
-    limitations = (ROOT / "KNOWN_LIMITATIONS.md").read_text(encoding="utf-8")
-    report = (ROOT / "POC_REPORT.md").read_text(encoding="utf-8")
+    release = USER_README.read_text(encoding="utf-8")
+    setup = MAC_SETUP.read_text(encoding="utf-8")
+    limitations = LIMITATIONS.read_text(encoding="utf-8")
+    report = ARCHIVED_POC_REPORT.read_text(encoding="utf-8")
     combined = "\n".join((release, setup, limitations, report))
 
     required = (

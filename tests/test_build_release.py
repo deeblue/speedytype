@@ -95,7 +95,9 @@ def test_archive_is_reproducible_across_mtime_and_checkout_line_endings(
     _copy_release_inputs(first_root)
     _copy_release_inputs(second_root)
 
-    second_readme = second_root / "release" / "README.md"
+    second_readme = (
+        second_root / "docs" / "current" / "user" / "README.md"
+    )
     readme_bytes = second_readme.read_bytes().replace(b"\r\n", b"\n")
     second_readme.write_bytes(
         readme_bytes.replace(b"\n", b"\r\n")
