@@ -837,3 +837,43 @@ def test_save_persists_system_default_as_empty_string(qapp, tmp_path):
 
     saved = json.loads(settings_path.read_text(encoding="utf-8"))
     assert saved["mic_device_name"] == ""
+
+
+def test_device_combo_ignores_wheel_events(qapp, tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "speedytype.settings_dialog.list_selectable_input_devices",
+        lambda: [{"name": "Mic A"}, {"name": "Mic B"}],
+    )
+    dialog = SettingsDialog(make_config(), tmp_path / ".env", tmp_path / "settings.json")
+    dialog.device_combo.setCurrentIndex(1)
+
+    class FakeWheelEvent:
+        def __init__(self):
+            self.ignored = False
+
+        def ignore(self):
+            self.ignored = True
+
+    event = FakeWheelEvent()
+    dialog.device_combo.wheelEvent(event)
+
+    assert event.ignored is True
+    assert dialog.device_combo.currentIndex() == 1
+
+
+def test_recording_mode_combo_ignores_wheel_events(qapp, tmp_path):
+    dialog = SettingsDialog(make_config(), tmp_path / ".env", tmp_path / "settings.json")
+    dialog.recording_mode_combo.setCurrentIndex(0)
+
+    class FakeWheelEvent:
+        def __init__(self):
+            self.ignored = False
+
+        def ignore(self):
+            self.ignored = True
+
+    event = FakeWheelEvent()
+    dialog.recording_mode_combo.wheelEvent(event)
+
+    assert event.ignored is True
+    assert dialog.recording_mode_combo.currentIndex() == 0

@@ -109,6 +109,11 @@ class HotkeyCaptureSignal(QObject):
     captured = pyqtSignal(str)
 
 
+class NoWheelComboBox(QComboBox):
+    def wheelEvent(self, event) -> None:  # noqa: N802
+        event.ignore()
+
+
 class MaskedKeyField(QWidget):
     """One API key row: masked-by-default value, reveal/hide toggle, and a
     minimal-cost test-connection button using whatever is currently in the
@@ -259,7 +264,7 @@ class SettingsDialog(QDialog):
         group = QGroupBox("錄音模式")
         group_layout = QVBoxLayout(group)
 
-        self.recording_mode_combo = QComboBox()
+        self.recording_mode_combo = NoWheelComboBox()
         self.recording_mode_combo.addItem("按住錄音，放開停止", "hold")
         self.recording_mode_combo.addItem("按一下開始，再按一下停止", "toggle")
         self.recording_mode_combo.setCurrentIndex(
@@ -422,7 +427,7 @@ class SettingsDialog(QDialog):
             warning_label.setStyleSheet("color: #cc4444;")
             group_layout.addWidget(warning_label)
 
-        self.device_combo = QComboBox()
+        self.device_combo = NoWheelComboBox()
         # Parallel list: index i's stored value ("" for system default, else
         # the exact device name) corresponds to device_combo item i.
         self._device_values: list[str] = [""]
