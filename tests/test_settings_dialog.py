@@ -8,6 +8,7 @@ import sounddevice as sd
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
+    QLabel,
     QLineEdit,
     QPushButton,
     QScrollArea,
@@ -438,6 +439,33 @@ def test_recording_slider_caps_and_labels_twenty_five_minutes(qapp, tmp_path):
     assert dialog.slider.maximum() == 1500
     assert dialog.slider.value() == 1500
     assert dialog.slider_label.text() == "25 分鐘"
+
+
+def test_recording_mode_control_lists_options_loads_toggle_and_shows_restart_note(qapp, tmp_path):
+    settings_path = tmp_path / "settings.json"
+    save_settings(settings_path, AppSettings(recording_mode="toggle"))
+
+    dialog = SettingsDialog(make_config(), tmp_path / ".env", settings_path)
+
+    assert [
+        dialog.recording_mode_combo.itemText(index)
+        for index in range(dialog.recording_mode_combo.count())
+    ] == ["按住錄音，放開停止", "按一下開始，再按一下停止"]
+    assert dialog.recording_mode_combo.currentData() == "toggle"
+    labels = [label.text() for label in dialog.recording_mode_group.findChildren(QLabel)]
+    assert any("重新啟動 daemon" in text for text in labels)
+
+
+def test_save_recording_mode_uses_canonical_combo_data(qapp, tmp_path):
+    settings_path = tmp_path / "settings.json"
+    save_settings(settings_path, AppSettings())
+    dialog = SettingsDialog(make_config(), tmp_path / ".env", settings_path)
+
+    toggle_index = dialog.recording_mode_combo.findData("toggle")
+    dialog.recording_mode_combo.setCurrentIndex(toggle_index)
+    dialog._save()
+
+    assert json.loads(settings_path.read_text(encoding="utf-8"))["recording_mode"] == "toggle"
 
 
 def test_vocab_add_remove_reset(qapp, tmp_path):

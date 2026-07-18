@@ -2,6 +2,7 @@ import json
 from decimal import Decimal
 
 import pytest
+import speedytype.settings as settings_module
 
 from speedytype.settings import (
     AppSettings,
@@ -14,6 +15,40 @@ from speedytype.settings import (
     load_settings,
     save_settings,
 )
+
+
+def test_recording_mode_defaults_to_hold():
+    assert settings_module.DEFAULT_RECORDING_MODE == "hold"
+    assert AppSettings.default().recording_mode == "hold"
+
+
+def test_toggle_recording_mode_roundtrips(tmp_path):
+    settings_path = tmp_path / "settings.json"
+    save_settings(settings_path, AppSettings(recording_mode="toggle"))
+
+    loaded = load_settings(settings_path)
+
+    assert loaded.recording_mode == "toggle"
+    assert json.loads(settings_path.read_text(encoding="utf-8"))["recording_mode"] == "toggle"
+
+
+def test_direct_save_rejects_unsupported_recording_mode(tmp_path):
+    settings_path = tmp_path / "settings.json"
+
+    with pytest.raises(ValueError, match="recording_mode"):
+        save_settings(settings_path, AppSettings(recording_mode="bad"))
+
+    assert not settings_path.exists()
+
+
+def test_invalid_recording_mode_falls_back_to_hold_with_warning(tmp_path):
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text('{"recording_mode":"bad"}', encoding="utf-8")
+
+    loaded = load_settings(settings_path)
+
+    assert loaded.recording_mode == "hold"
+    assert any("錄音模式" in item for item in loaded.load_warnings)
 
 
 def test_max_record_limit_is_exactly_twenty_five_minutes():

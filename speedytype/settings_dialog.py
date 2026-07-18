@@ -209,6 +209,8 @@ class SettingsDialog(QDialog):
         self.settings_scroll_area.setWidget(scroll_contents)
 
         settings_layout.addWidget(self._build_record_seconds_group())
+        self.recording_mode_group = self._build_recording_mode_group()
+        settings_layout.addWidget(self.recording_mode_group)
         settings_layout.addWidget(self._build_hotkey_group())
         settings_layout.addWidget(self._build_device_group())
         settings_layout.addWidget(self._build_vocab_group())
@@ -250,6 +252,21 @@ class SettingsDialog(QDialog):
 
         group_layout.addWidget(self.slider)
         group_layout.addWidget(self.slider_label)
+        group_layout.addWidget(self._restart_note())
+        return group
+
+    def _build_recording_mode_group(self) -> QGroupBox:
+        group = QGroupBox("錄音模式")
+        group_layout = QVBoxLayout(group)
+
+        self.recording_mode_combo = QComboBox()
+        self.recording_mode_combo.addItem("按住錄音，放開停止", "hold")
+        self.recording_mode_combo.addItem("按一下開始，再按一下停止", "toggle")
+        self.recording_mode_combo.setCurrentIndex(
+            self.recording_mode_combo.findData(self._settings.recording_mode)
+        )
+
+        group_layout.addWidget(self.recording_mode_combo)
         group_layout.addWidget(self._restart_note())
         return group
 
@@ -529,6 +546,7 @@ class SettingsDialog(QDialog):
         chosen_device_name = self._device_values[self.device_combo.currentIndex()]
         new_settings = AppSettings(
             max_record_seconds=float(self.slider.value()),
+            recording_mode=self.recording_mode_combo.currentData(),
             hotkey_combo=list(self._pending_hotkey_combo),
             vocab_terms=list(self._vocab_terms),
             mic_device_name=chosen_device_name,

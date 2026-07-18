@@ -36,6 +36,7 @@ class AppConfig:
     llm_thinking_type: str = ""
     llm_disambiguation_hints: str = "on"
     max_record_seconds: float = 60.0
+    recording_mode: str = "hold"
     latency_log_path: Path = field(default_factory=default_latency_log_path)
     clipboard_restore_delay_seconds: float = 0.3
     hybrid_transcription_enabled: bool = False
@@ -142,6 +143,7 @@ def load_config(
         llm_thinking_type=get("LLM_THINKING_TYPE"),
         llm_disambiguation_hints=get("LLM_DISAMBIGUATION_HINTS", "on") or "on",
         max_record_seconds=settings.max_record_seconds,
+        recording_mode=settings.recording_mode,
         latency_log_path=Path(get("LATENCY_LOG_PATH", str(default_latency_log_path())) or default_latency_log_path()),
         clipboard_restore_delay_seconds=float(get("CLIPBOARD_RESTORE_DELAY_SECONDS", "0.3") or "0.3"),
     )

@@ -73,12 +73,18 @@ def test_load_config_reads_behavior_settings_from_settings_json(tmp_path: Path):
     settings_file = tmp_path / "settings.json"
     save_settings(
         settings_file,
-        AppSettings(max_record_seconds=180.0, hotkey_combo=["ctrl", "alt", "space"], vocab_terms=["BIOS", "TPE 團隊"]),
+        AppSettings(
+            max_record_seconds=180.0,
+            recording_mode="toggle",
+            hotkey_combo=["ctrl", "alt", "space"],
+            vocab_terms=["BIOS", "TPE 團隊"],
+        ),
     )
 
     config = load_config(env_file, settings_path=settings_file)
 
     assert config.max_record_seconds == 180.0
+    assert config.recording_mode == "toggle"
     assert config.hotkey == "ctrl+alt+space"
     assert config.whisper_vocab_bias == "BIOS, TPE 團隊"
 
