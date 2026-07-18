@@ -19,106 +19,158 @@ def _race(*events):
         return list(executor.map(run, events))
 
 
-def test_hold_activation_starts_armed_and_release_stops():
+def _confirmed(control: RecordingControl) -> int:
+    action, token = control.begin_activation()
+    assert action is RecordingAction.BEGIN_START
+    assert token is not None
+    assert control.confirm_activation(token) is RecordingAction.CONFIRM_START
+    return token
+
+
+def test_hold_short_activation_is_pending_then_cancelled():
     control = RecordingControl("hold")
 
-    assert control.activate() is RecordingAction.START
+    action, token = control.begin_activation()
+
+    assert action is RecordingAction.BEGIN_START
+    assert token is not None
+    assert control.phase is RecordingPhase.PENDING_START
+    assert control.hotkey_released(token) is RecordingAction.CANCEL_START
+    assert control.phase is RecordingPhase.IDLE
+
+
+def test_hold_confirmed_activation_arms_and_release_stops():
+    control = RecordingControl("hold")
+
+    token = _confirmed(control)
+
     assert control.phase is RecordingPhase.RECORDING_ARMED
-    assert control.hotkey_released() is RecordingAction.STOP
+    assert control.hotkey_released(token) is RecordingAction.STOP
     assert control.phase is RecordingPhase.STOPPING
 
 
-def test_toggle_requires_release_before_second_activation_stops():
+def test_toggle_short_start_cancels_and_confirmed_start_rearms_on_release():
     control = RecordingControl("toggle")
+    action, short_token = control.begin_activation()
 
-    assert control.activate() is RecordingAction.START
+    assert action is RecordingAction.BEGIN_START
+    assert control.hotkey_released(short_token) is RecordingAction.CANCEL_START
+
+    token = _confirmed(control)
     assert control.phase is RecordingPhase.RECORDING_UNARMED
-    assert control.activate() is RecordingAction.NONE
-    assert control.hotkey_released() is RecordingAction.NONE
+    assert control.hotkey_released(token) is RecordingAction.NONE
     assert control.phase is RecordingPhase.RECORDING_ARMED
-    assert control.activate() is RecordingAction.STOP
-    assert control.timeout() is RecordingAction.NONE
 
 
-def test_timeout_stops_exactly_once_in_each_mode():
-    for mode in ("hold", "toggle"):
-        control = RecordingControl(mode)
-        control.activate()
+def test_toggle_short_stop_is_cancelled_without_stopping_recording():
+    control = RecordingControl("toggle")
+    start_token = _confirmed(control)
+    control.hotkey_released(start_token)
 
-        assert control.timeout() is RecordingAction.STOP
-        assert control.timeout() is RecordingAction.NONE
-        assert control.hotkey_released() is RecordingAction.NONE
-        assert control.activate() is RecordingAction.NONE
+    action, stop_token = control.begin_activation()
+
+    assert action is RecordingAction.BEGIN_STOP
+    assert stop_token is not None
+    assert control.phase is RecordingPhase.PENDING_STOP
+    assert control.hotkey_released(stop_token) is RecordingAction.CANCEL_STOP
+    assert control.phase is RecordingPhase.RECORDING_ARMED
 
 
-def test_recording_failure_resets_to_idle_and_stale_events_are_ignored():
+def test_toggle_confirmed_stop_stops_exactly_once():
+    control = RecordingControl("toggle")
+    start_token = _confirmed(control)
+    control.hotkey_released(start_token)
+    action, stop_token = control.begin_activation()
+    assert action is RecordingAction.BEGIN_STOP
+
+    assert control.confirm_activation(stop_token) is RecordingAction.STOP
+    assert control.confirm_activation(stop_token) is RecordingAction.NONE
+    assert control.hotkey_released(stop_token) is RecordingAction.NONE
+    assert control.phase is RecordingPhase.STOPPING
+
+
+def test_duplicate_activation_while_pending_is_ignored():
     control = RecordingControl("hold")
-    control.activate()
+
+    first = control.begin_activation()
+    second = control.begin_activation()
+
+    assert first[0] is RecordingAction.BEGIN_START
+    assert second == (RecordingAction.NONE, None)
+
+
+def test_timeout_invalidates_pending_stop_and_stale_token():
+    control = RecordingControl("toggle")
+    start_token = _confirmed(control)
+    control.hotkey_released(start_token)
+    _, stop_token = control.begin_activation()
+
+    assert control.timeout() is RecordingAction.STOP
+    assert control.confirm_activation(stop_token) is RecordingAction.NONE
+    assert control.hotkey_released(stop_token) is RecordingAction.NONE
+    assert control.phase is RecordingPhase.STOPPING
+
+
+def test_stale_token_cannot_change_the_next_recording():
+    control = RecordingControl("hold")
+    _, stale = control.begin_activation()
+    control.hotkey_released(stale)
+    _, current = control.begin_activation()
+
+    assert control.confirm_activation(stale) is RecordingAction.NONE
+    assert control.hotkey_released(stale) is RecordingAction.NONE
+    assert control.phase is RecordingPhase.PENDING_START
+    assert control.confirm_activation(current) is RecordingAction.CONFIRM_START
+
+
+def test_recording_failure_resets_pending_state_and_invalidates_token():
+    control = RecordingControl("hold")
+    _, token = control.begin_activation()
 
     control.recording_failed()
 
     assert control.phase is RecordingPhase.IDLE
-    assert control.hotkey_released() is RecordingAction.NONE
-    assert control.timeout() is RecordingAction.NONE
+    assert control.confirm_activation(token) is RecordingAction.NONE
+    assert control.hotkey_released(token) is RecordingAction.NONE
 
 
-def test_processing_ignores_recording_events_then_finishes_for_next_recording():
+def test_processing_ignores_events_then_finishes_for_next_recording():
     control = RecordingControl("toggle")
-    control.activate()
+    _confirmed(control)
     control.timeout()
-
     control.mark_processing()
 
     assert control.phase is RecordingPhase.PROCESSING
-    assert control.activate() is RecordingAction.NONE
-    assert control.hotkey_released() is RecordingAction.NONE
+    assert control.begin_activation() == (RecordingAction.NONE, None)
     assert control.timeout() is RecordingAction.NONE
 
     control.processing_finished()
 
     assert control.phase is RecordingPhase.IDLE
-    assert control.activate() is RecordingAction.START
+    assert control.begin_activation()[0] is RecordingAction.BEGIN_START
 
 
-def test_mark_processing_only_advances_from_stopping():
+def test_release_and_timeout_race_has_one_stop_winner():
     control = RecordingControl("hold")
+    token = _confirmed(control)
 
-    control.mark_processing()
-    assert control.phase is RecordingPhase.IDLE
-
-    control.activate()
-    control.mark_processing()
-    assert control.phase is RecordingPhase.RECORDING_ARMED
-
-    control.hotkey_released()
-    control.mark_processing()
-    assert control.phase is RecordingPhase.PROCESSING
-
-
-def test_processing_finished_only_resets_processing():
-    control = RecordingControl("hold")
-
-    control.activate()
-    control.processing_finished()
-
-    assert control.phase is RecordingPhase.RECORDING_ARMED
-
-
-def test_concurrent_activations_start_only_one_recording():
-    control = RecordingControl("toggle")
-
-    actions = _race(control.activate, control.activate)
-
-    assert actions.count(RecordingAction.START) == 1
-    assert actions.count(RecordingAction.NONE) == 1
-
-
-def test_concurrent_stop_events_choose_exactly_one_winner():
-    control = RecordingControl("hold")
-    control.activate()
-
-    actions = _race(control.hotkey_released, control.timeout)
+    actions = _race(lambda: control.hotkey_released(token), control.timeout)
 
     assert actions.count(RecordingAction.STOP) == 1
     assert actions.count(RecordingAction.NONE) == 1
     assert control.phase is RecordingPhase.STOPPING
+
+
+def test_confirm_and_release_race_has_one_pending_start_winner():
+    control = RecordingControl("hold")
+    _, token = control.begin_activation()
+
+    actions = _race(
+        lambda: control.confirm_activation(token),
+        lambda: control.hotkey_released(token),
+    )
+
+    assert set(actions) in (
+        {RecordingAction.CONFIRM_START, RecordingAction.STOP},
+        {RecordingAction.CANCEL_START, RecordingAction.NONE},
+    )
