@@ -89,28 +89,33 @@ def command_listen(args: argparse.Namespace) -> int:
     recorder = Recorder(device=config.mic_device)
     state_lock = threading.Lock()
     active_session: _ListenSession | None = None
-    stop_threads: list[threading.Thread] = []
 
     def record_session(session: _ListenSession) -> None:
         nonlocal active_session
         try:
             recorder.record_until_stop(session.path)
         except Exception as exc:
-            mark_recording(
-                session.path,
-                "failed-retained",
-                error_category=type(exc).__name__,
-            )
-            with state_lock:
-                session.failed = True
-                if active_session is session:
-                    active_session = None
-            print(
-                f"Recording failed ({type(exc).__name__}). WAV preserved: {session.path}. "
-                "Listener remains available.",
-                file=sys.stderr,
-                flush=True,
-            )
+            metadata_failure = None
+            try:
+                mark_recording(
+                    session.path,
+                    "failed-retained",
+                    error_category=type(exc).__name__,
+                )
+            except Exception as metadata_exc:
+                metadata_failure = type(metadata_exc).__name__
+            finally:
+                with state_lock:
+                    session.failed = True
+                    if active_session is session:
+                        active_session = None
+                message = (
+                    f"Recording failed ({type(exc).__name__}). WAV preserved: {session.path}. "
+                    "Listener remains available."
+                )
+                if metadata_failure is not None:
+                    message += f" Recovery metadata update failed ({metadata_failure})."
+                print(message, file=sys.stderr, flush=True)
 
     def on_press():
         nonlocal active_session
@@ -127,7 +132,6 @@ def command_listen(args: argparse.Namespace) -> int:
             stop_thread = threading.Thread(
                 target=finish_recording_after_release, args=(session,), daemon=True
             )
-            stop_threads.append(stop_thread)
             stop_thread.start()
 
     def finish_recording_after_release(session: _ListenSession):

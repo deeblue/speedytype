@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import argparse
+import builtins
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -481,3 +482,83 @@ def test_cli_listen_sanitizes_failed_capture_retains_wav_and_reuses_listener(
     assert str(first_path) in output.err
     assert "private-provider-detail" not in output.err
     assert "Bearer" not in output.err
+
+
+def test_cli_listen_metadata_failure_still_sanitizes_cleans_up_and_reuses(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    from speedytype import cli
+
+    first_path = create_recording_path(directory=tmp_path)
+    second_path = create_recording_path(directory=tmp_path)
+    paths = iter((first_path, second_path))
+    failure_reported = threading.Event()
+    second_recording = threading.Event()
+    second_stopped = threading.Event()
+    processed = threading.Event()
+    callbacks = []
+    process_calls = []
+
+    class Recorder:
+        calls = 0
+
+        def __init__(self, device):
+            pass
+
+        def record_until_stop(self, path):
+            type(self).calls += 1
+            if type(self).calls == 1:
+                raise OSError("primary private detail")
+            second_recording.set()
+            second_stopped.wait(timeout=2)
+
+        def stop(self):
+            second_stopped.set()
+
+    class DrivingEvent:
+        def wait(self):
+            assert failure_reported.wait(timeout=2)
+            callbacks[0]()
+            assert second_recording.wait(timeout=2)
+            assert processed.wait(timeout=2)
+            raise KeyboardInterrupt
+
+    def tracked_print(*args, **kwargs):
+        builtins.print(*args, **kwargs)
+        if args and "Recording failed" in str(args[0]):
+            failure_reported.set()
+
+    def register_hotkey(_hotkey, callback):
+        callbacks.append(callback)
+        callback()
+        return "handle"
+
+    def process(path, *args, **kwargs):
+        process_calls.append(path)
+        processed.set()
+
+    monkeypatch.setattr(cli, "_load_config_or_print", lambda path: _config(tmp_path))
+    monkeypatch.setattr(cli, "Recorder", Recorder)
+    monkeypatch.setattr(cli, "temp_wav_path", lambda: next(paths))
+    monkeypatch.setattr(cli, "mark_recording", lambda *args, **kwargs: (_ for _ in ()).throw(PermissionError("metadata private detail")))
+    monkeypatch.setattr(cli, "wait_until_hotkey_released", lambda *args: ("released", 0.1))
+    monkeypatch.setattr(cli, "register_hold_hotkey", register_hotkey)
+    monkeypatch.setattr(cli, "remove_hotkey", lambda handle: None)
+    monkeypatch.setattr(cli, "process_wav", process)
+    monkeypatch.setattr(cli, "print", tracked_print, raising=False)
+    monkeypatch.setattr(
+        cli,
+        "threading",
+        SimpleNamespace(Thread=threading.Thread, Lock=threading.Lock, Event=DrivingEvent),
+    )
+
+    result = cli.command_listen(argparse.Namespace(env="unused"))
+    output = capsys.readouterr()
+
+    assert result == 0
+    assert process_calls == [second_path]
+    assert "Recording failed (OSError)." in output.err
+    assert str(first_path) in output.err
+    assert "Recovery metadata update failed (PermissionError)." in output.err
+    assert "primary private detail" not in output.err
+    assert "metadata private detail" not in output.err

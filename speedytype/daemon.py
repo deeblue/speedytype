@@ -38,7 +38,9 @@ class _RecordingSession:
     thread: threading.Thread | None = None
     stop_thread: threading.Thread | None = None
     countdown_thread: threading.Thread | None = None
+    capture_started: bool = False
     stop_started: bool = False
+    rollback_requested: bool = False
     shutdown_requested: bool = False
     shutdown_draining: bool = False
 
@@ -147,23 +149,33 @@ class DaemonController(QObject):
                     safe_print("Recording...", flush=True)
                     self.show_recording_signal.emit()
                     session.thread.start()
+                    session.capture_started = True
                     session.stop_thread.start()
                     session.countdown_thread.start()
                 except Exception as exc:
+                    join_capture = False
                     if session is not None and self._active_session is session:
-                        if session.thread is not None and session.thread.is_alive():
+                        if session.capture_started:
+                            session.rollback_requested = True
+                            join_capture = True
                             session.stop_started = True
                             self.recorder.stop()
-                        self._active_session = None
-                    self._recording_control.recording_failed()
-                    start_failure = (exc, path, session)
+                        else:
+                            self._active_session = None
+                    if not join_capture:
+                        self._recording_control.recording_failed()
+                    start_failure = (exc, path, session, join_capture)
 
         if session_to_finish is not None:
             self._finish_recording(session_to_finish, "activation")
         if start_failure is not None:
-            exc, path, session = start_failure
-            if session is not None and session.thread is not None and session.thread.is_alive():
+            exc, path, session, join_capture = start_failure
+            if join_capture and session is not None and session.thread is not None:
                 session.thread.join()
+                with self._session_lock:
+                    if self._active_session is session:
+                        self._active_session = None
+                        self._recording_control.recording_failed()
             if path is not None:
                 mark_recording(path, "failed-retained", error_category=type(exc).__name__)
             message = f"Recording failed ({type(exc).__name__}). Daemon remains available."
@@ -176,6 +188,8 @@ class DaemonController(QObject):
             with self._session_lock:
                 if self._active_session is not session:
                     return
+                if session.rollback_requested or session.shutdown_requested:
+                    return
                 if session.thread is None or not session.thread.is_alive():
                     return
             elapsed = time.perf_counter() - session.started_at
@@ -184,6 +198,8 @@ class DaemonController(QObject):
                 with self._session_lock:
                     if self._active_session is not session:
                         return
+                    if session.rollback_requested or session.shutdown_requested:
+                        return
                     self.show_countdown_signal.emit(0)
                     action = self._recording_control.timeout()
                 if action is RecordingAction.STOP:
@@ -191,6 +207,8 @@ class DaemonController(QObject):
                 return
             with self._session_lock:
                 if self._active_session is not session:
+                    return
+                if session.rollback_requested or session.shutdown_requested:
                     return
                 if remaining <= self.countdown_warning_seconds:
                     self.show_countdown_signal.emit(max(0, round(remaining)))
@@ -202,6 +220,8 @@ class DaemonController(QObject):
         reason, elapsed = wait_until_hotkey_released(self.config.hotkey, self.config.max_record_seconds)
         with self._session_lock:
             if self._active_session is not session:
+                return
+            if session.rollback_requested or session.shutdown_requested:
                 return
             if reason == "timeout":
                 action = self._recording_control.timeout()
@@ -259,7 +279,7 @@ class DaemonController(QObject):
             message = f"Recording failed ({type(exc).__name__}). Daemon remains available."
             safe_print(message, flush=True)
             with self._session_lock:
-                if self._active_session is session:
+                if self._active_session is session and not session.rollback_requested:
                     self.processing_error_signal.emit(message)
                     self._recording_control.recording_failed()
                     self._active_session = None

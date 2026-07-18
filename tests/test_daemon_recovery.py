@@ -159,6 +159,96 @@ def test_thread_setup_failure_retains_owned_path_and_controller_is_reusable(
     assert "private" not in notifications[0]
 
 
+def test_auxiliary_start_failure_keeps_capture_owned_until_join_then_reuses(
+    tmp_path, monkeypatch
+):
+    app = QApplication.instance() or QApplication([])
+    controller = DaemonController(
+        AppConfig(openai_api_key="x", gemini_api_key="y", max_record_seconds=10_000)
+    )
+    capture_live = threading.Event()
+    stop_a = threading.Event()
+    draining_a = threading.Event()
+    allow_a_exit = threading.Event()
+    b_started = threading.Event()
+    stop_b = threading.Event()
+    release_b_waiter = threading.Event()
+    recorder_calls = 0
+    auxiliary_failed = False
+    paths = iter(create_recording_path(directory=tmp_path) for _ in range(2))
+
+    class Recorder:
+        def record_until_stop(self, _path, **_kwargs):
+            nonlocal recorder_calls
+            recorder_calls += 1
+            if recorder_calls == 1:
+                capture_live.set()
+                assert stop_a.wait(timeout=2)
+                draining_a.set()
+                assert allow_a_exit.wait(timeout=2)
+                return
+            b_started.set()
+            assert stop_b.wait(timeout=2)
+
+        def stop(self):
+            if recorder_calls == 1:
+                stop_a.set()
+            else:
+                stop_b.set()
+
+    class FailingAuxThread:
+        def start(self):
+            raise RuntimeError("private auxiliary start detail")
+
+        def is_alive(self):
+            return False
+
+        def join(self, timeout=None):
+            return None
+
+    def thread_factory(*, target, daemon, args=()):
+        nonlocal auxiliary_failed
+        if getattr(target, "__name__", "") == "_finish_after_release" and not auxiliary_failed:
+            auxiliary_failed = True
+            return FailingAuxThread()
+        return _REAL_THREAD(target=target, args=args, daemon=daemon)
+
+    controller.recorder = Recorder()
+    monkeypatch.setattr("speedytype.daemon.temp_wav_path", lambda: next(paths))
+    monkeypatch.setattr("speedytype.daemon.threading.Thread", thread_factory)
+    monkeypatch.setattr(
+        "speedytype.daemon.wait_until_hotkey_released",
+        lambda *args: (release_b_waiter.wait(timeout=2), ("released", 1.0))[1],
+    )
+
+    rollback = _REAL_THREAD(target=controller.on_press)
+    rollback.start()
+    assert capture_live.wait(timeout=2)
+    assert draining_a.wait(timeout=2)
+    session_a = controller._active_session
+
+    concurrent_press = _REAL_THREAD(target=controller.on_press)
+    concurrent_press.start()
+    concurrent_press.join(timeout=2)
+    b_started_before_join = b_started.is_set()
+    a_owned_before_join = controller._active_session is session_a
+
+    allow_a_exit.set()
+    rollback.join(timeout=2)
+    idle_after_join = controller._active_session is None
+    controller.on_press()
+    reused_after_join = b_started.wait(timeout=2)
+
+    controller.shutdown_active_recording()
+    release_b_waiter.set()
+    app.processEvents()
+
+    assert b_started_before_join is False
+    assert a_owned_before_join is True
+    assert idle_after_join is True
+    assert reused_after_join is True
+
+
 def test_daemon_startup_instruction_matches_recording_mode():
     hold = daemon_module._daemon_recording_instruction(
         AppConfig(openai_api_key="x", gemini_api_key="y", hotkey="f9", recording_mode="hold")
