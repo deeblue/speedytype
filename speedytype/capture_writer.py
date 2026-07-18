@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from queue import Empty, Full, Queue
 from threading import Event, Lock, Thread
@@ -144,6 +145,9 @@ class SampleIndexedWavWriter:
                         self._queue.task_done()
                 if self._error is None:
                     wav_file.flush()
+            if self._error is None and self.path.is_file():
+                with self.path.open("r+b") as completed_wav:
+                    os.fsync(completed_wav.fileno())
         except BaseException as exc:
             if self._error is None:
                 self._error = exc

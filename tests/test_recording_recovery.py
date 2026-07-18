@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -21,10 +22,25 @@ def test_create_and_mark_recording_writes_atomic_recovery_sidecar(tmp_path):
     assert initial["state"] == "capturing"
     assert initial["recording_id"]
     assert not list(tmp_path.glob("*.tmp"))
-
     assert mark_recording(wav, "captured") is True
     assert json.loads(sidecar.read_text(encoding="utf-8"))["state"] == "captured"
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_recovery_metadata_is_fsynced_before_atomic_replace(tmp_path, monkeypatch):
+    descriptors = []
+    real_fsync = os.fsync
+
+    def track_fsync(descriptor):
+        descriptors.append(descriptor)
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", track_fsync)
+
+    wav = create_recording_path(directory=tmp_path)
+    mark_recording(wav, "captured")
+
+    assert len(descriptors) == 2
 
 
 def test_invalid_recovery_transition_is_rejected_without_rewriting(tmp_path):

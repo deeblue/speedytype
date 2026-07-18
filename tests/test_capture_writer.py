@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from threading import Event
+import os
 
 import numpy as np
 import pytest
@@ -33,6 +34,24 @@ def test_writer_preserves_block_order_and_exact_frame_counts(tmp_path):
     assert np.allclose(decoded, expected, atol=1 / 32768)
     assert stats.submitted_frames == stats.written_frames == 25
     assert stats.submitted_blocks == stats.written_blocks == 3
+
+
+def test_writer_fsyncs_completed_real_wav_after_close(tmp_path, monkeypatch):
+    path = tmp_path / "capture.wav"
+    descriptors = []
+    real_fsync = os.fsync
+
+    def track_fsync(descriptor):
+        descriptors.append(descriptor)
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", track_fsync)
+    writer = SampleIndexedWavWriter(path, sample_rate=16_000, channels=1)
+    writer.submit(np.zeros((16, 1), dtype="float32"))
+
+    writer.finish()
+
+    assert len(descriptors) == 1
 
 
 class _BlockingSink:

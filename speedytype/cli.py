@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
 import sys
 import threading
@@ -14,6 +15,7 @@ from speedytype.daemon import run_daemon, stop_daemon
 from speedytype.hotkey import register_hold_hotkey, remove_hotkey, wait_until_hotkey_released
 from speedytype.pipeline import process_wav
 from speedytype.paths import default_env_path
+from speedytype.recording_recovery import mark_recording
 from speedytype.real_voice import guided_recording, validate_real_voice
 from speedytype.settings_launcher import show_settings_dialog
 from speedytype.version import VERSION
@@ -71,38 +73,82 @@ def command_run_once(args: argparse.Namespace) -> int:
     return 0
 
 
+@dataclass
+class _ListenSession:
+    path: Path
+    thread: threading.Thread | None = None
+    failed: bool = False
+    stop_started: bool = False
+
+
 def command_listen(args: argparse.Namespace) -> int:
     config = _load_config_or_print(args.env)
     if config is None:
         return 2
 
     recorder = Recorder(device=config.mic_device)
-    active_thread: threading.Thread | None = None
-    stop_thread: threading.Thread | None = None
-    active_path: Path | None = None
+    state_lock = threading.Lock()
+    active_session: _ListenSession | None = None
+    stop_threads: list[threading.Thread] = []
+
+    def record_session(session: _ListenSession) -> None:
+        nonlocal active_session
+        try:
+            recorder.record_until_stop(session.path)
+        except Exception as exc:
+            mark_recording(
+                session.path,
+                "failed-retained",
+                error_category=type(exc).__name__,
+            )
+            with state_lock:
+                session.failed = True
+                if active_session is session:
+                    active_session = None
+            print(
+                f"Recording failed ({type(exc).__name__}). WAV preserved: {session.path}. "
+                "Listener remains available.",
+                file=sys.stderr,
+                flush=True,
+            )
 
     def on_press():
-        nonlocal active_thread, stop_thread, active_path
-        if active_thread and active_thread.is_alive():
-            return
-        active_path = temp_wav_path()
-        print("Recording...", flush=True)
-        active_thread = threading.Thread(target=recorder.record_until_stop, args=(active_path,), daemon=False)
-        active_thread.start()
-        stop_thread = threading.Thread(target=finish_recording_after_release, daemon=True)
-        stop_thread.start()
+        nonlocal active_session
+        with state_lock:
+            if active_session is not None:
+                return
+            session = _ListenSession(path=temp_wav_path())
+            session.thread = threading.Thread(
+                target=record_session, args=(session,), daemon=False
+            )
+            active_session = session
+            print("Recording...", flush=True)
+            session.thread.start()
+            stop_thread = threading.Thread(
+                target=finish_recording_after_release, args=(session,), daemon=True
+            )
+            stop_threads.append(stop_thread)
+            stop_thread.start()
 
-    def finish_recording_after_release():
-        nonlocal active_thread, active_path
+    def finish_recording_after_release(session: _ListenSession):
+        nonlocal active_session
         reason, elapsed = wait_until_hotkey_released(config.hotkey, config.max_record_seconds)
-        if not active_thread or not active_thread.is_alive() or active_path is None:
-            return
+        with state_lock:
+            if active_session is not session or session.failed:
+                return
+            if not session.stop_started:
+                session.stop_started = True
+                recorder.stop()
+        if session.thread is not None:
+            session.thread.join()
+        with state_lock:
+            if active_session is not session or session.failed:
+                return
+            active_session = None
         if reason == "timeout":
             print(f"Recording timed out after {elapsed:.1f}s; stopping automatically.", flush=True)
         print("Processing...", flush=True)
-        recorder.stop()
-        active_thread.join()
-        process_wav(active_path, config, do_paste=True, usage_scope="daily")
+        process_wav(session.path, config, do_paste=True, usage_scope="daily")
 
     hotkey_handle = register_hold_hotkey(config.hotkey, on_press)
     print(f"SpeedyType listening. Hold {config.hotkey.upper()} to record. Press Ctrl+C to exit.", flush=True)
@@ -111,6 +157,15 @@ def command_listen(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         print("Exiting.", flush=True)
     finally:
+        with state_lock:
+            session = active_session
+            if session is not None:
+                active_session = None
+                if not session.stop_started:
+                    session.stop_started = True
+                    recorder.stop()
+        if session is not None and session.thread is not None:
+            session.thread.join()
         remove_hotkey(hotkey_handle)
     return 0
 

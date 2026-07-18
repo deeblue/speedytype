@@ -118,35 +118,58 @@ class DaemonController(QObject):
 
     def on_press(self) -> None:
         session_to_finish = None
+        start_failure = None
         with self._session_lock:
             action = self._recording_control.activate()
             if action is RecordingAction.STOP:
                 session_to_finish = self._active_session
             elif action is RecordingAction.START:
-                session = _RecordingSession(
-                    token=object(),
-                    path=temp_wav_path(),
-                    started_at=time.perf_counter(),
-                )
-                session.thread = threading.Thread(
-                    target=self._record_session, args=(session,), daemon=False
-                )
-                session.stop_thread = threading.Thread(
-                    target=self._finish_after_release, args=(session,), daemon=True
-                )
-                session.countdown_thread = threading.Thread(
-                    target=self._run_countdown_ticker, args=(session,), daemon=True
-                )
-                self._active_session = session
-                self._hybrid_transcriber = None
-                safe_print("Recording...", flush=True)
-                self.show_recording_signal.emit()
-                session.thread.start()
-                session.stop_thread.start()
-                session.countdown_thread.start()
+                path = None
+                session = None
+                try:
+                    path = temp_wav_path()
+                    session = _RecordingSession(
+                        token=object(),
+                        path=path,
+                        started_at=time.perf_counter(),
+                    )
+                    session.thread = threading.Thread(
+                        target=self._record_session, args=(session,), daemon=False
+                    )
+                    session.stop_thread = threading.Thread(
+                        target=self._finish_after_release, args=(session,), daemon=True
+                    )
+                    session.countdown_thread = threading.Thread(
+                        target=self._run_countdown_ticker, args=(session,), daemon=True
+                    )
+                    self._active_session = session
+                    self._hybrid_transcriber = None
+                    safe_print("Recording...", flush=True)
+                    self.show_recording_signal.emit()
+                    session.thread.start()
+                    session.stop_thread.start()
+                    session.countdown_thread.start()
+                except Exception as exc:
+                    if session is not None and self._active_session is session:
+                        if session.thread is not None and session.thread.is_alive():
+                            session.stop_started = True
+                            self.recorder.stop()
+                        self._active_session = None
+                    self._recording_control.recording_failed()
+                    start_failure = (exc, path, session)
 
         if session_to_finish is not None:
             self._finish_recording(session_to_finish, "activation")
+        if start_failure is not None:
+            exc, path, session = start_failure
+            if session is not None and session.thread is not None and session.thread.is_alive():
+                session.thread.join()
+            if path is not None:
+                mark_recording(path, "failed-retained", error_category=type(exc).__name__)
+            message = f"Recording failed ({type(exc).__name__}). Daemon remains available."
+            safe_print(message, flush=True)
+            self.processing_error_signal.emit(message)
+            self.hide_signal.emit()
 
     def _run_countdown_ticker(self, session: _RecordingSession) -> None:
         while True:
@@ -377,6 +400,13 @@ def _quit_running_daemon(controller: DaemonController, app: QApplication) -> Non
     app.quit()
 
 
+def _daemon_recording_instruction(config: AppConfig) -> str:
+    hotkey = config.hotkey.upper()
+    if config.recording_mode == "toggle":
+        return f"Press {hotkey} once to start recording and again to stop."
+    return f"Hold {hotkey} to record."
+
+
 def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_path: str | Path | None = None) -> int:
     should_start, message = check_existing_daemon()
     if message:
@@ -458,7 +488,7 @@ def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_p
 
     _write_pid_file()
     safe_print(
-        f"SpeedyType daemon running (pid={os.getpid()}). Hold {config.hotkey.upper()} to record. "
+        f"SpeedyType daemon running (pid={os.getpid()}). {_daemon_recording_instruction(config)} "
         f"Stop with: python -m speedytype daemon-stop (or tray menu -> 結束)",
         flush=True,
     )

@@ -374,6 +374,7 @@ def test_cli_listen_marks_usage_daily(tmp_path, monkeypatch) -> None:
 
     class InterruptingEvent:
         def wait(self):
+            assert processed.wait(timeout=1)
             raise KeyboardInterrupt
 
     def register_hotkey(hotkey, on_press):
@@ -391,10 +392,92 @@ def test_cli_listen_marks_usage_daily(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(cli, "register_hold_hotkey", register_hotkey)
     monkeypatch.setattr(cli, "remove_hotkey", lambda handle: None)
     monkeypatch.setattr(cli, "process_wav", fake_process_wav)
-    monkeypatch.setattr(cli, "threading", SimpleNamespace(Thread=threading.Thread, Event=InterruptingEvent))
+    monkeypatch.setattr(
+        cli,
+        "threading",
+        SimpleNamespace(Thread=threading.Thread, Lock=threading.Lock, Event=InterruptingEvent),
+    )
 
     result = cli.command_listen(argparse.Namespace(env="unused"))
 
     assert result == 0
     assert processed.wait(timeout=1)
     assert calls[0]["usage_scope"] == "daily"
+
+
+def test_cli_listen_sanitizes_failed_capture_retains_wav_and_reuses_listener(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    from speedytype import cli
+
+    first_path = create_recording_path(directory=tmp_path)
+    second_path = create_recording_path(directory=tmp_path)
+    paths = iter((first_path, second_path))
+    first_failed = threading.Event()
+    second_recording = threading.Event()
+    second_stopped = threading.Event()
+    processed = threading.Event()
+    callbacks = []
+    process_calls = []
+
+    class FailingThenWorkingRecorder:
+        calls = 0
+
+        def __init__(self, device):
+            pass
+
+        def record_until_stop(self, path):
+            type(self).calls += 1
+            if type(self).calls == 1:
+                first_failed.set()
+                raise OSError("Bearer private-provider-detail")
+            second_recording.set()
+            second_stopped.wait(timeout=2)
+
+        def stop(self):
+            second_stopped.set()
+
+    class DrivingEvent:
+        def wait(self):
+            assert first_failed.wait(timeout=2)
+            for _ in range(200):
+                if '"state": "failed-retained"' in recording_sidecar_path(first_path).read_text(encoding="utf-8"):
+                    break
+                threading.Event().wait(0.01)
+            callbacks[0]()
+            assert second_recording.wait(timeout=2)
+            assert processed.wait(timeout=2)
+            raise KeyboardInterrupt
+
+    def register_hotkey(_hotkey, callback):
+        callbacks.append(callback)
+        callback()
+        return "handle"
+
+    def process(path, *args, **kwargs):
+        process_calls.append((path, kwargs))
+        processed.set()
+
+    monkeypatch.setattr(cli, "_load_config_or_print", lambda path: _config(tmp_path))
+    monkeypatch.setattr(cli, "Recorder", FailingThenWorkingRecorder)
+    monkeypatch.setattr(cli, "temp_wav_path", lambda: next(paths))
+    monkeypatch.setattr(cli, "wait_until_hotkey_released", lambda *args: ("released", 0.1))
+    monkeypatch.setattr(cli, "register_hold_hotkey", register_hotkey)
+    monkeypatch.setattr(cli, "remove_hotkey", lambda handle: None)
+    monkeypatch.setattr(cli, "process_wav", process)
+    monkeypatch.setattr(
+        cli,
+        "threading",
+        SimpleNamespace(Thread=threading.Thread, Lock=threading.Lock, Event=DrivingEvent),
+    )
+
+    result = cli.command_listen(argparse.Namespace(env="unused"))
+    output = capsys.readouterr()
+
+    assert result == 0
+    assert '"state": "failed-retained"' in recording_sidecar_path(first_path).read_text(encoding="utf-8")
+    assert process_calls == [(second_path, {"do_paste": True, "usage_scope": "daily"})]
+    assert "Recording failed (OSError)." in output.err
+    assert str(first_path) in output.err
+    assert "private-provider-detail" not in output.err
+    assert "Bearer" not in output.err

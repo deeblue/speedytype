@@ -9,6 +9,7 @@ import soundfile as sf
 
 from speedytype.flac_upload import (
     FlacEncodingError,
+    FlacValidation,
     FlacValidationError,
     UploadPreparationError,
     encode_lossless_flac,
@@ -142,3 +143,28 @@ def test_encoding_failure_with_ineligible_wav_retains_and_refuses(tmp_path):
     assert exc.value.category == "upload_too_large"
     assert exc.value.preserved_wav == source
     assert source.exists()
+
+
+def test_oversize_valid_flac_never_falls_back_to_admissible_wav(tmp_path):
+    source = _wav(tmp_path / "source.wav", frames=100)
+    max_bytes = source.stat().st_size + 1
+
+    def oversize_encoder(_source, target):
+        target.write_bytes(b"x" * max_bytes)
+        return 0.1
+
+    validation = FlacValidation(True, True, True, 100, 100, "same", "same")
+
+    with pytest.raises(UploadPreparationError) as exc:
+        with prepare_upload(
+            source,
+            max_bytes=max_bytes,
+            encoder=oversize_encoder,
+            validator=lambda *_args: validation,
+        ):
+            pass
+
+    assert exc.value.category == "upload_too_large"
+    assert exc.value.preserved_wav == source
+    assert source.stat().st_size < max_bytes
+    assert not list(tmp_path.glob("*.flac"))

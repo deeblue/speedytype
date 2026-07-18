@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import re
 import secrets
@@ -53,6 +54,7 @@ def _write_atomic(path: Path, payload: dict[str, object]) -> None:
             json.dump(payload, stream, ensure_ascii=False, indent=2)
             stream.write("\n")
             stream.flush()
+            os.fsync(stream.fileno())
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)

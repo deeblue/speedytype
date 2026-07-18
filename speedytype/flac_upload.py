@@ -216,9 +216,6 @@ def prepare_upload(
         try:
             encoding_seconds = encoder(source, flac)
             validation = validator(source, flac)
-            upload_bytes = flac.stat().st_size
-            if upload_bytes >= max_bytes:
-                raise FlacValidationError("upload_too_large")
         except (FlacEncodingError, FlacValidationError) as exc:
             flac.unlink(missing_ok=True)
             try:
@@ -240,6 +237,9 @@ def prepare_upload(
                 validation=None,
             )
             return
+        upload_bytes = flac.stat().st_size
+        if upload_bytes >= max_bytes:
+            raise UploadPreparationError("upload_too_large", source)
         yield PreparedUpload(
             path=flac,
             container="flac",

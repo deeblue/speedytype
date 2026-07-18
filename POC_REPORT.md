@@ -700,3 +700,15 @@ races, signal ordering, and controller reuse without OS key injection. The
 Windows Toggle real-device gate is pending, and the macOS Toggle real-device
 gate is pending; both also retain the ≥24-minute complete-file recording, paste,
 and injected-failure checks as release blockers.
+
+## Retained-recording file durability (implemented 2026-07-18)
+
+Atomic recovery-sidecar writes now flush and file-fsync their temporary JSON
+before replacement. The capture writer drains all queued frames, flushes and
+closes the WAV, then reopens and file-fsyncs the completed file when a real path
+exists; synthetic sinks with no file remain supported. These changes strengthen
+process/OS crash durability without making a broader power-loss guarantee.
+
+Windows directory fsync is not portable and is intentionally not attempted.
+The sudden-power-loss real-device gate remains pending on Windows and macOS;
+no real sudden-power survival result is claimed.

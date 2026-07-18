@@ -87,6 +87,91 @@ def test_hold_activation_starts_once_and_release_processes_once(tmp_path, monkey
     assert processed == [tmp_path / "recording-0.wav"]
 
 
+@pytest.mark.parametrize("mode", ["hold", "toggle"])
+def test_start_path_failure_rolls_back_and_controller_is_reusable(tmp_path, monkeypatch, mode):
+    app, controller, _, _, threads = _orchestration_controller(tmp_path, monkeypatch, mode=mode)
+    notifications = []
+    controller.processing_error_signal.connect(notifications.append)
+    paths = iter((OSError("private temp detail"), tmp_path / "reused.wav"))
+
+    def next_path():
+        value = next(paths)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr("speedytype.daemon.temp_wav_path", next_path)
+
+    controller.on_press()
+    controller.on_press()
+    app.processEvents()
+
+    assert controller._active_session is not None
+    assert controller._active_session.path == tmp_path / "reused.wav"
+    assert len([thread for thread in threads if not thread.daemon]) == 1
+    assert notifications == ["Recording failed (OSError). Daemon remains available."]
+    assert "private temp detail" not in notifications[0]
+
+
+@pytest.mark.parametrize("mode", ["hold", "toggle"])
+@pytest.mark.parametrize("failure_point", ["construct", "start"])
+def test_thread_setup_failure_retains_owned_path_and_controller_is_reusable(
+    tmp_path, monkeypatch, mode, failure_point
+):
+    app = QApplication.instance() or QApplication([])
+    controller = DaemonController(
+        AppConfig(openai_api_key="x", gemini_api_key="y", recording_mode=mode)
+    )
+    failed_path = create_recording_path(directory=tmp_path)
+    reused_path = tmp_path / "reused.wav"
+    paths = iter((failed_path, reused_path))
+    notifications = []
+    controller.processing_error_signal.connect(notifications.append)
+    construction_calls = 0
+    start_failed = False
+
+    class SetupThread(_ControlledThread):
+        def start(self):
+            nonlocal start_failed
+            if failure_point == "start" and not start_failed:
+                start_failed = True
+                raise RuntimeError("private start detail")
+            super().start()
+
+    def thread_factory(*, target, daemon, args=()):
+        nonlocal construction_calls
+        construction_calls += 1
+        if failure_point == "construct" and construction_calls == 1:
+            raise RuntimeError("private construct detail")
+        return SetupThread(target=target, daemon=daemon, args=args)
+
+    monkeypatch.setattr("speedytype.daemon.temp_wav_path", lambda: next(paths))
+    monkeypatch.setattr("speedytype.daemon.threading.Thread", thread_factory)
+
+    controller.on_press()
+    controller.on_press()
+    app.processEvents()
+
+    assert '"state": "failed-retained"' in recording_sidecar_path(failed_path).read_text(encoding="utf-8")
+    assert controller._active_session is not None
+    assert controller._active_session.path == reused_path
+    assert notifications == ["Recording failed (RuntimeError). Daemon remains available."]
+    assert "private" not in notifications[0]
+
+
+def test_daemon_startup_instruction_matches_recording_mode():
+    hold = daemon_module._daemon_recording_instruction(
+        AppConfig(openai_api_key="x", gemini_api_key="y", hotkey="f9", recording_mode="hold")
+    )
+    toggle = daemon_module._daemon_recording_instruction(
+        AppConfig(openai_api_key="x", gemini_api_key="y", hotkey="f9", recording_mode="toggle")
+    )
+
+    assert hold == "Hold F9 to record."
+    assert toggle == "Press F9 once to start recording and again to stop."
+    assert "Hold" not in toggle
+
+
 def test_toggle_release_rearms_and_second_activation_processes_once(tmp_path, monkeypatch):
     _, controller, recorder_calls, processed, threads = _orchestration_controller(
         tmp_path, monkeypatch, mode="toggle"

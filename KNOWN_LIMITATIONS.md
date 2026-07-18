@@ -14,6 +14,15 @@
   pending, and the macOS Toggle real-device gate is pending. Neither platform's
   real-hotkey or ≥24-minute result is claimed complete.
 
+## Recording durability boundary
+
+- Recovery metadata is flushed and file-fsynced before atomic replacement, and
+  a completed WAV is reopened and file-fsynced after the writer drains and
+  closes it. This strengthens process/OS crash durability for retained takes.
+- SpeedyType does not attempt unsupported Windows directory fsync and does not
+  claim survival across every storage-controller cache or abrupt power event.
+  The sudden-power-loss real-device gate remains pending on Windows and macOS.
+
 ## 0. macOS v0.5.4 native stability changes await real-device acceptance
 
 - **Implemented candidate:** macOS hotkey listening and shortcut capture now
