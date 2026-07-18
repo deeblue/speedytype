@@ -35,7 +35,7 @@
 - Produces: `DEFAULT_RECORDING_MODE = "hold"`, `RECORDING_MODES`, `AppSettings.recording_mode`, and `AppConfig.recording_mode`.
 - Consumed by: Task 2 state machine and Task 4 daemon controller.
 
-- [ ] **Step 1: Write failing settings/config tests**
+- [x] **Step 1: Write failing settings/config tests**
 
 Add tests asserting default `hold`, `toggle` round-trip, direct save rejection for unsupported values, invalid persisted fallback to `hold` with a Chinese load warning, and propagation through `load_config()`:
 
@@ -48,13 +48,13 @@ def test_invalid_recording_mode_falls_back_to_hold_with_warning(tmp_path):
     assert any("錄音模式" in item for item in loaded.load_warnings)
 ```
 
-- [ ] **Step 2: Confirm the model tests fail**
+- [x] **Step 2: Confirm the model tests fail**
 
 Run: `python -m pytest tests/test_settings.py tests/test_config.py -q`
 
 Expected: missing `recording_mode` attributes and absent validation warning.
 
-- [ ] **Step 3: Implement canonical validation and config propagation**
+- [x] **Step 3: Implement canonical validation and config propagation**
 
 Add one validator and use it in both `to_dict()` and `from_dict()`:
 
@@ -71,15 +71,15 @@ def _validated_recording_mode(raw: object) -> tuple[str, tuple[str, ...]]:
 
 Direct serialization raises if the validator produced a warning. Loading appends its warning to existing duration/budget warnings. `load_config()` passes `settings.recording_mode` into `AppConfig`.
 
-- [ ] **Step 4: Write failing Settings UI tests**
+- [x] **Step 4: Write failing Settings UI tests**
 
 Assert the mode control has the two labels `按住錄音，放開停止` and `按一下開始，再按一下停止`, loads `toggle`, saves the canonical value, and displays the daemon-restart note.
 
-- [ ] **Step 5: Implement the Settings control**
+- [x] **Step 5: Implement the Settings control**
 
 Add `_build_recording_mode_group()` immediately after maximum recording time. Use a `QComboBox` whose item data is `hold`/`toggle`, initialize it from `_settings.recording_mode`, and pass `currentData()` to `AppSettings` in `_save()`.
 
-- [ ] **Step 6: Run Task 1 tests and commit**
+- [x] **Step 6: Run Task 1 tests and commit**
 
 Run: `python -m pytest tests/test_settings.py tests/test_config.py tests/test_settings_dialog.py -q`
 
