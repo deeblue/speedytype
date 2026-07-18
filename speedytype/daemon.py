@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from dataclasses import dataclass, replace
+from typing import Callable
 import os
 import subprocess
 import sys
@@ -15,30 +16,43 @@ from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 from speedytype.audio import Recorder, temp_wav_path
 from speedytype.config import AppConfig
 from speedytype.console import safe_print
-from speedytype.hotkey import PlatformPermissionError, register_hold_hotkey, remove_hotkey, wait_until_hotkey_released
+from speedytype.hotkey import PlatformPermissionError, is_hotkey_active, register_hold_hotkey, remove_hotkey, wait_until_hotkey_released
+from speedytype.hotkey_debounce import append_rejection_record
 from speedytype.icon import build_app_icon
 from speedytype.overlay import AudioLevelEmitter, RecordingPill
 from speedytype.pipeline import process_wav
 from speedytype.paths import default_daemon_log_path, default_env_path, default_pid_path, default_settings_path
 from speedytype.platform.app import activate_window, configure_daemon_application
 from speedytype.recording_control import RecordingAction, RecordingControl, RecordingPhase
-from speedytype.recording_recovery import RecoveryRecord, discover_recoverable_recordings, mark_recording
+from speedytype.recording_recovery import RecoveryRecord, discover_recoverable_recordings, mark_recording, remove_unconfirmed_recording
 from speedytype.platform.process import is_process_running, terminate_process
 
 
 PID_FILE = default_pid_path()
 COUNTDOWN_WARNING_SECONDS = 60.0
+HOTKEY_ACTIVATION_THRESHOLD_SECONDS = 0.08
+
+
+@dataclass(frozen=True)
+class _ActivationCandidate:
+    token: int
+    intent: str
+    started_at: float
 
 
 @dataclass
 class _RecordingSession:
-    token: object
+    token: int
     path: Path
     started_at: float
     thread: threading.Thread | None = None
     stop_thread: threading.Thread | None = None
     countdown_thread: threading.Thread | None = None
+    confirmation_thread: threading.Thread | None = None
+    candidate: _ActivationCandidate | None = None
     capture_started: bool = False
+    capture_prepared: bool = False
+    confirmed: bool = False
     stop_started: bool = False
     rollback_requested: bool = False
     shutdown_requested: bool = False
@@ -77,12 +91,20 @@ class DaemonController(QObject):
     processing_error_signal = pyqtSignal(str)
 
     def __init__(self, config: AppConfig, env_path: str | Path | None = None, settings_path: str | Path | None = None,
-                 countdown_warning_seconds: float = COUNTDOWN_WARNING_SECONDS) -> None:
+                 countdown_warning_seconds: float = COUNTDOWN_WARNING_SECONDS,
+                 activation_threshold_seconds: float = HOTKEY_ACTIVATION_THRESHOLD_SECONDS,
+                 monotonic: Callable[[], float] | None = None,
+                 sleep: Callable[[float], None] | None = None,
+                 daemon_log_path: str | Path | None = None) -> None:
         super().__init__()
         self.config = config
         self.env_path = str(env_path or default_env_path())
         self.settings_path = str(settings_path or default_settings_path())
         self.countdown_warning_seconds = countdown_warning_seconds
+        self.activation_threshold_seconds = activation_threshold_seconds
+        self._monotonic = monotonic or (lambda: time.perf_counter())
+        self._sleep = sleep or (lambda seconds: time.sleep(seconds))
+        self._daemon_log_path = Path(daemon_log_path or default_daemon_log_path())
         self.pill = RecordingPill()
         self.level_emitter = AudioLevelEmitter()
 
@@ -122,36 +144,79 @@ class DaemonController(QObject):
         session_to_finish = None
         start_failure = None
         with self._session_lock:
-            action = self._recording_control.activate()
-            if action is RecordingAction.STOP:
-                session_to_finish = self._active_session
-            elif action is RecordingAction.START:
+            action, activation_token = self._recording_control.begin_activation()
+            if action is RecordingAction.BEGIN_STOP:
+                session = self._active_session
+                if session is not None and activation_token is not None:
+                    candidate = _ActivationCandidate(
+                        activation_token, "stop", self._monotonic()
+                    )
+                    session.candidate = candidate
+                    if self.activation_threshold_seconds <= 0:
+                        if self._recording_control.confirm_activation(
+                            candidate.token
+                        ) is RecordingAction.STOP:
+                            session_to_finish = session
+                    else:
+                        session.stop_thread = threading.Thread(
+                            target=self._finish_after_release,
+                            args=(session, candidate),
+                            daemon=True,
+                        )
+                        session.confirmation_thread = threading.Thread(
+                            target=self._confirm_candidate,
+                            args=(session, candidate),
+                            daemon=True,
+                        )
+                        session.stop_thread.start()
+                        session.confirmation_thread.start()
+            elif action is RecordingAction.BEGIN_START and activation_token is not None:
                 path = None
                 session = None
                 try:
                     path = temp_wav_path()
+                    candidate = _ActivationCandidate(
+                        activation_token, "start", self._monotonic()
+                    )
                     session = _RecordingSession(
-                        token=object(),
+                        token=activation_token,
                         path=path,
-                        started_at=time.perf_counter(),
+                        started_at=candidate.started_at,
+                        candidate=candidate,
                     )
                     session.thread = threading.Thread(
                         target=self._record_session, args=(session,), daemon=False
                     )
                     session.stop_thread = threading.Thread(
-                        target=self._finish_after_release, args=(session,), daemon=True
+                        target=self._finish_after_release,
+                        args=(session, candidate),
+                        daemon=True,
                     )
-                    session.countdown_thread = threading.Thread(
-                        target=self._run_countdown_ticker, args=(session,), daemon=True
-                    )
+                    if self.activation_threshold_seconds > 0:
+                        session.confirmation_thread = threading.Thread(
+                            target=self._confirm_candidate,
+                            args=(session, candidate),
+                            daemon=True,
+                        )
                     self._active_session = session
                     self._hybrid_transcriber = None
-                    safe_print("Recording...", flush=True)
-                    self.show_recording_signal.emit()
+                    prepare_recording = getattr(
+                        self.recorder, "prepare_recording", None
+                    )
+                    if callable(prepare_recording):
+                        prepare_recording()
+                        session.capture_prepared = True
                     session.thread.start()
                     session.capture_started = True
+                    if self.activation_threshold_seconds <= 0:
+                        confirmed = self._recording_control.confirm_activation(
+                            candidate.token
+                        )
+                        if confirmed is RecordingAction.CONFIRM_START:
+                            self._confirm_start_locked(session)
                     session.stop_thread.start()
-                    session.countdown_thread.start()
+                    if session.confirmation_thread is not None:
+                        session.confirmation_thread.start()
                 except Exception as exc:
                     join_capture = False
                     if session is not None and self._active_session is session:
@@ -182,6 +247,149 @@ class DaemonController(QObject):
             safe_print(message, flush=True)
             self.processing_error_signal.emit(message)
             self.hide_signal.emit()
+
+    def _confirm_start_locked(self, session: _RecordingSession) -> None:
+        if self._active_session is not session or session.confirmed:
+            return
+        session.countdown_thread = threading.Thread(
+            target=self._run_countdown_ticker, args=(session,), daemon=True
+        )
+        session.confirmed = True
+        session.countdown_thread.start()
+        safe_print("Recording...", flush=True)
+        self.show_recording_signal.emit()
+
+    def _confirm_candidate(
+        self, session: _RecordingSession, candidate: _ActivationCandidate
+    ) -> None:
+        deadline = candidate.started_at + self.activation_threshold_seconds
+        remaining = deadline - self._monotonic()
+        if remaining > 0:
+            self._sleep(remaining)
+        held_seconds = max(0.0, self._monotonic() - candidate.started_at)
+        try:
+            active = is_hotkey_active(self.config.hotkey)
+        except Exception:
+            active = False
+        self._resolve_candidate(
+            session,
+            candidate,
+            key_active=active,
+            held_seconds=held_seconds,
+        )
+
+    def _resolve_candidate(
+        self,
+        session: _RecordingSession,
+        candidate: _ActivationCandidate,
+        *,
+        key_active: bool,
+        held_seconds: float,
+    ) -> None:
+        if not key_active:
+            self._release_candidate(session, candidate, held_seconds=held_seconds)
+            return
+
+        session_to_finish = None
+        confirmation_failure = None
+        with self._session_lock:
+            if self._active_session is not session or session.candidate is not candidate:
+                return
+            action = self._recording_control.confirm_activation(candidate.token)
+            if action is RecordingAction.CONFIRM_START:
+                try:
+                    self._confirm_start_locked(session)
+                except Exception as exc:
+                    session.rollback_requested = True
+                    confirmation_failure = exc
+            elif action is RecordingAction.STOP:
+                session.candidate = None
+                session_to_finish = session
+        if confirmation_failure is not None:
+            self._fail_confirmed_start(session, confirmation_failure)
+        elif session_to_finish is not None:
+            self._finish_recording(session_to_finish, "activation")
+
+    def _fail_confirmed_start(
+        self, session: _RecordingSession, exc: BaseException
+    ) -> None:
+        self._stop_and_join(session)
+        mark_recording(
+            session.path,
+            "failed-retained",
+            error_category=type(exc).__name__,
+        )
+        with self._session_lock:
+            if self._active_session is session:
+                self._recording_control.recording_failed()
+                self._active_session = None
+        message = f"Recording failed ({type(exc).__name__}). Daemon remains available."
+        safe_print(message, flush=True)
+        self.processing_error_signal.emit(message)
+        self.hide_signal.emit()
+
+    def _release_candidate(
+        self,
+        session: _RecordingSession,
+        candidate: _ActivationCandidate,
+        *,
+        held_seconds: float,
+    ) -> None:
+        action = RecordingAction.NONE
+        with self._session_lock:
+            if self._active_session is not session or session.candidate is not candidate:
+                return
+            action = self._recording_control.hotkey_released(candidate.token)
+            if action in (RecordingAction.CANCEL_STOP, RecordingAction.NONE):
+                if action is RecordingAction.CANCEL_STOP:
+                    session.candidate = None
+            elif action is RecordingAction.STOP:
+                session.candidate = None
+
+        if action is RecordingAction.CANCEL_START:
+            self._cancel_provisional_start(session, candidate, held_seconds)
+        elif action is RecordingAction.CANCEL_STOP:
+            self._log_rejection(candidate, held_seconds, "not-applicable")
+        elif action is RecordingAction.STOP:
+            self._finish_recording(session, "released")
+
+    def _cancel_provisional_start(
+        self,
+        session: _RecordingSession,
+        candidate: _ActivationCandidate,
+        held_seconds: float,
+    ) -> None:
+        with self._session_lock:
+            if self._active_session is not session or session.candidate is not candidate:
+                return
+            session.rollback_requested = True
+        self._stop_and_join(session)
+        cleanup = "removed"
+        try:
+            remove_unconfirmed_recording(session.path)
+        except (OSError, ValueError):
+            cleanup = "retained-after-failure"
+        with self._session_lock:
+            if self._active_session is session and session.candidate is candidate:
+                session.candidate = None
+                self._active_session = None
+        self._log_rejection(candidate, held_seconds, cleanup)
+
+    def _log_rejection(
+        self,
+        candidate: _ActivationCandidate,
+        held_seconds: float,
+        cleanup: str,
+    ) -> None:
+        append_rejection_record(
+            self._daemon_log_path,
+            platform=sys.platform,
+            mode=self.config.recording_mode,
+            hotkey=self.config.hotkey.strip().lower(),
+            intent=candidate.intent,
+            held_ms=max(0.0, held_seconds) * 1000.0,
+            cleanup=cleanup,
+        )
 
     def _run_countdown_ticker(self, session: _RecordingSession) -> None:
         while True:
@@ -216,8 +424,28 @@ class DaemonController(QObject):
                     self.show_elapsed_signal.emit(max(0, round(elapsed)))
             time.sleep(0.2)
 
-    def _finish_after_release(self, session: _RecordingSession) -> None:
-        reason, elapsed = wait_until_hotkey_released(self.config.hotkey, self.config.max_record_seconds)
+    def _finish_after_release(
+        self,
+        session: _RecordingSession,
+        candidate: _ActivationCandidate | None = None,
+    ) -> None:
+        candidate = candidate or session.candidate
+        if candidate is None:
+            return
+        reason, waiter_elapsed = wait_until_hotkey_released(
+            self.config.hotkey, self.config.max_record_seconds
+        )
+        elapsed = max(
+            float(waiter_elapsed),
+            max(0.0, self._monotonic() - candidate.started_at),
+        )
+        if reason != "timeout" and elapsed >= self.activation_threshold_seconds:
+            self._resolve_candidate(
+                session,
+                candidate,
+                key_active=True,
+                held_seconds=elapsed,
+            )
         with self._session_lock:
             if self._active_session is not session:
                 return
@@ -226,9 +454,17 @@ class DaemonController(QObject):
             if reason == "timeout":
                 action = self._recording_control.timeout()
             else:
-                action = self._recording_control.hotkey_released()
+                action = self._recording_control.hotkey_released(candidate.token)
+                if action is RecordingAction.CANCEL_STOP:
+                    session.candidate = None
+                elif action is RecordingAction.STOP:
+                    session.candidate = None
 
-        if action is RecordingAction.STOP:
+        if action is RecordingAction.CANCEL_START:
+            self._cancel_provisional_start(session, candidate, elapsed)
+        elif action is RecordingAction.CANCEL_STOP:
+            self._log_rejection(candidate, elapsed, "not-applicable")
+        elif action is RecordingAction.STOP:
             if reason == "timeout":
                 safe_print(f"Recording timed out after {elapsed:.1f}s; stopping automatically.", flush=True)
             self._finish_recording(session, reason)
@@ -250,6 +486,7 @@ class DaemonController(QObject):
         with self._session_lock:
             if self._active_session is not session:
                 return
+            session.candidate = None
             if session.shutdown_requested or self._recording_control.phase is RecordingPhase.IDLE:
                 self._recording_control.recording_failed()
                 self._active_session = None
@@ -269,6 +506,7 @@ class DaemonController(QObject):
                 session.path,
                 on_level=lambda rms: self.level_emitter.level_changed.emit(rms),
                 on_audio=None,
+                prepared=session.capture_prepared,
             )
         except Exception as exc:
             mark_recording(

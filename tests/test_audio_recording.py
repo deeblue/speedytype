@@ -44,3 +44,35 @@ def test_recorder_drains_writer_then_marks_capture_complete(tmp_path, monkeypatc
     assert recorder.last_write_stats is not None
     assert recorder.last_write_stats.written_frames == 160
     assert '"state": "captured"' in recording_sidecar_path(path).read_text(encoding="utf-8")
+
+
+def test_prepared_recording_preserves_stop_that_arrives_before_worker(tmp_path, monkeypatch):
+    path = temp_wav_path(directory=tmp_path)
+
+    class FakeStream:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    monkeypatch.setattr("speedytype.audio.sd.InputStream", FakeStream)
+    recorder = Recorder()
+
+    recorder.prepare_recording()
+    recorder.stop()
+    worker = Thread(
+        target=recorder.record_until_stop,
+        args=(path,),
+        kwargs={"prepared": True},
+    )
+    worker.start()
+    worker.join(2)
+
+    assert not worker.is_alive()
+    assert '"state": "captured"' in recording_sidecar_path(path).read_text(
+        encoding="utf-8"
+    )

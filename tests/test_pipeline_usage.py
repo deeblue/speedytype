@@ -304,7 +304,7 @@ def test_daemon_processing_path_marks_usage_daily(tmp_path, monkeypatch) -> None
 
     app = QApplication.instance() or QApplication([])
     config = _config(tmp_path)
-    controller = DaemonController(config)
+    controller = DaemonController(config, activation_threshold_seconds=0)
     controller.recorder = SimpleNamespace(
         stop=lambda: None,
         record_until_stop=lambda *args, **kwargs: None,

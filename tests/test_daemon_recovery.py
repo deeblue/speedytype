@@ -47,7 +47,8 @@ def _orchestration_controller(tmp_path, monkeypatch, *, mode="hold", max_seconds
             gemini_api_key="y",
             recording_mode=mode,
             max_record_seconds=max_seconds,
-        )
+        ),
+        activation_threshold_seconds=0,
     )
     paths = iter(tmp_path / f"recording-{index}.wav" for index in range(10))
     recorder_calls = []
@@ -120,7 +121,8 @@ def test_thread_setup_failure_retains_owned_path_and_controller_is_reusable(
 ):
     app = QApplication.instance() or QApplication([])
     controller = DaemonController(
-        AppConfig(openai_api_key="x", gemini_api_key="y", recording_mode=mode)
+        AppConfig(openai_api_key="x", gemini_api_key="y", recording_mode=mode),
+        activation_threshold_seconds=0,
     )
     failed_path = create_recording_path(directory=tmp_path)
     reused_path = tmp_path / "reused.wav"
@@ -164,7 +166,8 @@ def test_auxiliary_start_failure_keeps_capture_owned_until_join_then_reuses(
 ):
     app = QApplication.instance() or QApplication([])
     controller = DaemonController(
-        AppConfig(openai_api_key="x", gemini_api_key="y", max_record_seconds=10_000)
+        AppConfig(openai_api_key="x", gemini_api_key="y", max_record_seconds=10_000),
+        activation_threshold_seconds=0,
     )
     capture_live = threading.Event()
     stop_a = threading.Event()
@@ -383,7 +386,8 @@ def test_recording_worker_failure_while_stop_joins_does_not_start_processing(tmp
 def test_failed_take_stop_owner_cannot_capture_or_process_new_take(tmp_path, monkeypatch):
     app = QApplication.instance() or QApplication([])
     controller = DaemonController(
-        AppConfig(openai_api_key="x", gemini_api_key="y", max_record_seconds=10_000)
+        AppConfig(openai_api_key="x", gemini_api_key="y", max_record_seconds=10_000),
+        activation_threshold_seconds=0,
     )
     allow_a_waiter = threading.Event()
     allow_a_failure = threading.Event()
@@ -536,7 +540,8 @@ def test_shutdown_drains_capture_once_without_processing_and_leaves_recoverable_
 ):
     app = QApplication.instance() or QApplication([])
     controller = DaemonController(
-        AppConfig(openai_api_key="x", gemini_api_key="y", recording_mode=mode, max_record_seconds=10_000)
+        AppConfig(openai_api_key="x", gemini_api_key="y", recording_mode=mode, max_record_seconds=10_000),
+        activation_threshold_seconds=0,
     )
     recording = threading.Event()
     stopped = threading.Event()
@@ -602,7 +607,10 @@ def test_restart_and_quit_hooks_drain_before_relaunch_or_exit(monkeypatch):
 
 def test_processing_failure_is_sanitized_hides_overlay_and_controller_is_reusable(tmp_path, monkeypatch):
     app = QApplication.instance() or QApplication([])
-    controller = DaemonController(AppConfig(openai_api_key="secret", gemini_api_key="secret"))
+    controller = DaemonController(
+        AppConfig(openai_api_key="secret", gemini_api_key="secret"),
+        activation_threshold_seconds=0,
+    )
     notifications = []
     hidden = []
     controller.processing_error_signal.connect(notifications.append)
@@ -630,7 +638,10 @@ def test_processing_failure_is_sanitized_hides_overlay_and_controller_is_reusabl
 
 def test_recording_worker_failure_is_sanitized_and_hides_overlay(tmp_path, monkeypatch):
     app = QApplication.instance() or QApplication([])
-    controller = DaemonController(AppConfig(openai_api_key="secret", gemini_api_key="secret"))
+    controller = DaemonController(
+        AppConfig(openai_api_key="secret", gemini_api_key="secret"),
+        activation_threshold_seconds=0,
+    )
     notifications = []
     hidden = []
     controller.processing_error_signal.connect(notifications.append)
@@ -670,7 +681,10 @@ def test_short_recording_bypasses_hybrid_finish_before_pipeline_guard(tmp_path, 
         wav_file.setsampwidth(2)
         wav_file.setframerate(16_000)
         wav_file.writeframes(b"\0\0" * 160)
-    controller = DaemonController(AppConfig(openai_api_key="x", gemini_api_key="y"))
+    controller = DaemonController(
+        AppConfig(openai_api_key="x", gemini_api_key="y"),
+        activation_threshold_seconds=0,
+    )
     controller._hybrid_transcriber = type(
         "Hybrid",
         (),
@@ -708,7 +722,7 @@ def test_daemon_never_constructs_hybrid_transcriber_for_daily_recording(tmp_path
         hybrid_transcription_enabled=True,
         hybrid_threshold_seconds=1.0,
     )
-    controller = DaemonController(config)
+    controller = DaemonController(config, activation_threshold_seconds=0)
     active_path = tmp_path / "recording.wav"
     started = []
 
@@ -732,7 +746,10 @@ def test_daemon_never_constructs_hybrid_transcriber_for_daily_recording(tmp_path
 
 def test_upload_refusal_notification_reports_preserved_wav_and_category(tmp_path, monkeypatch):
     app = QApplication.instance() or QApplication([])
-    controller = DaemonController(AppConfig(openai_api_key="x", gemini_api_key="y"))
+    controller = DaemonController(
+        AppConfig(openai_api_key="x", gemini_api_key="y"),
+        activation_threshold_seconds=0,
+    )
     path = tmp_path / "retained.wav"
     notifications = []
     controller.processing_error_signal.connect(notifications.append)

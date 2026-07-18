@@ -87,12 +87,17 @@ class Recorder:
         self._stop_event = threading.Event()
         self.last_write_stats: CaptureWriteStats | None = None
 
+    def prepare_recording(self) -> None:
+        """Create a fresh stop generation before its worker can be started."""
+        self._stop_event.clear()
+
     def record_until_stop(
         self,
         output_path: Path,
         on_level: Callable[[float], None] | None = None,
         on_audio: Callable[[np.ndarray, float], None] | None = None,
         level_interval_seconds: float = 0.12,
+        prepared: bool = False,
     ) -> float:
         """Record until `stop()` is called.
 
@@ -102,7 +107,8 @@ class Recorder:
         volume feedback without being flooded by every low-level audio
         callback.
         """
-        self._stop_event.clear()
+        if not prepared:
+            self.prepare_recording()
         self.last_write_stats = None
         started = time.perf_counter()
         last_level_emit = 0.0
