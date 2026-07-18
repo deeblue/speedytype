@@ -8,6 +8,9 @@
 
 **Tech Stack:** Python 3.13, PyQt6 signals, `threading`, existing Windows `keyboard` backend, existing macOS Quartz event-tap service, pytest.
 
+**Status:** Completed and verified on 2026-07-18. The macOS hardware checks
+remain part of the existing v0.5.4 release gate.
+
 ## Global Constraints
 
 - The qualification threshold is fixed at exactly 80 ms and is not configurable.

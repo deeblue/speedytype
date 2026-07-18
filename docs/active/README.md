@@ -19,5 +19,5 @@ complete or the work must be explicitly stopped first.
 
 ## Active Designs and Plans
 
-- [Cross-platform hotkey debounce design](specs/2026-07-18-cross-platform-hotkey-debounce-design.md)
-- [Cross-platform hotkey debounce implementation plan](plans/2026-07-18-cross-platform-hotkey-debounce.md)
+There is no active design or implementation plan at this time. Completed work
+is indexed in the [documentation archive](../archive/README.md).

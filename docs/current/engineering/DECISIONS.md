@@ -88,3 +88,19 @@ retain the dated reasoning and measurements.
   requiring a 24/25-minute live recording when bounded automatic stop can prove
   the integration behavior.
 - **Evidence:** [macOS-only release-gate plan](../../archive/plans/2026-07-18-macos-only-release-gate.md)
+
+## 2026-07-18 — Qualify recording hotkey activations cross-platform
+
+- **Status:** Accepted
+- **Decision:** Apply a fixed 80 ms tokenized qualification stage to Hold
+  start, Toggle start, and Toggle stop. Begin provisional capture immediately,
+  delay visible recording UI until confirmation, discard only owned
+  unconfirmed artifacts, and record privacy-safe rejections persistently.
+- **Rationale:** One platform-neutral state boundary rejects transient physical
+  or synthetic events without clipping valid speech and without replacing the
+  stable Windows or macOS event backends.
+- **Rejected alternatives:** Delaying microphone capture could clip speech;
+  platform-specific debounce duplicates semantics; Raw Input or a Win32-hook
+  rewrite expands risk without addressing macOS; retaining sub-threshold audio
+  conflicts with the definition of unconfirmed input.
+- **Evidence:** [Cross-platform hotkey debounce design](../../archive/specs/2026-07-18-cross-platform-hotkey-debounce-design.md)

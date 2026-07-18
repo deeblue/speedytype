@@ -184,6 +184,13 @@ appears while processing starts immediately; the limit is a 25-minute stop.
 The `guided-recording` command is excluded from this setting and keeps its
 existing guided-recording behavior.
 
+Hold start, Toggle start, and Toggle stop use the same fixed **80 ms**
+qualification window as Windows. Provisional capture begins immediately, but
+the recording pill remains hidden until confirmation. A short Hold or short
+Toggle start removes its unconfirmed WAV/sidecar without transcription; a
+short Toggle stop leaves the current recording running. Rejections appear as
+privacy-safe `HOTKEY_DEBOUNCE` lines in the daemon log.
+
 Settings permits up to **25 minutes** per recording (the default remains 60
 seconds). Capture is always mono 16 kHz **PCM16 WAV**. After stop, SpeedyType
 creates and validates a temporary **lossless FLAC**, requires its actual size
@@ -240,6 +247,11 @@ Mac; the final tag is blocked until they pass:
     release rearms, repress stops once, and a bounded-duration automatic-stop
     cannot process twice. Verify failure recovery preserves the WAV for manual
     review; no 24- or 25-minute live recording is required.
+16. In Hold mode, tap the configured hotkey for less than 80 ms and confirm no
+    recording pill appears and one start rejection is logged.
+17. In Toggle mode, verify a short Toggle start does not begin a visible
+    recording, then begin a normal recording and verify a short Toggle stop
+    does not stop it. Confirm the normal second press still stops once.
 
 Also rerun setup twice, confirm the PATH entry is not duplicated, confirm the
 wrapper is executable, and confirm Keychain credentials remain unchanged. The

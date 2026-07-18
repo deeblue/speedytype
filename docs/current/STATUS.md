@@ -13,6 +13,9 @@
   integration.
 - Hold and Toggle recording modes, elapsed recording overlay, final 60-second
   countdown, 25-minute automatic stop, and pill-local stop warning.
+- Cross-platform 80 ms hotkey qualification with immediate provisional capture,
+  delayed recording UI, safe rejected-artifact cleanup, and persistent
+  privacy-safe rejection diagnostics.
 - Durable PCM16 WAV capture/recovery, validated lossless FLAC conversion,
   strict `<23 MiB` admission, complete-file `whisper-1` JSON transcription,
   and retained failure artifacts.

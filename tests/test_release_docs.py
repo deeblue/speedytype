@@ -158,3 +158,30 @@ def test_release_docs_describe_hold_toggle_overlay_timeout_and_macos_gate():
     assert "Windows Toggle real-device gate is pending" not in combined
     assert "≥24-minute" not in combined
     assert "sudden-power-loss real-device gate" not in combined
+
+
+def test_current_docs_describe_cross_platform_hotkey_qualification():
+    release = USER_README.read_text(encoding="utf-8")
+    setup = MAC_SETUP.read_text(encoding="utf-8")
+    architecture = (
+        ROOT / "docs" / "current" / "engineering" / "ARCHITECTURE.md"
+    ).read_text(encoding="utf-8")
+    decisions = (
+        ROOT / "docs" / "current" / "engineering" / "DECISIONS.md"
+    ).read_text(encoding="utf-8")
+    combined = "\n".join((release, setup, architecture, decisions))
+
+    required = (
+        "80 ms",
+        "provisional capture",
+        "PENDING_START",
+        "PENDING_STOP",
+        "HOTKEY_DEBOUNCE",
+        "recording pill remains hidden",
+        "capturing` or `captured",
+        "short Hold",
+        "short Toggle start",
+        "short Toggle stop",
+    )
+    for text in required:
+        assert text in combined

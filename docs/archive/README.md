@@ -24,5 +24,9 @@ The design and execution record for this organization are preserved as the
 [documentation information architecture design](specs/2026-07-18-documentation-information-architecture-design.md)
 and [documentation information architecture implementation plan](plans/2026-07-18-documentation-information-architecture.md).
 
+The implemented cross-platform hotkey qualification behavior is preserved in
+the [hotkey debounce design](specs/2026-07-18-cross-platform-hotkey-debounce-design.md)
+and [implementation plan](plans/2026-07-18-cross-platform-hotkey-debounce.md).
+
 For active product behavior, release gates, and next actions, return to the
 [documentation hub](../README.md).

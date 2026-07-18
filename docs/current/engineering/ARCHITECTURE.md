@@ -23,9 +23,21 @@ icon. See [the platform decision](DECISIONS.md#2026-07-16--use-native-macos-hotk
 
 ## Recording State and Feedback
 
-The daemon owns one Hold/Toggle state machine. Hold starts on press and stops
-on release. Toggle starts on the first activation, rearms on release, and stops
-on the next press. Duplicate events cannot create a second processing path.
+The daemon owns one tokenized Hold/Toggle state machine. Every start enters
+`PENDING_START`; Toggle stop enters `PENDING_STOP`. A fixed 80 ms qualification
+stage applies on Windows and macOS. Provisional capture and its recovery
+sidecar begin immediately, but the recording pill remains hidden until the
+matching token confirms. A short start stops and joins capture, then may remove
+only its explicitly owned `capturing` or `captured` WAV/sidecar. A short Toggle
+stop returns to armed recording without interrupting capture or UI. Stale
+release/timer workers cannot act on a later token.
+
+Confirmed Hold starts stop immediately on release. Confirmed Toggle starts
+rearm on release and stop on the next confirmed activation. Each rejection
+appends one privacy-safe `HOTKEY_DEBOUNCE` line directly to the persistent
+daemon log. See [the qualification decision](DECISIONS.md#2026-07-18--qualify-recording-hotkey-activations-cross-platform).
+
+Duplicate events cannot create a second processing path.
 While active, the recording pill shows elapsed `MM:SS`, then a final 60-second
 countdown. The configured ceiling is at most 25 minutes; automatic stop uses
 the same guarded stop-and-process transition and displays a pill-local warning.

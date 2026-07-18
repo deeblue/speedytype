@@ -136,6 +136,19 @@ Changing the recording mode in Settings requires a daemon restart. The
 guided-recording is excluded from these daemon controls and retains its guided
 workflow.
 
+Daily-daemon hotkey presses use a fixed **80 ms** qualification window on both
+Windows and macOS. SpeedyType begins provisional capture immediately so valid
+speech is not clipped, but the recording pill remains hidden until the press
+is confirmed. A short Hold or short Toggle start is rejected: its provisional
+WAV and recovery sidecar are removed and no transcription, polishing, paste,
+or usage request runs. A short Toggle stop is also rejected, so the existing
+recording continues uninterrupted. Confirmed Hold release still stops
+immediately without a second delay.
+
+Each rejected press writes one privacy-safe `HOTKEY_DEBOUNCE` record to the
+persistent daemon log. It never includes audio, transcription, clipboard data,
+API keys, or a full recording path.
+
 While recording, the pill shows elapsed time in `MM:SS`, followed by a final
 60-second countdown. At the configured limit, a pill-local automatic-stop
 warning remains visible briefly while the normal stop-and-process path starts
