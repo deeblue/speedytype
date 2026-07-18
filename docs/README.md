@@ -15,6 +15,10 @@ not be used as current instructions.
 - [Known limitations](current/engineering/KNOWN_LIMITATIONS.md)
 - [Release procedure](current/engineering/RELEASE.md)
 
+## Active Work
+
+- [Approved and in-progress specifications and plans](active/README.md)
+
 ## Historical Evidence
 
 - [Archive index](archive/README.md)

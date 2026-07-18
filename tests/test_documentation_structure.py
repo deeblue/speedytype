@@ -7,6 +7,7 @@ import scripts.build_release as build_release
 ROOT = Path(__file__).resolve().parent.parent
 CANONICAL = {
     "docs/README.md",
+    "docs/active/README.md",
     "docs/current/PRODUCT.md",
     "docs/current/STATUS.md",
     "docs/current/user/README.md",
@@ -34,6 +35,24 @@ def test_canonical_documents_exist_and_legacy_trees_are_absent():
 def test_legacy_documentation_trees_are_absent():
     assert not (ROOT / "docs" / "superpowers").exists()
     assert not (ROOT / "docs" / "log").exists()
+
+
+def test_active_work_uses_the_documented_lifecycle():
+    active_root = ROOT / "docs" / "active"
+    active_files = {
+        path.relative_to(active_root).as_posix()
+        for path in active_root.rglob("*.md")
+    }
+    assert "README.md" in active_files
+    assert all(
+        path == "README.md" or path.startswith(("specs/", "plans/"))
+        for path in active_files
+    )
+    lifecycle = (active_root / "README.md").read_text(encoding="utf-8")
+    assert "docs/active/specs/" in lifecycle
+    assert "docs/active/plans/" in lifecycle
+    assert "docs/current/" in lifecycle
+    assert "docs/archive/" in lifecycle
 
 
 def test_current_document_relative_links_resolve():
