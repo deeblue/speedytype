@@ -677,6 +677,11 @@ def _daemon_recording_instruction(config: AppConfig) -> str:
     return f"Hold {hotkey} to record."
 
 
+def _configure_daemon_qt_application(app: QApplication) -> None:
+    app.setApplicationName("SpeedyType")
+    app.setWindowIcon(build_app_icon())
+
+
 def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_path: str | Path | None = None) -> int:
     should_start, message = check_existing_daemon()
     if message:
@@ -687,6 +692,7 @@ def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_p
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     configure_daemon_application()
+    _configure_daemon_qt_application(app)
     controller = DaemonController(config, env_path=env_path, settings_path=settings_path)
     try:
         controller.register_hotkey()

@@ -7,7 +7,7 @@ APP_USER_MODEL_ID = "SpeedyType.SpeedyType"
 
 
 def configure_daemon_application() -> None:
-    return None
+    configure_standalone_application_identity()
 
 
 def configure_standalone_application_identity() -> None:
