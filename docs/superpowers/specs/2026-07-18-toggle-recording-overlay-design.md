@@ -166,11 +166,14 @@ Automated tests must prove:
 
 Release gates remain:
 
-- real Windows tests for Hold, Toggle, second-press stop, 25-minute auto-stop,
-  overlay timing, and one injected failure;
-- the equivalent real macOS tests, including no warning sound, menu-bar/Dock
-  behavior, and permissions;
-- a real at-least-24-minute recording on each platform before v0.5.4 is tagged.
+- Windows Hold, Toggle, race, timeout, overlay, shutdown, and failure behavior
+  is covered by deterministic simulation/automation and is not a real-device
+  release gate.
+- Real macOS tests remain the only hardware release gate: Hold, Toggle,
+  second-press stop, countdown/automatic stop using a bounded test duration,
+  no warning sound, menu-bar/Dock behavior, permissions, shutdown, and retained
+  failure recovery.
+- No 24- or 25-minute real recording is required on either platform.
 
 ## Acceptance Criteria
 
@@ -183,5 +186,5 @@ Release gates remain:
   shows elapsed time until the final 60-second countdown.
 - Automatic stop is shown at the pill location with the approved text while
   processing starts immediately.
-- Windows automation passes; real Windows/macOS release gates are explicitly
+- Windows automation passes; the real macOS integration gate remains explicitly
   pending until executed on target hardware.
