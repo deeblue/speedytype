@@ -19,11 +19,11 @@ def normalize_hotkey_tokens(tokens: list[str]) -> list[str]:
 
 
 if sys.platform == "win32":
-    from ._windows_hotkey import capture_hotkey, register_hold_hotkey, remove_hotkey, wait_until_hotkey_released
+    from ._windows_hotkey import capture_hotkey, is_hotkey_active, register_hold_hotkey, remove_hotkey, wait_until_hotkey_released
 elif sys.platform == "darwin":
-    from ._macos_hotkey import capture_hotkey, register_hold_hotkey, remove_hotkey, wait_until_hotkey_released
+    from ._macos_hotkey import capture_hotkey, is_hotkey_active, register_hold_hotkey, remove_hotkey, wait_until_hotkey_released
     from ._macos_hotkey import PlatformPermissionError
 else:
     raise RuntimeError(f"Unsupported platform for hotkeys: {sys.platform}")
 
-__all__ = ["PlatformPermissionError", "capture_hotkey", "normalize_hotkey_tokens", "register_hold_hotkey", "remove_hotkey", "wait_until_hotkey_released"]
+__all__ = ["PlatformPermissionError", "capture_hotkey", "is_hotkey_active", "normalize_hotkey_tokens", "register_hold_hotkey", "remove_hotkey", "wait_until_hotkey_released"]

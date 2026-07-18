@@ -22,6 +22,11 @@ def remove_hotkey(handle) -> None:
     handle.service.stop()
 
 
+def is_hotkey_active(hotkey: str) -> bool:
+    del hotkey
+    return bool(get_event_tap_service().state.active)
+
+
 def wait_until_hotkey_released(
     hotkey: str,
     timeout_seconds: float,

@@ -17,6 +17,10 @@ def remove_hotkey(handle) -> None:
     keyboard.remove_hotkey(handle)
 
 
+def is_hotkey_active(hotkey: str) -> bool:
+    return bool(keyboard.is_pressed(_windows_combo(hotkey)))
+
+
 def wait_until_hotkey_released(hotkey: str, timeout_seconds: float, poll_interval: float = 0.02) -> tuple[str, float]:
     started = time.perf_counter()
     while True:
