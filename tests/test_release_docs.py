@@ -140,3 +140,4 @@ def test_release_docs_describe_hold_toggle_overlay_timeout_and_pending_device_ga
 
     assert "Hold mode" in release and "Toggle mode" in release
     assert "Hold mode" in setup and "Toggle mode" in setup
+    assert "release rearms; next press stops" in report

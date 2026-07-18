@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import os
 import subprocess
 import sys
@@ -28,6 +28,19 @@ from speedytype.platform.process import is_process_running, terminate_process
 
 PID_FILE = default_pid_path()
 COUNTDOWN_WARNING_SECONDS = 60.0
+
+
+@dataclass
+class _RecordingSession:
+    token: object
+    path: Path
+    started_at: float
+    thread: threading.Thread | None = None
+    stop_thread: threading.Thread | None = None
+    countdown_thread: threading.Thread | None = None
+    stop_started: bool = False
+    shutdown_requested: bool = False
+    shutdown_draining: bool = False
 
 
 def report_recoverable_recordings(
@@ -81,10 +94,10 @@ class DaemonController(QObject):
 
         self.recorder = Recorder(device=config.mic_device)
         self._recording_control = RecordingControl(config.recording_mode)
-        self._active_thread: threading.Thread | None = None
-        self._stop_wait_thread: threading.Thread | None = None
-        self._countdown_thread: threading.Thread | None = None
-        self._active_path: Path | None = None
+        # Lock order is always controller session lock, then RecordingControl's
+        # internal lock. No code acquires these locks in the opposite order.
+        self._session_lock = threading.Lock()
+        self._active_session: _RecordingSession | None = None
         self._hotkey_handle = None
         # Kept as an inert compatibility attribute for old diagnostics. Daily
         # production recording always uses one complete-file JSON request.
@@ -104,96 +117,134 @@ class DaemonController(QObject):
         self._hotkey_handle = register_hold_hotkey(self.config.hotkey, self.on_press)
 
     def on_press(self) -> None:
-        action = self._recording_control.activate()
-        if action is RecordingAction.STOP:
-            self._finish_recording("activation")
-            return
-        if action is not RecordingAction.START:
-            return
+        session_to_finish = None
+        with self._session_lock:
+            action = self._recording_control.activate()
+            if action is RecordingAction.STOP:
+                session_to_finish = self._active_session
+            elif action is RecordingAction.START:
+                session = _RecordingSession(
+                    token=object(),
+                    path=temp_wav_path(),
+                    started_at=time.perf_counter(),
+                )
+                session.thread = threading.Thread(
+                    target=self._record_session, args=(session,), daemon=False
+                )
+                session.stop_thread = threading.Thread(
+                    target=self._finish_after_release, args=(session,), daemon=True
+                )
+                session.countdown_thread = threading.Thread(
+                    target=self._run_countdown_ticker, args=(session,), daemon=True
+                )
+                self._active_session = session
+                self._hybrid_transcriber = None
+                safe_print("Recording...", flush=True)
+                self.show_recording_signal.emit()
+                session.thread.start()
+                session.stop_thread.start()
+                session.countdown_thread.start()
 
-        self._active_path = temp_wav_path()
-        safe_print("Recording...", flush=True)
-        self.show_recording_signal.emit()
+        if session_to_finish is not None:
+            self._finish_recording(session_to_finish, "activation")
 
-        record_started = time.perf_counter()
-        self._hybrid_transcriber = None
-
-        self._active_thread = threading.Thread(target=self._record_active_path, daemon=False)
-        self._active_thread.start()
-        self._stop_wait_thread = threading.Thread(target=self._finish_after_release, daemon=True)
-        self._stop_wait_thread.start()
-        self._countdown_thread = threading.Thread(
-            target=self._run_countdown_ticker, args=(record_started,), daemon=True
-        )
-        self._countdown_thread.start()
-
-    def _run_countdown_ticker(self, record_started: float) -> None:
-        while self._active_thread and self._active_thread.is_alive():
-            elapsed = time.perf_counter() - record_started
+    def _run_countdown_ticker(self, session: _RecordingSession) -> None:
+        while True:
+            with self._session_lock:
+                if self._active_session is not session:
+                    return
+                if session.thread is None or not session.thread.is_alive():
+                    return
+            elapsed = time.perf_counter() - session.started_at
             remaining = self.config.max_record_seconds - elapsed
             if remaining <= 0:
-                self.show_countdown_signal.emit(0)
-                if self._recording_control.timeout() is RecordingAction.STOP:
-                    self._finish_recording("timeout")
+                with self._session_lock:
+                    if self._active_session is not session:
+                        return
+                    self.show_countdown_signal.emit(0)
+                    action = self._recording_control.timeout()
+                if action is RecordingAction.STOP:
+                    self._finish_recording(session, "timeout")
                 return
-            if remaining <= self.countdown_warning_seconds:
-                self.show_countdown_signal.emit(max(0, round(remaining)))
-            else:
-                self.show_elapsed_signal.emit(max(0, round(elapsed)))
+            with self._session_lock:
+                if self._active_session is not session:
+                    return
+                if remaining <= self.countdown_warning_seconds:
+                    self.show_countdown_signal.emit(max(0, round(remaining)))
+                else:
+                    self.show_elapsed_signal.emit(max(0, round(elapsed)))
             time.sleep(0.2)
 
-    def _finish_after_release(self) -> None:
+    def _finish_after_release(self, session: _RecordingSession) -> None:
         reason, elapsed = wait_until_hotkey_released(self.config.hotkey, self.config.max_record_seconds)
-        if reason == "timeout":
-            action = self._recording_control.timeout()
-            if action is RecordingAction.STOP:
-                safe_print(f"Recording timed out after {elapsed:.1f}s; stopping automatically.", flush=True)
-                self._finish_recording("timeout")
-            return
+        with self._session_lock:
+            if self._active_session is not session:
+                return
+            if reason == "timeout":
+                action = self._recording_control.timeout()
+            else:
+                action = self._recording_control.hotkey_released()
 
-        action = self._recording_control.hotkey_released()
         if action is RecordingAction.STOP:
-            self._finish_recording("release")
+            if reason == "timeout":
+                safe_print(f"Recording timed out after {elapsed:.1f}s; stopping automatically.", flush=True)
+            self._finish_recording(session, reason)
 
-    def _finish_recording(self, reason: str) -> None:
-        self.recorder.stop()
-        self._active_thread.join()
-        if self._recording_control.phase is RecordingPhase.IDLE:
-            return
-        active_path = self._active_path
-        if active_path is None:
-            self._recording_control.recording_failed()
-            return
-        safe_print("Processing...", flush=True)
-        if reason == "timeout":
-            self.show_auto_stopped_signal.emit()
-        self.show_processing_signal.emit()
-        self._recording_control.mark_processing()
-        threading.Thread(target=lambda: self._process_recording(active_path), daemon=True).start()
+    def _stop_and_join(self, session: _RecordingSession) -> None:
+        with self._session_lock:
+            if self._active_session is session and not session.stop_started:
+                # Recorder.stop() is an Event.set() in production. Keep this
+                # nonblocking ownership side effect inside the session lock so
+                # a failed take cannot yield to a new take between the identity
+                # check and stopping the shared Recorder instance.
+                session.stop_started = True
+                self.recorder.stop()
+        if session.thread is not None:
+            session.thread.join()
 
-    def _record_active_path(self) -> None:
-        if self._active_path is None:
-            return
+    def _finish_recording(self, session: _RecordingSession, reason: str) -> None:
+        self._stop_and_join(session)
+        with self._session_lock:
+            if self._active_session is not session:
+                return
+            if session.shutdown_requested or self._recording_control.phase is RecordingPhase.IDLE:
+                self._recording_control.recording_failed()
+                self._active_session = None
+                return
+            safe_print("Processing...", flush=True)
+            if reason == "timeout":
+                self.show_auto_stopped_signal.emit()
+            self.show_processing_signal.emit()
+            self._recording_control.mark_processing()
+        threading.Thread(
+            target=lambda: self._process_recording(session.path, session), daemon=True
+        ).start()
+
+    def _record_session(self, session: _RecordingSession) -> None:
         try:
             self.recorder.record_until_stop(
-                self._active_path,
+                session.path,
                 on_level=lambda rms: self.level_emitter.level_changed.emit(rms),
                 on_audio=None,
             )
         except Exception as exc:
-            if self._active_path is not None:
-                mark_recording(
-                    self._active_path,
-                    "failed-retained",
-                    error_category=type(exc).__name__,
-                )
+            mark_recording(
+                session.path,
+                "failed-retained",
+                error_category=type(exc).__name__,
+            )
             message = f"Recording failed ({type(exc).__name__}). Daemon remains available."
             safe_print(message, flush=True)
-            self.processing_error_signal.emit(message)
-            self._recording_control.recording_failed()
-            self.hide_signal.emit()
+            with self._session_lock:
+                if self._active_session is session:
+                    self.processing_error_signal.emit(message)
+                    self._recording_control.recording_failed()
+                    self._active_session = None
+                    self.hide_signal.emit()
 
-    def _process_recording(self, active_path: Path) -> None:
+    def _process_recording(
+        self, active_path: Path, session: _RecordingSession | None = None
+    ) -> None:
         try:
             process_wav(active_path, self.config, do_paste=True, usage_scope="daily")
         except Exception as exc:
@@ -207,8 +258,31 @@ class DaemonController(QObject):
             safe_print(message, flush=True)
             self.processing_error_signal.emit(message)
         finally:
-            self._recording_control.processing_finished()
-            self.hide_signal.emit()
+            with self._session_lock:
+                if session is None or self._active_session is session:
+                    self._recording_control.processing_finished()
+                    if session is not None:
+                        self._active_session = None
+                    self.hide_signal.emit()
+
+    def shutdown_active_recording(self) -> None:
+        """Drain the current capture without submitting it for processing."""
+        with self._session_lock:
+            session = self._active_session
+            if session is None or self._recording_control.phase is RecordingPhase.PROCESSING:
+                return
+            session.shutdown_requested = True
+            if session.shutdown_draining:
+                return
+            session.shutdown_draining = True
+            self._recording_control.timeout()
+
+        self._stop_and_join(session)
+        with self._session_lock:
+            if self._active_session is session:
+                self._recording_control.recording_failed()
+                self._active_session = None
+                self.hide_signal.emit()
 
 
 def _write_pid_file() -> None:
@@ -289,6 +363,20 @@ def _relaunch_daemon(env_path: str) -> None:
     )
 
 
+def _restart_running_daemon(
+    controller: DaemonController, app: QApplication, env_path: str
+) -> None:
+    controller.shutdown_active_recording()
+    _remove_pid_file_if_mine()
+    _relaunch_daemon(env_path)
+    app.quit()
+
+
+def _quit_running_daemon(controller: DaemonController, app: QApplication) -> None:
+    controller.shutdown_active_recording()
+    app.quit()
+
+
 def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_path: str | Path | None = None) -> int:
     should_start, message = check_existing_daemon()
     if message:
@@ -344,12 +432,10 @@ def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_p
         # Remove our own PID file before spawning the replacement, so the new
         # process's startup check (check_existing_daemon) doesn't see this
         # (still technically alive for a moment) process and refuse to start.
-        _remove_pid_file_if_mine()
-        _relaunch_daemon(env_path)
-        app.quit()
+        _restart_running_daemon(controller, app, env_path)
 
     def quit_daemon() -> None:
-        app.quit()
+        _quit_running_daemon(controller, app)
 
     action_settings = QAction("設定", menu)
     action_settings.triggered.connect(open_settings)
@@ -379,6 +465,7 @@ def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_p
     try:
         return app.exec()
     finally:
+        controller.shutdown_active_recording()
         if controller._hotkey_handle is not None:
             try:
                 remove_hotkey(controller._hotkey_handle)

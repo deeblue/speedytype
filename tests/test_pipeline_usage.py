@@ -304,26 +304,39 @@ def test_daemon_processing_path_marks_usage_daily(tmp_path, monkeypatch) -> None
     app = QApplication.instance() or QApplication([])
     config = _config(tmp_path)
     controller = DaemonController(config)
-    controller._active_path = tmp_path / "audio.wav"
-    controller._active_thread = SimpleNamespace(is_alive=lambda: True, join=lambda: None)
-    controller.recorder = SimpleNamespace(stop=lambda: None)
+    controller.recorder = SimpleNamespace(
+        stop=lambda: None,
+        record_until_stop=lambda *args, **kwargs: None,
+    )
     controller._hybrid_transcriber = None
-    controller._recording_control.activate()
 
     calls = []
     monkeypatch.setattr("speedytype.daemon.wait_until_hotkey_released", lambda *args: ("released", 0.1))
     monkeypatch.setattr("speedytype.daemon.process_wav", lambda *args, **kwargs: calls.append(kwargs))
 
     class ImmediateThread:
-        def __init__(self, *, target, daemon):
+        def __init__(self, *, target, daemon, args=()):
             self.target = target
+            self.args = args
+            self.started = False
+            self.joined = False
 
         def start(self):
-            self.target()
+            self.started = True
+            if getattr(self.target, "__name__", "") == "<lambda>":
+                self.target(*self.args)
+
+        def is_alive(self):
+            return self.started and not self.joined
+
+        def join(self):
+            self.joined = True
 
     monkeypatch.setattr("speedytype.daemon.threading.Thread", ImmediateThread)
+    monkeypatch.setattr("speedytype.daemon.temp_wav_path", lambda: tmp_path / "audio.wav")
 
-    controller._finish_after_release()
+    controller.on_press()
+    controller._finish_after_release(controller._active_session)
 
     assert calls[0]["usage_scope"] == "daily"
     app.processEvents()

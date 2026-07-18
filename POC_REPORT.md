@@ -682,8 +682,8 @@ injection and paste verification, remains pending and is not claimed here.
 
 The production daemon consumes the canonical recording-mode setting through a
 single `RecordingControl` transition owner. **Hold mode** stops on release;
-**Toggle mode** ignores duplicate activation, rearms on release, and stops on
-release and repress. The default recording mode is Hold, mode changes require
+**Toggle mode** ignores duplicate activation: release rearms; next press stops.
+The default recording mode is Hold, mode changes require
 the user to restart the daemon, and `guided-recording` is excluded from the
 daemon-mode contract.
 
