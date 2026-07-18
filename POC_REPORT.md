@@ -269,7 +269,8 @@ Phase 6 extends the daemon with a real system tray menu (setting up the `QSystem
 ### Part B: Settings Dialog
 
 - [speedytype/settings_dialog.py](speedytype/settings_dialog.py): a `QDialog` with four sections.
-  - **Recording length**: a `QSlider` hard-locked to `60-540s` (can't be dragged outside that range — this is a Qt property, not just UI styling), with a live human-readable label (`format_seconds_readable`, e.g. "3 分 30 秒").
+  - **Recording length**: a `QSlider` hard-locked to `60-1500s` (25 minutes; this is a Qt property, not just UI styling), with a live human-readable label (`format_seconds_readable`, e.g. "3 分 30 秒").
+
   - **Hotkey**: a "擷取新組合鍵" button that calls `keyboard.read_hotkey(suppress=True)` on a background thread and delivers the result back via a `pyqtSignal`. Captured combos are rejected (with an on-screen message, not silently) unless they include a modifier (Ctrl/Alt/Shift/Win) or are a single dedicated function key (F1-F24) — see the design note below. A captured combo is also checked against a small static list of well-known Windows/app shortcuts and flagged as a possible conflict if matched.
   - **Vocabulary**: add/remove/reset-to-default/export/import, with import explicitly labeled "匯入並取代" (replace, not merge) to avoid ambiguity.
   - **API keys**: `OPENAI_API_KEY`/`GEMINI_API_KEY`/`MINIMAX_API_KEY`, masked to the last 4 characters by default with a per-field reveal toggle, plus a "測試連線" button that pings a minimal-cost endpoint (model list) with whatever is currently typed, not necessarily the saved value.
@@ -659,3 +660,56 @@ The fixed fixture contains two explicit daily rows (60s and 30s), one explicit d
 - Windows automated validation covers calculation and Qt display states. The
   combined real-Mac 0.5.4 release gate must still confirm rendering, scrolling,
   and editing under accessory-mode daemon operation.
+
+## Complete-file FLAC production path (implemented 2026-07-18)
+
+The approved production design keeps capture and upload preparation separate:
+the recorder always drains mono 16 kHz PCM16 WAV to durable storage, then the
+post-stop pipeline encodes lossless FLAC, validates format, exact frames, and
+decoded PCM SHA-256, and admits the actual artifact only when it is strictly
+below 23 MiB. The normal STT call is one complete-file `whisper-1` request with
+`response_format=json`, no timestamp granularities, and no hybrid segmentation.
+
+If FLAC preparation fails, a short-WAV fallback is permitted only when the WAV
+also passes the 25-minute and 23 MiB guards. All other processing failures keep
+the original WAV and mark its sidecar `failed-retained`; startup discovery only
+reports these files and never auto-submits them. Automated synthetic capture,
+FLAC equivalence/admission, request-selection, and recovery tests are complete.
+Windows simulation/automation is completion evidence and is not a hardware
+release gate. macOS is the only hardware release gate, covering native
+permissions/UI/hotkey behavior, paste, shutdown, and retained failure recovery.
+No 24- or 25-minute real recording is required on either platform.
+
+## Hold/Toggle daemon orchestration (implemented 2026-07-18)
+
+The production daemon consumes the canonical recording-mode setting through a
+single `RecordingControl` transition owner. **Hold mode** stops on release;
+**Toggle mode** ignores duplicate activation: release rearms; next press stops.
+The default recording mode is Hold, mode changes require
+the user to restart the daemon, and `guided-recording` is excluded from the
+daemon-mode contract.
+
+The overlay now receives persistent `MM:SS` elapsed updates followed by the
+final 60-second countdown. Both modes share the same idempotent 25-minute stop
+path. On timeout, the pill-local automatic-stop warning is signaled before the
+processing display, while the processing worker starts immediately rather than
+waiting for the warning's two-second presentation. Recorder failure returns
+the state machine to reusable idle and prevents a later deadline from
+processing that failed take.
+
+Automated fake-recorder/thread/clock coverage exercises Hold, Toggle, deadline
+races, signal ordering, controller reuse, and Windows platform behavior without
+OS key injection. macOS is the only hardware release gate; it retains native
+permission, menu-bar/Dock, Toggle, bounded-duration automatic-stop, paste,
+shutdown, and injected-failure checks. No minimum live duration is required.
+
+## Retained-recording file durability (implemented 2026-07-18)
+
+Atomic recovery-sidecar writes now flush and file-fsync their temporary JSON
+before replacement. The capture writer drains all queued frames, flushes and
+closes the WAV, then reopens and file-fsyncs the completed file when a real path
+exists; synthetic sinks with no file remain supported. These changes strengthen
+process/OS crash durability without making a broader power-loss guarantee.
+
+Windows directory fsync is not portable and is intentionally not attempted.
+Sudden-power-loss survival is not claimed and is not a separate release gate.

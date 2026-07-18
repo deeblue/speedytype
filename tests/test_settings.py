@@ -2,17 +2,81 @@ import json
 from decimal import Decimal
 
 import pytest
+import speedytype.settings as settings_module
 
 from speedytype.settings import (
     AppSettings,
     DEFAULT_MAX_RECORD_SECONDS,
     DEFAULT_VOCAB_TERMS,
+    MAX_MAX_RECORD_SECONDS,
     export_vocab,
     hotkey_has_modifier_or_is_function_key,
     import_vocab,
     load_settings,
     save_settings,
 )
+
+
+def test_recording_mode_defaults_to_hold():
+    assert settings_module.DEFAULT_RECORDING_MODE == "hold"
+    assert AppSettings.default().recording_mode == "hold"
+
+
+def test_toggle_recording_mode_roundtrips(tmp_path):
+    settings_path = tmp_path / "settings.json"
+    save_settings(settings_path, AppSettings(recording_mode="toggle"))
+
+    loaded = load_settings(settings_path)
+
+    assert loaded.recording_mode == "toggle"
+    assert json.loads(settings_path.read_text(encoding="utf-8"))["recording_mode"] == "toggle"
+
+
+def test_direct_save_rejects_unsupported_recording_mode(tmp_path):
+    settings_path = tmp_path / "settings.json"
+
+    with pytest.raises(ValueError, match="recording_mode"):
+        save_settings(settings_path, AppSettings(recording_mode="bad"))
+
+    assert not settings_path.exists()
+
+
+@pytest.mark.parametrize("invalid_mode", ["", None, False, 0])
+def test_direct_save_rejects_explicit_falsy_recording_mode(tmp_path, invalid_mode):
+    settings_path = tmp_path / "settings.json"
+
+    with pytest.raises(ValueError, match="recording_mode"):
+        save_settings(settings_path, AppSettings(recording_mode=invalid_mode))
+
+    assert not settings_path.exists()
+
+
+@pytest.mark.parametrize("invalid_mode", ["bad", "", None, False, 0])
+def test_invalid_recording_mode_falls_back_to_hold_with_warning(tmp_path, invalid_mode):
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps({"recording_mode": invalid_mode}),
+        encoding="utf-8",
+    )
+
+    loaded = load_settings(settings_path)
+
+    assert loaded.recording_mode == "hold"
+    assert any("錄音模式" in item for item in loaded.load_warnings)
+
+
+def test_absent_recording_mode_uses_default_without_warning(tmp_path):
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text("{}", encoding="utf-8")
+
+    loaded = load_settings(settings_path)
+
+    assert loaded.recording_mode == "hold"
+    assert not any("錄音模式" in item for item in loaded.load_warnings)
+
+
+def test_max_record_limit_is_exactly_twenty_five_minutes():
+    assert MAX_MAX_RECORD_SECONDS == 1500.0
 
 
 def test_load_settings_creates_default_file_when_missing(tmp_path):
@@ -39,6 +103,32 @@ def test_load_settings_roundtrips_saved_values(tmp_path):
     assert loaded.hotkey_combo == ["ctrl", "alt", "space"]
     assert loaded.vocab_terms == ["Foo", "Bar"]
     assert loaded.hotkey_string == "ctrl+alt+space"
+
+
+def test_over_limit_recording_setting_is_clamped_with_visible_warning(tmp_path):
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(json.dumps({"max_record_seconds": 1800}), encoding="utf-8")
+
+    loaded = load_settings(settings_path)
+
+    assert loaded.max_record_seconds == 1500.0
+    assert any("25 分鐘" in warning for warning in loaded.load_warnings)
+
+
+def test_exact_twenty_five_minute_setting_roundtrips(tmp_path):
+    settings_path = tmp_path / "settings.json"
+    save_settings(settings_path, AppSettings(max_record_seconds=1500.0))
+
+    assert load_settings(settings_path).max_record_seconds == 1500.0
+
+
+def test_direct_save_rejects_recording_setting_above_limit(tmp_path):
+    settings_path = tmp_path / "settings.json"
+
+    with pytest.raises(ValueError, match="max_record_seconds"):
+        save_settings(settings_path, AppSettings(max_record_seconds=1500.1))
+
+    assert not settings_path.exists()
 
 
 def test_monthly_budget_roundtrips_as_exact_decimal_string(tmp_path):

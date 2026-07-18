@@ -17,7 +17,34 @@ NEW_USAGE_FIELDS = [
     "llm_input_tokens",
     "llm_output_tokens",
     "llm_total_tokens",
+    "stt_upload_container",
+    "stt_upload_bytes",
+    "stt_encoding_seconds",
+    "stt_wav_fallback_used",
+    "stt_wav_fallback_reason",
 ]
+
+
+def test_upload_diagnostics_are_written(tmp_path) -> None:
+    path = tmp_path / "latency.csv"
+    append_latency_record(
+        path,
+        _record(
+            stt_upload_container="flac",
+            stt_upload_bytes=1234,
+            stt_encoding_seconds=0.75,
+            stt_wav_fallback_used=True,
+            stt_wav_fallback_reason="FlacEncodingError",
+        ),
+    )
+
+    with path.open("r", encoding="utf-8", newline="") as csv_file:
+        row = next(csv.DictReader(csv_file))
+    assert row["stt_upload_container"] == "flac"
+    assert row["stt_upload_bytes"] == "1234"
+    assert row["stt_encoding_seconds"] == "0.750000"
+    assert row["stt_wav_fallback_used"] == "true"
+    assert row["stt_wav_fallback_reason"] == "FlacEncodingError"
 
 
 def _record(**overrides) -> LatencyRecord:

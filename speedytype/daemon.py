@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import os
 import subprocess
 import sys
@@ -13,22 +13,52 @@ from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 from speedytype.audio import Recorder, temp_wav_path
-from speedytype.api import transcribe_audio, transcribe_audio_verbose
-from speedytype.chunking import ChunkingConfig
 from speedytype.config import AppConfig
 from speedytype.console import safe_print
 from speedytype.hotkey import PlatformPermissionError, register_hold_hotkey, remove_hotkey, wait_until_hotkey_released
 from speedytype.icon import build_app_icon
-from speedytype.hybrid_pipeline import HybridTranscriber
 from speedytype.overlay import AudioLevelEmitter, RecordingPill
-from speedytype.pipeline import process_wav, wav_duration_seconds
+from speedytype.pipeline import process_wav
 from speedytype.paths import default_daemon_log_path, default_env_path, default_pid_path, default_settings_path
 from speedytype.platform.app import activate_window, configure_daemon_application
+from speedytype.recording_control import RecordingAction, RecordingControl, RecordingPhase
+from speedytype.recording_recovery import RecoveryRecord, discover_recoverable_recordings, mark_recording
 from speedytype.platform.process import is_process_running, terminate_process
 
 
 PID_FILE = default_pid_path()
 COUNTDOWN_WARNING_SECONDS = 60.0
+
+
+@dataclass
+class _RecordingSession:
+    token: object
+    path: Path
+    started_at: float
+    thread: threading.Thread | None = None
+    stop_thread: threading.Thread | None = None
+    countdown_thread: threading.Thread | None = None
+    capture_started: bool = False
+    stop_started: bool = False
+    rollback_requested: bool = False
+    shutdown_requested: bool = False
+    shutdown_draining: bool = False
+
+
+def report_recoverable_recordings(
+    tray: QSystemTrayIcon, records: tuple[RecoveryRecord, ...]
+) -> None:
+    if not records:
+        return
+    safe_print(f"Found {len(records)} retained SpeedyType recording(s):", flush=True)
+    for record in records:
+        safe_print(f"- [{record.state}] {record.wav_path}", flush=True)
+    tray.showMessage(
+        "SpeedyType 錄音已保留",
+        f"找到 {len(records)} 筆尚未完成的錄音；檔案路徑已寫入 daemon log，不會自動上傳。",
+        QSystemTrayIcon.MessageIcon.Warning,
+        10_000,
+    )
 
 
 class DaemonController(QObject):
@@ -40,7 +70,9 @@ class DaemonController(QObject):
 
     show_recording_signal = pyqtSignal()
     show_processing_signal = pyqtSignal()
+    show_elapsed_signal = pyqtSignal(int)
     show_countdown_signal = pyqtSignal(int)
+    show_auto_stopped_signal = pyqtSignal()
     hide_signal = pyqtSignal()
     processing_error_signal = pyqtSignal(str)
 
@@ -57,16 +89,21 @@ class DaemonController(QObject):
         self.level_emitter.level_changed.connect(self.pill.update_level)
         self.show_recording_signal.connect(self.pill.show_recording)
         self.show_processing_signal.connect(self.pill.show_processing)
+        self.show_elapsed_signal.connect(self.pill.show_elapsed)
         self.show_countdown_signal.connect(self.pill.show_countdown)
+        self.show_auto_stopped_signal.connect(self.pill.show_auto_stopped)
         self.hide_signal.connect(self.pill.hide_pill)
 
         self.recorder = Recorder(device=config.mic_device)
-        self._active_thread: threading.Thread | None = None
-        self._stop_wait_thread: threading.Thread | None = None
-        self._countdown_thread: threading.Thread | None = None
-        self._active_path: Path | None = None
+        self._recording_control = RecordingControl(config.recording_mode)
+        # Lock order is always controller session lock, then RecordingControl's
+        # internal lock. No code acquires these locks in the opposite order.
+        self._session_lock = threading.Lock()
+        self._active_session: _RecordingSession | None = None
         self._hotkey_handle = None
-        self._hybrid_transcriber: HybridTranscriber | None = None
+        # Kept as an inert compatibility attribute for old diagnostics. Daily
+        # production recording always uses one complete-file JSON request.
+        self._hybrid_transcriber = None
 
     def apply_live_vocab_update(self, vocab_bias_string: str) -> None:
         """Vocabulary bias is read fresh on every Whisper call, so it can be
@@ -82,102 +119,213 @@ class DaemonController(QObject):
         self._hotkey_handle = register_hold_hotkey(self.config.hotkey, self.on_press)
 
     def on_press(self) -> None:
-        if self._active_thread and self._active_thread.is_alive():
-            return
-        self._active_path = temp_wav_path()
-        safe_print("Recording...", flush=True)
-        self.show_recording_signal.emit()
+        session_to_finish = None
+        start_failure = None
+        with self._session_lock:
+            action = self._recording_control.activate()
+            if action is RecordingAction.STOP:
+                session_to_finish = self._active_session
+            elif action is RecordingAction.START:
+                path = None
+                session = None
+                try:
+                    path = temp_wav_path()
+                    session = _RecordingSession(
+                        token=object(),
+                        path=path,
+                        started_at=time.perf_counter(),
+                    )
+                    session.thread = threading.Thread(
+                        target=self._record_session, args=(session,), daemon=False
+                    )
+                    session.stop_thread = threading.Thread(
+                        target=self._finish_after_release, args=(session,), daemon=True
+                    )
+                    session.countdown_thread = threading.Thread(
+                        target=self._run_countdown_ticker, args=(session,), daemon=True
+                    )
+                    self._active_session = session
+                    self._hybrid_transcriber = None
+                    safe_print("Recording...", flush=True)
+                    self.show_recording_signal.emit()
+                    session.thread.start()
+                    session.capture_started = True
+                    session.stop_thread.start()
+                    session.countdown_thread.start()
+                except Exception as exc:
+                    join_capture = False
+                    if session is not None and self._active_session is session:
+                        if session.capture_started:
+                            session.rollback_requested = True
+                            join_capture = True
+                            session.stop_started = True
+                            self.recorder.stop()
+                        else:
+                            self._active_session = None
+                    if not join_capture:
+                        self._recording_control.recording_failed()
+                    start_failure = (exc, path, session, join_capture)
 
-        record_started = time.perf_counter()
-        if self.config.hybrid_transcription_enabled:
-            chunk_config = ChunkingConfig(hybrid_threshold_seconds=self.config.hybrid_threshold_seconds)
-            self._hybrid_transcriber = HybridTranscriber(
-                chunk_config,
-                lambda path, prompt_override="": transcribe_audio_verbose(
-                    path, self.config, prompt_override=prompt_override
-                ),
-                lambda path: transcribe_audio(path, self.config),
-                sample_rate=self.recorder.sample_rate,
-                initial_prompt=self.config.whisper_vocab_bias,
-            )
-        else:
-            self._hybrid_transcriber = None
-
-        self._active_thread = threading.Thread(target=self._record_active_path, daemon=False)
-        self._active_thread.start()
-        self._stop_wait_thread = threading.Thread(target=self._finish_after_release, daemon=True)
-        self._stop_wait_thread.start()
-        self._countdown_thread = threading.Thread(
-            target=self._run_countdown_ticker, args=(record_started,), daemon=True
-        )
-        self._countdown_thread.start()
-
-    def _run_countdown_ticker(self, record_started: float) -> None:
-        while self._active_thread and self._active_thread.is_alive():
-            elapsed = time.perf_counter() - record_started
-            remaining = self.config.max_record_seconds - elapsed
-            if remaining <= self.countdown_warning_seconds:
-                self.show_countdown_signal.emit(max(0, round(remaining)))
-            time.sleep(0.2)
-
-    def _finish_after_release(self) -> None:
-        reason, elapsed = wait_until_hotkey_released(self.config.hotkey, self.config.max_record_seconds)
-        if not self._active_thread or not self._active_thread.is_alive() or self._active_path is None:
-            return
-        if reason == "timeout":
-            safe_print(f"Recording timed out after {elapsed:.1f}s; stopping automatically.", flush=True)
-        self.recorder.stop()
-        self._active_thread.join()
-        safe_print("Processing...", flush=True)
-        self.show_processing_signal.emit()
-
-        active_path = self._active_path
-
-        threading.Thread(target=lambda: self._process_recording(active_path), daemon=True).start()
-
-    def _record_active_path(self) -> None:
-        if self._active_path is None:
-            return
-        try:
-            self.recorder.record_until_stop(
-                self._active_path,
-                on_level=lambda rms: self.level_emitter.level_changed.emit(rms),
-                on_audio=None if self._hybrid_transcriber is None else self._hybrid_transcriber.feed,
-            )
-        except Exception as exc:
+        if session_to_finish is not None:
+            self._finish_recording(session_to_finish, "activation")
+        if start_failure is not None:
+            exc, path, session, join_capture = start_failure
+            if join_capture and session is not None and session.thread is not None:
+                session.thread.join()
+                with self._session_lock:
+                    if self._active_session is session:
+                        self._active_session = None
+                        self._recording_control.recording_failed()
+            if path is not None:
+                mark_recording(path, "failed-retained", error_category=type(exc).__name__)
             message = f"Recording failed ({type(exc).__name__}). Daemon remains available."
             safe_print(message, flush=True)
             self.processing_error_signal.emit(message)
             self.hide_signal.emit()
 
-    def _process_recording(self, active_path: Path) -> None:
-        try:
-            is_short = active_path.exists() and wav_duration_seconds(active_path) < 0.1
-            if self._hybrid_transcriber is None or is_short:
-                process_wav(active_path, self.config, do_paste=True, usage_scope="daily")
+    def _run_countdown_ticker(self, session: _RecordingSession) -> None:
+        while True:
+            with self._session_lock:
+                if self._active_session is not session:
+                    return
+                if session.rollback_requested or session.shutdown_requested:
+                    return
+                if session.thread is None or not session.thread.is_alive():
+                    return
+            elapsed = time.perf_counter() - session.started_at
+            remaining = self.config.max_record_seconds - elapsed
+            if remaining <= 0:
+                with self._session_lock:
+                    if self._active_session is not session:
+                        return
+                    if session.rollback_requested or session.shutdown_requested:
+                        return
+                    self.show_countdown_signal.emit(0)
+                    action = self._recording_control.timeout()
+                if action is RecordingAction.STOP:
+                    self._finish_recording(session, "timeout")
+                return
+            with self._session_lock:
+                if self._active_session is not session:
+                    return
+                if session.rollback_requested or session.shutdown_requested:
+                    return
+                if remaining <= self.countdown_warning_seconds:
+                    self.show_countdown_signal.emit(max(0, round(remaining)))
+                else:
+                    self.show_elapsed_signal.emit(max(0, round(elapsed)))
+            time.sleep(0.2)
+
+    def _finish_after_release(self, session: _RecordingSession) -> None:
+        reason, elapsed = wait_until_hotkey_released(self.config.hotkey, self.config.max_record_seconds)
+        with self._session_lock:
+            if self._active_session is not session:
+                return
+            if session.rollback_requested or session.shutdown_requested:
+                return
+            if reason == "timeout":
+                action = self._recording_control.timeout()
             else:
-                hybrid = self._hybrid_transcriber.finish(active_path)
-                process_wav(
-                    active_path,
-                    self.config,
-                    do_paste=True,
-                    usage_scope="daily",
-                    raw_transcript_override=hybrid.raw_text,
-                    whisper_seconds_override=hybrid.tail_seconds,
-                    run_label="hybrid_fallback" if hybrid.fallback_used else "hybrid",
-                    hybrid_request_count=hybrid.request_count,
-                    hybrid_request_seconds=hybrid.request_seconds,
-                    stt_audio_seconds=hybrid.audio_seconds,
-                    hybrid_fallback_used=hybrid.fallback_used,
-                    hybrid_validation_reasons=" | ".join(hybrid.diagnostics.get("validation_reasons", [])),
-                    precomputed_tail_seconds=hybrid.tail_seconds,
-                )
+                action = self._recording_control.hotkey_released()
+
+        if action is RecordingAction.STOP:
+            if reason == "timeout":
+                safe_print(f"Recording timed out after {elapsed:.1f}s; stopping automatically.", flush=True)
+            self._finish_recording(session, reason)
+
+    def _stop_and_join(self, session: _RecordingSession) -> None:
+        with self._session_lock:
+            if self._active_session is session and not session.stop_started:
+                # Recorder.stop() is an Event.set() in production. Keep this
+                # nonblocking ownership side effect inside the session lock so
+                # a failed take cannot yield to a new take between the identity
+                # check and stopping the shared Recorder instance.
+                session.stop_started = True
+                self.recorder.stop()
+        if session.thread is not None:
+            session.thread.join()
+
+    def _finish_recording(self, session: _RecordingSession, reason: str) -> None:
+        self._stop_and_join(session)
+        with self._session_lock:
+            if self._active_session is not session:
+                return
+            if session.shutdown_requested or self._recording_control.phase is RecordingPhase.IDLE:
+                self._recording_control.recording_failed()
+                self._active_session = None
+                return
+            safe_print("Processing...", flush=True)
+            if reason == "timeout":
+                self.show_auto_stopped_signal.emit()
+            self.show_processing_signal.emit()
+            self._recording_control.mark_processing()
+        threading.Thread(
+            target=lambda: self._process_recording(session.path, session), daemon=True
+        ).start()
+
+    def _record_session(self, session: _RecordingSession) -> None:
+        try:
+            self.recorder.record_until_stop(
+                session.path,
+                on_level=lambda rms: self.level_emitter.level_changed.emit(rms),
+                on_audio=None,
+            )
         except Exception as exc:
-            message = f"Recording processing failed ({type(exc).__name__}). Daemon remains available."
+            mark_recording(
+                session.path,
+                "failed-retained",
+                error_category=type(exc).__name__,
+            )
+            message = f"Recording failed ({type(exc).__name__}). Daemon remains available."
+            safe_print(message, flush=True)
+            with self._session_lock:
+                if self._active_session is session and not session.rollback_requested:
+                    self.processing_error_signal.emit(message)
+                    self._recording_control.recording_failed()
+                    self._active_session = None
+                    self.hide_signal.emit()
+
+    def _process_recording(
+        self, active_path: Path, session: _RecordingSession | None = None
+    ) -> None:
+        try:
+            process_wav(active_path, self.config, do_paste=True, usage_scope="daily")
+        except Exception as exc:
+            category = str(getattr(exc, "category", type(exc).__name__))
+            preserved_path = Path(getattr(exc, "preserved_wav", active_path))
+            mark_recording(active_path, "failed-retained", error_category=category)
+            message = (
+                f"Recording processing failed ({category}). WAV preserved: "
+                f"{preserved_path}. Daemon remains available."
+            )
             safe_print(message, flush=True)
             self.processing_error_signal.emit(message)
         finally:
-            self.hide_signal.emit()
+            with self._session_lock:
+                if session is None or self._active_session is session:
+                    self._recording_control.processing_finished()
+                    if session is not None:
+                        self._active_session = None
+                    self.hide_signal.emit()
+
+    def shutdown_active_recording(self) -> None:
+        """Drain the current capture without submitting it for processing."""
+        with self._session_lock:
+            session = self._active_session
+            if session is None or self._recording_control.phase is RecordingPhase.PROCESSING:
+                return
+            session.shutdown_requested = True
+            if session.shutdown_draining:
+                return
+            session.shutdown_draining = True
+            self._recording_control.timeout()
+
+        self._stop_and_join(session)
+        with self._session_lock:
+            if self._active_session is session:
+                self._recording_control.recording_failed()
+                self._active_session = None
+                self.hide_signal.emit()
 
 
 def _write_pid_file() -> None:
@@ -258,6 +406,27 @@ def _relaunch_daemon(env_path: str) -> None:
     )
 
 
+def _restart_running_daemon(
+    controller: DaemonController, app: QApplication, env_path: str
+) -> None:
+    controller.shutdown_active_recording()
+    _remove_pid_file_if_mine()
+    _relaunch_daemon(env_path)
+    app.quit()
+
+
+def _quit_running_daemon(controller: DaemonController, app: QApplication) -> None:
+    controller.shutdown_active_recording()
+    app.quit()
+
+
+def _daemon_recording_instruction(config: AppConfig) -> str:
+    hotkey = config.hotkey.upper()
+    if config.recording_mode == "toggle":
+        return f"Press {hotkey} once to start recording and again to stop."
+    return f"Hold {hotkey} to record."
+
+
 def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_path: str | Path | None = None) -> int:
     should_start, message = check_existing_daemon()
     if message:
@@ -313,12 +482,10 @@ def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_p
         # Remove our own PID file before spawning the replacement, so the new
         # process's startup check (check_existing_daemon) doesn't see this
         # (still technically alive for a moment) process and refuse to start.
-        _remove_pid_file_if_mine()
-        _relaunch_daemon(env_path)
-        app.quit()
+        _restart_running_daemon(controller, app, env_path)
 
     def quit_daemon() -> None:
-        app.quit()
+        _quit_running_daemon(controller, app)
 
     action_settings = QAction("設定", menu)
     action_settings.triggered.connect(open_settings)
@@ -337,16 +504,18 @@ def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_p
 
     tray.setContextMenu(menu)
     tray.show()
+    report_recoverable_recordings(tray, discover_recoverable_recordings())
 
     _write_pid_file()
     safe_print(
-        f"SpeedyType daemon running (pid={os.getpid()}). Hold {config.hotkey.upper()} to record. "
+        f"SpeedyType daemon running (pid={os.getpid()}). {_daemon_recording_instruction(config)} "
         f"Stop with: python -m speedytype daemon-stop (or tray menu -> 結束)",
         flush=True,
     )
     try:
         return app.exec()
     finally:
+        controller.shutdown_active_recording()
         if controller._hotkey_handle is not None:
             try:
                 remove_hotkey(controller._hotkey_handle)

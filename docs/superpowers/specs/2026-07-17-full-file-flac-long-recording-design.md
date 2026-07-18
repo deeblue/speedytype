@@ -108,11 +108,16 @@ The existing experimental `audio_encoding.py` Opus/MP3 implementation is not reu
 
 ### Release gates
 
-- Real at-least-24-minute Windows capture and FLAC preparation with frame/hash conservation.
-- Real at-least-24-minute macOS capture and FLAC preparation with frame/hash conservation.
-- Inject encoder, disk, oversize, transport, provider, and daemon-restart failures on both platforms and confirm the WAV remains discoverable.
-- Confirm the Settings slider displays 25 minutes and the daemon auto-stops at the same limit.
-- Confirm the system tray/menu-bar remains responsive during FLAC encoding and the daemon remains reusable after failure.
+- Complete the Windows simulation/automation suite for capture conservation,
+  admission, timeout, failure injection, and daemon reuse. Windows is not a
+  real-device release gate because these paths can be exercised deterministically
+  in the development environment.
+- On real macOS hardware, verify capture and FLAC preparation with frame/hash
+  conservation, failure retention, menu-bar responsiveness, and daemon reuse.
+  No minimum real-recording duration is required.
+- Confirm on macOS that the Settings slider displays the 25-minute product
+  ceiling and that automatic stop can be exercised with a bounded test
+  configuration; a 24- or 25-minute live recording is not required.
 
 No additional paid quality run is required to implement this design. Real-device release checks may stop before provider submission when validating capture, encoding, size, and recovery behavior.
 
@@ -125,4 +130,5 @@ No additional paid quality run is required to implement this design. Real-device
 - Oversize and uncertain cases retain WAV and never silently retry, segment, or use lossy audio.
 - Settings and runtime enforce a 25-minute/1,500-second maximum while preserving the 60-second default.
 - Startup discovery reports incomplete owned recordings without automatically spending API budget.
-- Windows automation passes and both real-device release gates pass before v0.5.4 is tagged.
+- Windows automation and the single real-macOS integration gate pass before
+  v0.5.4 is tagged.

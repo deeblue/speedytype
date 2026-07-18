@@ -86,6 +86,47 @@ speedytype daemon
 
 The tray menu can reopen Settings, restart the daemon, or exit it.
 
+## Recording and long-recording safety
+
+Daily daemon recording offers **Hold mode** and **Toggle mode**; the default
+recording mode is Hold. In Hold mode, press and hold the configured hotkey to
+record, then release it to stop. In Toggle mode, press and release once to
+start; release and repress the hotkey to stop. Duplicate activation while the
+first Toggle press is still held is ignored. Changing the recording mode in
+Settings requires you to restart the daemon before it takes effect.
+
+While recording, the pill shows persistent elapsed time in `MM:SS`, then a
+final 60-second countdown before the configured limit. Reaching the limit
+uses the same stop-and-process path as a manual stop: the pill-local
+automatic-stop warning remains visible briefly while processing starts
+immediately in the background. The hard upper bound is a 25-minute stop.
+The guided-recording is excluded from these daemon Hold/Toggle
+controls and retains its existing guided workflow.
+
+The recording control supports a maximum of **25 minutes**; the default is
+still 60 seconds. SpeedyType always captures mono 16 kHz **PCM16 WAV** first so
+the original recording remains available if later processing fails. After
+recording stops, it encodes a temporary **lossless FLAC**, verifies its audio
+format, exact sample count, and decoded PCM SHA-256, then checks the actual file
+size is strictly below **23 MiB** before sending one complete-file Whisper
+request with `response_format=json` and no timestamps.
+
+A **short-WAV fallback** is used only if FLAC preparation fails and that WAV is
+itself below the duration and byte guards. Oversize, invalid, transcription,
+polishing, and paste failures leave the WAV in SpeedyType's recordings folder
+with a `failed-retained` recovery sidecar. On the next daemon start, SpeedyType
+reports retained paths but never uploads them automatically. Post-stop
+encoding and complete-file transcription can take visible time.
+
+The automated suite validates file/sample conservation and admission rules.
+Windows simulation/automation is completion evidence and is not a hardware
+release gate. macOS is the only hardware release gate. It covers permissions,
+Hold/Toggle start, release/rearm, repress to stop, bounded-duration
+automatic-stop behavior, visible pill transitions, menu-bar/Dock behavior,
+shutdown, paste, and retained failure recovery. No 24- or 25-minute real
+recording is required on either platform. Sudden-power-loss survival is not
+claimed and is not a separate release gate.
+
 ## Monthly usage and budget
 
 Settings includes a `本月用量與預算` card. Choose `設定月預算` to enter one

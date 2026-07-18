@@ -22,6 +22,11 @@ PILL_HEIGHT = 56
 SCREEN_MARGIN = 24
 
 
+def format_recording_elapsed(seconds: int) -> str:
+    minutes, remaining_seconds = divmod(seconds, 60)
+    return f"{minutes:02d}:{remaining_seconds:02d}"
+
+
 class AudioLevelEmitter(QObject):
     """Lives on the audio callback thread's side conceptually, but as a
     QObject its signal emission is queued onto whichever thread the
@@ -36,19 +41,21 @@ class AudioLevelEmitter(QObject):
 class RecordingPill(QWidget):
     """Floating always-on-top, click-through, dark pill.
 
-    Three modes:
+    Four modes:
       - "recording": shows a decorative dot on each side and a row of bars
         whose heights reflect real-time microphone volume.
       - "countdown": replaces the bars with a large remaining-seconds number,
         shown once recording is within the last N seconds of the configured
         maximum (so the user knows the hard cutoff is approaching).
       - "processing": shows a small spinner and a status label.
+      - "auto_stopped": briefly explains that the recording limit stopped
+        the recording before processing replaces it.
 
     Hidden by default; only shown while the hotkey is held or while the
     pipeline is processing the result.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, warning_duration_ms: int = 2000) -> None:
         super().__init__()
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -64,9 +71,18 @@ class RecordingPill(QWidget):
         self._spinner_angle = 0
         self._processing_text = "處理中..."
         self._countdown_remaining = 0
+        self._elapsed_text = format_recording_elapsed(0)
+        self._warning_text = "已達錄音上限，自動停止"
+        self._processing_pending = False
+        self._hide_pending = False
 
         self._spinner_timer = QTimer(self)
         self._spinner_timer.timeout.connect(self._tick_spinner)
+
+        self._warning_timer = QTimer(self)
+        self._warning_timer.setSingleShot(True)
+        self._warning_timer.setInterval(warning_duration_ms)
+        self._warning_timer.timeout.connect(self._finish_warning)
 
     def _tick_spinner(self) -> None:
         self._spinner_angle = (self._spinner_angle + 30) % 360
@@ -88,13 +104,30 @@ class RecordingPill(QWidget):
     def show_recording(self) -> None:
         self._mode = "recording"
         self._bar_heights = [float(BAR_MIN_HEIGHT)] * NUM_BARS
+        self._elapsed_text = format_recording_elapsed(0)
+        self._warning_timer.stop()
+        self._processing_pending = False
+        self._hide_pending = False
         self._spinner_timer.stop()
         self._position_bottom_center()
         self.show()
         self.update()
 
+    def show_elapsed(self, elapsed_seconds: int) -> None:
+        """Slot: display the persistent elapsed time while recording."""
+        self._mode = "recording"
+        self._elapsed_text = format_recording_elapsed(elapsed_seconds)
+        self.update()
+
     def show_processing(self) -> None:
+        if self._mode == "auto_stopped" and self._warning_timer.isActive():
+            self._processing_pending = True
+            return
+        self._show_processing_now()
+
+    def _show_processing_now(self) -> None:
         self._mode = "processing"
+        self._processing_pending = False
         self._spinner_timer.start(80)
         self._position_bottom_center()
         self.show()
@@ -106,9 +139,36 @@ class RecordingPill(QWidget):
         self._countdown_remaining = max(0, remaining_seconds)
         self.update()
 
+    def show_auto_stopped(self) -> None:
+        """Slot: hold the timeout warning on screen for a minimum duration."""
+        self._mode = "auto_stopped"
+        self._processing_pending = False
+        self._hide_pending = False
+        self._spinner_timer.stop()
+        self._warning_timer.start()
+        self._position_bottom_center()
+        self.show()
+        self.update()
+
     def hide_pill(self) -> None:
+        if self._mode == "auto_stopped" and self._warning_timer.isActive():
+            self._hide_pending = True
+            return
+        self._hide_now()
+
+    def _hide_now(self) -> None:
+        self._hide_pending = False
+        self._processing_pending = False
         self._spinner_timer.stop()
         self.hide()
+
+    def _finish_warning(self) -> None:
+        """Complete the warning deterministically (also used by Qt tests)."""
+        self._warning_timer.stop()
+        if self._hide_pending:
+            self._hide_now()
+        else:
+            self._show_processing_now()
 
     def update_level(self, rms: float) -> None:
         """Slot: push a new real-time volume sample into the bar history."""
@@ -131,6 +191,8 @@ class RecordingPill(QWidget):
             self._paint_bars(painter, rect)
         elif self._mode == "countdown":
             self._paint_countdown(painter, rect)
+        elif self._mode == "auto_stopped":
+            self._paint_auto_stopped(painter, rect)
         else:
             self._paint_processing(painter, rect)
         painter.end()
@@ -143,12 +205,18 @@ class RecordingPill(QWidget):
         painter.drawEllipse(rect.width() - 14 - dot_radius * 2, center_y - dot_radius, dot_radius * 2, dot_radius * 2)
 
         painter.setBrush(QBrush(BAR_COLOR))
-        total_bars_width = NUM_BARS * BAR_WIDTH + (NUM_BARS - 1) * BAR_GAP
-        start_x = (rect.width() - total_bars_width) / 2
+        start_x = 34
         for index, height in enumerate(self._bar_heights):
             x = start_x + index * (BAR_WIDTH + BAR_GAP)
             y = center_y - height / 2
             painter.drawRoundedRect(int(x), int(y), BAR_WIDTH, int(height), 2, 2)
+
+        painter.setPen(TEXT_COLOR)
+        font = painter.font()
+        font.setBold(True)
+        painter.setFont(font)
+        text_rect = rect.adjusted(112, 0, -28, 0)
+        painter.drawText(text_rect, int(Qt.AlignmentFlag.AlignCenter), self._elapsed_text)
 
     def _paint_countdown(self, painter: QPainter, rect) -> None:
         dot_radius = 4
@@ -164,6 +232,13 @@ class RecordingPill(QWidget):
         painter.setFont(font)
         text = f"{self._countdown_remaining}s"
         painter.drawText(rect, int(Qt.AlignmentFlag.AlignCenter), text)
+
+    def _paint_auto_stopped(self, painter: QPainter, rect) -> None:
+        painter.setPen(COUNTDOWN_COLOR)
+        font = painter.font()
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(rect, int(Qt.AlignmentFlag.AlignCenter), self._warning_text)
 
     def _paint_processing(self, painter: QPainter, rect) -> None:
         pen = QPen(TEXT_COLOR, 2)

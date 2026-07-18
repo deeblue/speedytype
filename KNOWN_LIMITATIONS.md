@@ -1,5 +1,29 @@
 # Known Limitations
 
+## Hold/Toggle daemon recording awaits the macOS hardware release gate
+
+- The daily daemon now supports **Hold mode** and **Toggle mode**; the default
+  recording mode is Hold. Toggle starts on first activation, then requires a
+  release and repress to stop. A Settings change requires users to restart the
+  daemon. The `guided-recording` command is excluded from this mode setting.
+- The recording pill displays persistent `MM:SS`, switches to the final
+  60-second countdown, and shows a pill-local automatic-stop warning at the
+  25-minute stop while processing begins immediately.
+- Automated state-machine and daemon tests cover competing release, activation,
+  timeout, recorder-failure, and Windows platform paths. Windows
+  simulation/automation is completion evidence and is not a hardware release
+  gate. macOS is the only hardware release gate. It uses a bounded-duration
+  automatic-stop check; no 24- or 25-minute real recording is required.
+
+## Recording durability boundary
+
+- Recovery metadata is flushed and file-fsynced before atomic replacement, and
+  a completed WAV is reopened and file-fsynced after the writer drains and
+  closes it. This strengthens process/OS crash durability for retained takes.
+- SpeedyType does not attempt unsupported Windows directory fsync and does not
+  claim survival across every storage-controller cache or abrupt power event.
+  Sudden-power-loss survival is not claimed and is not a separate release gate.
+
 ## 0. macOS v0.5.4 native stability changes await real-device acceptance
 
 - **Implemented candidate:** macOS hotkey listening and shortcut capture now
@@ -173,7 +197,9 @@ Each item lists: current state, known impact, why it was not addressed, and the 
 
 ### Hybrid v2 implementation result
 
-- Silence-aware chunking, timestamp merging, integrity validation, one-time batch fallback, request circuit breaking, and real Recorder/daemon integration are implemented behind `HYBRID_TRANSCRIPTION_ENABLED=false`.
+- Historical experiments implemented silence-aware chunking and timestamp
+  merging, but the production daemon no longer reads
+  `HYBRID_TRANSCRIPTION_ENABLED` or activates that path.
 - Three final runs per case measured complete batch/hybrid tails of 9.521/6.003s (126s), 9.491/6.306s (134s), and 23.185/6.423s (295s). Request amplification was 1.70x, 2.18x, and 1.83x.
 - Quality is now reported in two layers: known-source accuracy for the 295s TTS case, and hybrid regression against same-run batch for all cases. This prevents baseline Whisper errors from being mislabeled as chunking defects.
 - The batch-relative hybrid regression gate still passed 0/3 runs for every case. Cases A-C were present in every 295s hybrid transcript, but Case D still produced `海邊不到一兆距離重新排序`; 126s also lost `BJ 團隊`, and 134s added a number token relative to batch.
@@ -193,7 +219,11 @@ Three fixes were made and independently re-verified with a fresh 3x-per-case bat
 ### Round 4 Case D narrative-prompt fix
 
 - **Original purpose investigated**: `tail_prompt()` first appears in the repository's earliest available POC baseline commit, `1406f9c`. There is no earlier commit, dedicated commit message, or code comment that states a narrower design rationale. Its implementation makes the recoverable intent explicit: combine the stable `whisper_vocab_bias` terminology list with the last 200 characters of recognized narrative so the next chunk receives cross-chunk context. The fixed vocabulary list already provides the terminology-consistency part independently.
-- **Chosen fix**: option A was selected because the prior isolation experiment directly established causality: vocabulary-only group I was correct, while narrative-only group J triggered Case D. Both `speedytype/quasi_streaming.py:tail_prompt()` and the real `speedytype/hybrid_pipeline.py:HybridTranscriber` now send only the immutable vocabulary prompt. The rolling recognized-text state was removed; chunking, merging, validation, and fallback are unchanged. `HYBRID_TRANSCRIPTION_ENABLED` remains `false`.
+- **Historical chosen fix**: option A was selected because the prior isolation
+  experiment directly established causality: vocabulary-only group I was
+  correct, while narrative-only group J triggered Case D. The experiment code
+  remains available for explicit development runners, but it is not reachable
+  from daemon production configuration.
 - **TDD and isolated API evidence**: the new prompt-policy tests failed against the old implementation because the second request contained prior recognized text, then passed after the fix. `scripts/verify_case_d_prompt_fix.py` mirrored group J's exact 50.88-75.24s chunk and triggering narrative six times through the fixed production prompt: 6/6 contained `海邊步道依照距離重新排序`, 0/6 contained `一兆`. Raw transcripts and the actual prompt are in `case_d_prompt_fix_results.txt`.
 - **Full quality rerun**: `long_recording_hybrid_v4_results.jsonl` contains three batch/hybrid_v2 pairs for all three recordings. One 295s hybrid run encountered a real 120s OpenAI `ReadTimeout` on chunk 5 and correctly used batch fallback; it is retained as failure-control evidence, not counted as a valid hybrid quality sample. `long_recording_hybrid_v4_295s_recovery.jsonl` supplies the replacement successful pair. Across the three valid 295s hybrid samples, Cases A-D were all present 3/3 and `一兆` appeared 0/3. Thus Cases A-C did not regress and Case D is individually resolved.
 - **Terminology consistency evidence**: compared with the prior v3 rerun, canonical occurrences are unchanged across all three v4 runs. `real_126s` retained `BIOS`, `Firmware`, `NPI`, `QA`, `USB`, `Thunderbolt`, `TPE團隊`, and `BJ團隊`; `real_134s` retained `BIOS`, `Firmware`, `API`, `USB`, `Thunderbolt`, `TPE團隊`, and `BJ團隊`. Every term used one stable spelling in all three runs and no chunk-boundary variant appeared. The only representation difference from v3 was optional whitespace in `TPE 團隊`/`BJ 團隊`, not a lexical change.
@@ -211,7 +241,25 @@ Three fixes were made and independently re-verified with a fresh 3x-per-case bat
 - **No real-recording regression**: all three `real_126s` and all three `real_134s` comparisons now report zero missing units and zero new duplicate units. Their ordered coverage is unchanged at 0.977 and 0.996 respectively, and key-term recall remains 1.000. The lower unit count for the 134s hybrid reflects different pause grouping; contiguous-content checking prevents it from hiding content.
 - **Offline gate reanalysis**: `long_recording_hybrid_v4_quality_reanalysis_round5.jsonl` and `long_recording_hybrid_v4_295s_recovery_quality_round5.jsonl` recompute the saved raw outputs without new API calls. Successful 295s hybrid samples (v4 runs 1 and 3 plus recovery) now have zero missing units, 0.992 ordered coverage, zero new duplicates, and full key-term recall. The retained timeout run still has 12 genuinely absent raw-hybrid units, but its batch-fallback final `text` has 0.994 source coverage, zero missing units, and preserved numbers, so incomplete hybrid text was not the delivered output.
 - **Aggregate gate result**: `hybrid_regression_gate_ok` remains 0/3 for every case after removing the false whole-transcript omission. `real_126s` still fails 0.977 coverage and number preservation; `real_134s` fails only number preservation; successful 295s runs fail only number preservation (`百分之二十` versus `20%` is currently tokenized differently). Thresholds were not weakened to obtain a pass.
-- **Production Enablement Gate update**: condition 1 remains **failed** because `real_126s` ordered coverage is 0.977, below 0.980. Condition 2 is now **passed for delivered output**: all successful 295s hybrid samples have zero source omissions, both real recordings have zero batch-relative omissions, and the one incomplete API run delivered the verified batch fallback rather than its partial hybrid text. Other Round 4 gate states remain unchanged. `HYBRID_TRANSCRIPTION_ENABLED` remains `false`; enabling it remains a user decision.
+- **Historical Production Enablement Gate update**: condition 1 remained
+  **failed** because `real_126s` ordered coverage was 0.977, below 0.980. This
+  result helped close hybrid activation; enabling it is no longer a supported
+  production setting.
+
+## Current complete-file long-recording path (2026-07-18)
+
+- Production captures mono 16 kHz PCM16 WAV, then prepares a validated lossless
+  FLAC and sends one `response_format=json` request without timestamps.
+- Upload admission is based on actual bytes strictly below 23 MiB. The product
+  recording ceiling is 25 minutes, with a 60-second default.
+- Direct WAV upload is only a short-WAV fallback after FLAC preparation fails.
+  Other failures retain the source WAV and a `failed-retained` sidecar; startup
+  reports it without automatically retrying an API request.
+- Post-stop encoding and complete-file API latency remain visible. Progressive
+  display has not been implemented.
+- The synthetic capture/conservation and Windows simulation suites pass. macOS
+  is the only hardware release gate, covering failure retention and native UI,
+  permission, hotkey, and shutdown integration without a minimum duration.
 
 ## 20. macOS short-command installation requires real-Mac verification
 

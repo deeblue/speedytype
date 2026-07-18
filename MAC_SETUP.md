@@ -172,6 +172,40 @@ speedytype guided-recording --script real_voice_script.md
 speedytype --env /path/to/other.env daemon
 ```
 
+## Long recordings and retained files
+
+The daily daemon supports **Hold mode** and **Toggle mode**, and the default
+recording mode is Hold. Hold mode records only while the configured hotkey is
+held. Toggle mode starts on the first activation; release and repress the
+hotkey to stop. After changing modes in Settings, fully stop and restart the
+daemon. The overlay shows persistent `MM:SS` elapsed time followed by the
+final 60-second countdown. At the limit, a pill-local automatic-stop warning
+appears while processing starts immediately; the limit is a 25-minute stop.
+The `guided-recording` command is excluded from this setting and keeps its
+existing guided-recording behavior.
+
+Settings permits up to **25 minutes** per recording (the default remains 60
+seconds). Capture is always mono 16 kHz **PCM16 WAV**. After stop, SpeedyType
+creates and validates a temporary **lossless FLAC**, requires its actual size
+to be strictly below **23 MiB**, and submits one complete-file Whisper request
+using `response_format=json` without timestamps. A **short-WAV fallback** is
+allowed only when FLAC preparation fails and the WAV still passes both guards.
+
+If encoding, admission, transcription, polishing, or paste fails, the original
+WAV is preserved with a `failed-retained` sidecar under the SpeedyType
+application-data recordings directory. Daemon startup lists these paths; it
+does not retry or upload them automatically. Allow time after releasing the
+recording key for encoding and transcription to finish.
+
+Windows simulation/automation is completion evidence and is not a hardware
+release gate. macOS is the only hardware release gate. No 24- or 25-minute real
+recording is required on either platform. The macOS check must verify that the
+menu-bar daemon remains responsive, the final paste succeeds, an injected
+processing failure preserves the WAV, release rearms the Toggle shortcut,
+repress stops exactly once, and bounded-duration automatic-stop cannot trigger
+duplicate processing. Sudden-power-loss survival is not claimed and is not a
+separate release gate.
+
 ## Monthly usage and budget
 
 Open `speedytype settings` and use `設定月預算` in `本月用量與預算`. The
@@ -202,6 +236,10 @@ Mac; the final tag is blocked until they pass:
 13. Confirm no new Python `.ips` report appeared during the test period.
 14. Open Settings at 520 pixels or wider and confirm the monthly capacity card
    renders, scrolls, and can set then clear a pending budget.
+15. Select Toggle mode, restart the daemon, then verify first activation starts,
+    release rearms, repress stops once, and a bounded-duration automatic-stop
+    cannot process twice. Verify failure recovery preserves the WAV for manual
+    review; no 24- or 25-minute live recording is required.
 
 Also rerun setup twice, confirm the PATH entry is not duplicated, confirm the
 wrapper is executable, and confirm Keychain credentials remain unchanged. The

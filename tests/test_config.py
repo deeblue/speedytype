@@ -73,14 +73,45 @@ def test_load_config_reads_behavior_settings_from_settings_json(tmp_path: Path):
     settings_file = tmp_path / "settings.json"
     save_settings(
         settings_file,
-        AppSettings(max_record_seconds=180.0, hotkey_combo=["ctrl", "alt", "space"], vocab_terms=["BIOS", "TPE 團隊"]),
+        AppSettings(
+            max_record_seconds=180.0,
+            recording_mode="toggle",
+            hotkey_combo=["ctrl", "alt", "space"],
+            vocab_terms=["BIOS", "TPE 團隊"],
+        ),
     )
 
     config = load_config(env_file, settings_path=settings_file)
 
     assert config.max_record_seconds == 180.0
+    assert config.recording_mode == "toggle"
     assert config.hotkey == "ctrl+alt+space"
     assert config.whisper_vocab_bias == "BIOS, TPE 團隊"
+
+
+def test_load_config_cannot_expose_recording_limit_above_twenty_five_minutes(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_API_KEY=sk-test\nGEMINI_API_KEY=gem-test\n", encoding="utf-8")
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text('{"max_record_seconds": 1800}', encoding="utf-8")
+
+    config = load_config(env_file, settings_path=settings_file)
+
+    assert config.max_record_seconds == 1500.0
+
+
+def test_load_config_ignores_obsolete_hybrid_environment_switches(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "OPENAI_API_KEY=sk-test\nGEMINI_API_KEY=gem-test\n"
+        "HYBRID_TRANSCRIPTION_ENABLED=true\nHYBRID_THRESHOLD_SECONDS=1\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(env_file, settings_path=tmp_path / "settings.json")
+
+    assert config.hybrid_transcription_enabled is False
+    assert config.hybrid_threshold_seconds == 90.0
 
 
 def test_resolve_mic_device_setting_empty_means_default():

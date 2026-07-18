@@ -14,7 +14,7 @@ def write_empty_wav(path: Path):
         wav.writeframes(b"\x00\x00" * 160)
 
 
-def test_config_reads_hybrid_feature_flag(tmp_path, monkeypatch):
+def test_config_ignores_obsolete_hybrid_feature_flag(tmp_path, monkeypatch):
     env = tmp_path / ".env"
     env.write_text(
         "OPENAI_API_KEY=x\nGEMINI_API_KEY=y\nHYBRID_TRANSCRIPTION_ENABLED=true\nHYBRID_THRESHOLD_SECONDS=120\n",
@@ -22,8 +22,8 @@ def test_config_reads_hybrid_feature_flag(tmp_path, monkeypatch):
     )
     monkeypatch.setattr("speedytype.config.resolve_mic_device_setting", lambda value: ("", ""))
     config = load_config(env, tmp_path / "settings.json")
-    assert config.hybrid_transcription_enabled is True
-    assert config.hybrid_threshold_seconds == 120
+    assert config.hybrid_transcription_enabled is False
+    assert config.hybrid_threshold_seconds == 90.0
 
 
 def test_pipeline_override_does_not_call_whisper(tmp_path, monkeypatch):
