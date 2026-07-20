@@ -1,8 +1,16 @@
 # SpeedyType macOS Setup
 
 macOS Terminal uses zsh by default. These instructions assume the default zsh
-environment and a source release extracted into a local, user-owned directory,
-such as `~/Applications/SpeedyType`.
+environment. The setup script installs and updates SpeedyType at this fixed
+path:
+
+```sh
+~/Applications/SpeedyType
+```
+
+Run setup from the extracted release directory. The script copies the release
+to the fixed path, preserves the fixed path's `.venv`, and completes setup from
+there.
 
 ## Python prerequisite
 
@@ -144,18 +152,17 @@ Depending on the feature used, macOS may request these permissions under
 This source release does not install `SpeedyType.app` and does not provide a
 standalone SpeedyType executable for the privacy list. If macOS asks you to add
 an app for Accessibility or Input Monitoring, grant access to the terminal app
-that launches SpeedyType, or add the current release's Python executable:
+that launches SpeedyType, or add the fixed install path's Python executable:
 
 ```sh
-./.venv/bin/python
+~/Applications/SpeedyType/.venv/bin/python
 ```
 
-A newly extracted release can have a different `.venv/bin/python` path, so
-macOS may request permission again after an update. If a feature stops working
-after an update, review these three permission lists and reauthorize the
-terminal app or Python executable for the current release when necessary. Fully
-stop and restart the daemon after changing Accessibility or Input Monitoring
-permission:
+Do not run the daemon from a temporary extracted release directory. After setup,
+use the installed wrapper or run commands from `~/Applications/SpeedyType`.
+Keeping this fixed `.venv/bin/python` path stable avoids repeated macOS privacy
+authorization during normal source-release updates. Fully stop and restart the
+daemon after changing Accessibility or Input Monitoring permission:
 
 ```sh
 speedytype daemon-stop

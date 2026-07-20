@@ -43,10 +43,12 @@ chmod u+x scripts/setup_mac.sh
 ./scripts/setup_mac.sh
 ```
 
-The script creates or reuses `.venv`, installs `requirements.txt`, creates
+The script copies the release into the fixed install path
+`~/Applications/SpeedyType`, creates or reuses
+`~/Applications/SpeedyType/.venv`, installs `requirements.txt`, creates
 `~/.local/bin/speedytype`, and reports the exact zsh PATH line if it is needed.
 See `MAC_SETUP.md` for unzip permissions, Python selection, macOS privacy
-permissions, and the real-device acceptance checklist.
+permissions, fixed-path updates, and the real-device acceptance checklist.
 
 ## Manual Installation
 
@@ -73,10 +75,12 @@ available.
 
 ## Update an Existing Installation
 
-Replace the extracted release files with the newer release and rerun the
-platform setup script. The venv, dependencies, and command wrapper are
-refreshed safely. Keyring credentials are not copied, deleted, or changed by
-setup.
+On macOS, extract the newer source release anywhere and run
+`./scripts/setup_mac.sh`. The script updates `~/Applications/SpeedyType` and
+preserves `~/Applications/SpeedyType/.venv`, which keeps the Python path used by
+macOS privacy permissions stable. On Windows, replace the extracted release
+files with the newer release and rerun the platform setup script. Keyring
+credentials are not copied, deleted, or changed by setup.
 
 ## API Keys and the System Keyring
 
@@ -208,9 +212,9 @@ percentage; check its warning, `latency.csv`, and `pricing.json`, then use
   refresh the user PATH entry, then run `speedytype diagnose-config`.
 - macOS: if requested, add `export PATH="$HOME/.local/bin:$PATH"` to
   `~/.zshrc`, source the file, and open a new terminal.
-- macOS: grant Accessibility and Input Monitoring permissions to the selected
-  Python executable and Microphone permission when requested. See
-  `MAC_SETUP.md` for the real-device checklist.
+- macOS: grant Accessibility and Input Monitoring permissions to Terminal/iTerm
+  or `~/Applications/SpeedyType/.venv/bin/python`, and grant Microphone
+  permission when requested. See `MAC_SETUP.md` for the real-device checklist.
 - Configuration: open `speedytype settings`, save the required keys, and rerun
   `speedytype diagnose-config`.
 - Daemon state: use `speedytype daemon-stop` before manually starting another

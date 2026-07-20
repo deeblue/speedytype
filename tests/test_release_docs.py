@@ -19,6 +19,8 @@ def test_release_readme_documents_automatic_and_manual_installation():
     required = (
         "scripts/setup_windows.ps1",
         "scripts/setup_mac.sh",
+        "~/Applications/SpeedyType",
+        "~/Applications/SpeedyType/.venv",
         "py -3.13 -m venv .venv",
         "python3 -m venv .venv",
         "pip install -r requirements.txt",
@@ -87,7 +89,7 @@ def test_macos_docs_describe_native_menu_bar_permissions_and_release_gate():
         "Input Monitoring",
         "Accessibility",
         "does not install `SpeedyType.app`",
-        "./.venv/bin/python",
+        "~/Applications/SpeedyType/.venv/bin/python",
         "Microphone",
         "restart the daemon",
         "Python .ips",
