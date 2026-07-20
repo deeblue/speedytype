@@ -1,8 +1,8 @@
 # SpeedyType Current Status
 
 **As of:** 2026-07-18  
-**Current code version:** 0.5.3  
-**Build date:** 2026-07-16  
+**Current code version:** 0.5.4  
+**Build date:** 2026-07-20  
 **Target release candidate:** 0.5.4
 
 ## Implemented
@@ -39,4 +39,5 @@
 ## Next Actions
 
 1. Run the documented macOS real-device acceptance procedure.
-2. Update `speedytype/version.py` only when cutting the accepted 0.5.4 release.
+2. Complete the final tag/push workflow only after the accepted macOS
+   real-device procedure passes.

@@ -14,8 +14,8 @@ deliberately correct a mistaken release instead.
 2. Update only the authoritative values in `speedytype/version.py`:
 
    ```python
-   VERSION = "0.5.3"
-   BUILD_DATE = "2026-07-16"
+   VERSION = "0.5.4"
+   BUILD_DATE = "2026-07-20"
    ```
 
 3. Update version-specific release documentation and tests.
@@ -26,9 +26,9 @@ deliberately correct a mistaken release instead.
 python -m pytest -q
 python -m compileall -q speedytype scripts
 python scripts/build_release.py
-$first = (Get-FileHash dist/SpeedyType-0.5.3-source.zip -Algorithm SHA256).Hash
+$first = (Get-FileHash dist/SpeedyType-0.5.4-source.zip -Algorithm SHA256).Hash
 python scripts/build_release.py
-$second = (Get-FileHash dist/SpeedyType-0.5.3-source.zip -Algorithm SHA256).Hash
+$second = (Get-FileHash dist/SpeedyType-0.5.4-source.zip -Algorithm SHA256).Hash
 if ($first -ne $second) { throw "Release is not reproducible" }
 Get-Content dist/SHA256SUMS.txt
 python -m speedytype --version
@@ -43,12 +43,12 @@ Commit the verified release changes and merge them to `master`.
 ## Tag the verified master commit
 
 Rerun the complete suite and release build on merged `master`. Confirm that
-`v0.5.3` does not already exist, then create and verify the annotated tag:
+`v0.5.4` does not already exist, then create and verify the annotated tag:
 
 ```powershell
-git tag -a v0.5.3 -m "SpeedyType 0.5.3"
-git cat-file -t v0.5.3
-git rev-list -n 1 v0.5.3
+git tag -a v0.5.4 -m "SpeedyType 0.5.4"
+git cat-file -t v0.5.4
+git rev-list -n 1 v0.5.4
 git rev-parse master
 ```
 
@@ -61,7 +61,7 @@ publication. After approval, use:
 
 ```powershell
 git push origin master
-git push origin v0.5.3
+git push origin v0.5.4
 ```
 
 The local build/tag workflow does not execute either push automatically.
