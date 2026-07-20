@@ -35,6 +35,7 @@ from speedytype.env_writer import (
 )
 from speedytype.icon import build_app_icon
 from speedytype.hotkey import PlatformPermissionError, capture_hotkey
+from speedytype.macos_permissions import keyboard_permission_guidance
 from speedytype.paths import default_env_path, default_pricing_path, default_settings_path
 from speedytype.pricing_dialog import PriceEditorDialog
 from speedytype.secrets_store import SecretStoreError, delete_api_key, set_api_key
@@ -392,9 +393,7 @@ class SettingsDialog(QDialog):
         self.capture_button.setEnabled(True)
         self.capture_button.setText("擷取新組合鍵")
         if not combo_string:
-            self.hotkey_warning_label.setText(
-                "無法擷取熱鍵。請到 macOS 系統設定 > 隱私權與安全性，允許 Accessibility 與 Input Monitoring。"
-            )
+            self.hotkey_warning_label.setText(f"無法擷取熱鍵。{keyboard_permission_guidance()}")
             return
         parts = combo_string.split("+")
 

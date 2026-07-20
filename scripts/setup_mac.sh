@@ -66,3 +66,12 @@ fi
 "$VENV_PYTHON" -m speedytype --env "$ENV_PATH" install-command
 
 echo "Setup complete. Open a new terminal and run: speedytype diagnose-config"
+cat <<EOF
+macOS privacy note: this source release does not install SpeedyType.app.
+If macOS asks for Accessibility or Input Monitoring, allow the terminal app
+that runs SpeedyType, or allow this Python executable:
+  $VENV_PYTHON
+Then fully restart the daemon:
+  speedytype daemon-stop
+  speedytype daemon
+EOF

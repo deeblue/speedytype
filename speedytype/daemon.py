@@ -19,6 +19,7 @@ from speedytype.console import safe_print
 from speedytype.hotkey import PlatformPermissionError, is_hotkey_active, register_hold_hotkey, remove_hotkey, wait_until_hotkey_released
 from speedytype.hotkey_debounce import append_rejection_record
 from speedytype.icon import build_app_icon
+from speedytype.macos_permissions import keyboard_permission_guidance
 from speedytype.overlay import AudioLevelEmitter, RecordingPill
 from speedytype.pipeline import process_wav
 from speedytype.paths import default_daemon_log_path, default_env_path, default_pid_path, default_settings_path
@@ -700,7 +701,7 @@ def run_daemon(config: AppConfig, env_path: str | Path | None = None, settings_p
         QMessageBox.critical(
             None,
             "SpeedyType 權限不足",
-            "請到 macOS 系統設定 > 隱私權與安全性，允許 SpeedyType（或目前使用的 Python）使用 Accessibility 與 Input Monitoring，然後重新啟動。",
+            keyboard_permission_guidance(),
         )
         return 2
 

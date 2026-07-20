@@ -141,12 +141,21 @@ Depending on the feature used, macOS may request these permissions under
 - **Input Monitoring** for detecting keyboard input and shortcuts.
 - **Microphone** for guided recording and transcription input.
 
-Grant access only to the terminal application or Python executable that runs
-SpeedyType. A newly extracted release can have a different `.venv/bin/python`
-path, so macOS may request permission again after an update. If a feature stops
-working after an update, review these three permission lists and reauthorize
-the executable for the current release when necessary. Fully stop and restart the daemon
-after changing Accessibility or Input Monitoring permission:
+This source release does not install `SpeedyType.app` and does not provide a
+standalone SpeedyType executable for the privacy list. If macOS asks you to add
+an app for Accessibility or Input Monitoring, grant access to the terminal app
+that launches SpeedyType, or add the current release's Python executable:
+
+```sh
+./.venv/bin/python
+```
+
+A newly extracted release can have a different `.venv/bin/python` path, so
+macOS may request permission again after an update. If a feature stops working
+after an update, review these three permission lists and reauthorize the
+terminal app or Python executable for the current release when necessary. Fully
+stop and restart the daemon after changing Accessibility or Input Monitoring
+permission:
 
 ```sh
 speedytype daemon-stop

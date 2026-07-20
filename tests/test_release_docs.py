@@ -86,6 +86,8 @@ def test_macos_docs_describe_native_menu_bar_permissions_and_release_gate():
         "no Python icon in the Dock",
         "Input Monitoring",
         "Accessibility",
+        "does not install `SpeedyType.app`",
+        "./.venv/bin/python",
         "Microphone",
         "restart the daemon",
         "Python .ips",

@@ -28,6 +28,9 @@ def test_macos_setup_uses_script_relative_root_venv_and_install_command():
     assert '"$PROJECT_ROOT/requirements.txt"' in content
     assert "install-command" in content
     assert 'ENV_PATH="${1:-' in content
+    assert "does not install SpeedyType.app" in content
+    assert "$VENV_PYTHON" in content
+    assert "Input Monitoring" in content
 
 
 def test_macos_setup_has_valid_bash_syntax_when_bash_is_available():
@@ -94,6 +97,8 @@ def test_mac_setup_documentation_has_python_313_recovery_flow():
         "Python 3.13 or newer",
         "python3 --version",
         ".venv/bin/python --version",
+        "does not install `SpeedyType.app`",
+        "./.venv/bin/python",
         "brew install python@3.13",
         'PYTHON="$(brew --prefix python@3.13)/bin/python3.13"',
         "mv .venv .venv.backup",
