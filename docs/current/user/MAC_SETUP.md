@@ -241,7 +241,7 @@ and confirm that the latency log and `pricing.json` are readable and valid.
 
 ## Real Mac verification
 
-The v0.5.4 release candidate must complete all of these checks on the target
+The v0.5.7 release candidate must complete all of these checks on the target
 Mac; the final tag is blocked until they pass:
 
 1. Update an existing v0.5.3 source install and rerun `./scripts/setup_mac.sh`.
@@ -285,4 +285,4 @@ Mac; the final tag is blocked until they pass:
 Also rerun setup twice, confirm the PATH entry is not duplicated, confirm the
 wrapper is executable, and confirm Keychain credentials remain unchanged. The
 script logic and Bash syntax are audited on Windows, but these runtime checks
-must be completed on real macOS hardware before v0.5.4 is released.
+must be completed on real macOS hardware before v0.5.7 is released.

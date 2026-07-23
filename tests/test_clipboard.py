@@ -10,6 +10,7 @@ import win32con
 
 from speedytype.clipboard import (
     ClipboardSnapshot,
+    paste_text,
     paste_text_preserving_clipboard,
     restore_clipboard,
     snapshot_clipboard,
@@ -60,6 +61,68 @@ def _get_clipboard_text():
             return None
     finally:
         win32clipboard.CloseClipboard()
+
+
+def test_paste_text_restores_target_focus_before_shortcut(monkeypatch):
+    events = []
+    clipboard = {"text": ""}
+
+    monkeypatch.setattr(
+        "speedytype.clipboard.pyperclip.copy",
+        lambda text: events.append(("copy", text)) or clipboard.update(text=text),
+    )
+    monkeypatch.setattr("speedytype.clipboard.pyperclip.paste", lambda: clipboard["text"])
+    monkeypatch.setattr(
+        "speedytype.clipboard.focus_paste_target",
+        lambda target: events.append(("focus", target)) or (True, "focused", 0.123),
+    )
+    monkeypatch.setattr("speedytype.clipboard.send_paste_shortcut", lambda: events.append(("paste", None)))
+
+    result = paste_text(
+        "dictated text",
+        delay_seconds=0.0,
+        post_send_wait_seconds=0.0,
+        paste_target="editor-window",
+    )
+
+    assert result.ok
+    assert result.focus_window_seconds == pytest.approx(0.123)
+    assert events == [
+        ("copy", "dictated text"),
+        ("focus", "editor-window"),
+        ("paste", None),
+    ]
+
+
+def test_paste_text_skips_shortcut_when_captured_target_cannot_be_restored(monkeypatch):
+    events = []
+    clipboard = {"text": ""}
+
+    monkeypatch.setattr(
+        "speedytype.clipboard.pyperclip.copy",
+        lambda text: events.append(("copy", text)) or clipboard.update(text=text),
+    )
+    monkeypatch.setattr("speedytype.clipboard.pyperclip.paste", lambda: clipboard["text"])
+    monkeypatch.setattr(
+        "speedytype.clipboard.focus_paste_target",
+        lambda target: events.append(("focus", target)) or (False, "target vanished", 0.2),
+    )
+    monkeypatch.setattr(
+        "speedytype.clipboard.send_paste_shortcut",
+        lambda: (_ for _ in ()).throw(AssertionError("must not paste into an unknown foreground window")),
+    )
+
+    result = paste_text(
+        "dictated text",
+        delay_seconds=0.0,
+        post_send_wait_seconds=0.0,
+        paste_target="editor-window",
+    )
+
+    assert result.ok is False
+    assert result.focus_window_seconds == pytest.approx(0.2)
+    assert "target vanished" in result.message
+    assert events == [("copy", "dictated text"), ("focus", "editor-window")]
 
 
 def test_snapshot_and_restore_roundtrips_text():

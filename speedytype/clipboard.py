@@ -6,7 +6,14 @@ import time
 
 import pyperclip
 
-from speedytype.platform.clipboard import ClipboardSnapshot, restore_clipboard, send_paste_shortcut, snapshot_clipboard
+from speedytype.platform.clipboard import (
+    ClipboardSnapshot,
+    PasteTarget,
+    focus_paste_target,
+    restore_clipboard,
+    send_paste_shortcut,
+    snapshot_clipboard,
+)
 
 
 @dataclass(frozen=True)
@@ -18,6 +25,7 @@ class PasteResult:
     key_send_seconds: float
     post_send_wait_seconds: float
     verification_seconds: float
+    focus_window_seconds: float = 0.0
     clipboard_restored: bool = False
     clipboard_restore_message: str = ""
 
@@ -29,10 +37,16 @@ class PasteResult:
             + self.key_send_seconds
             + self.post_send_wait_seconds
             + self.verification_seconds
+            + self.focus_window_seconds
         )
 
 
-def paste_text(text: str, delay_seconds: float = 0.12, post_send_wait_seconds: float = 0.05) -> PasteResult:
+def paste_text(
+    text: str,
+    delay_seconds: float = 0.12,
+    post_send_wait_seconds: float = 0.05,
+    paste_target: PasteTarget | None = None,
+) -> PasteResult:
     copy_started = time.perf_counter()
     pyperclip.copy(text)
     clipboard_write_seconds = time.perf_counter() - copy_started
@@ -40,6 +54,19 @@ def paste_text(text: str, delay_seconds: float = 0.12, post_send_wait_seconds: f
     wait_started = time.perf_counter()
     time.sleep(delay_seconds)
     pre_send_wait_seconds = time.perf_counter() - wait_started
+
+    focus_ok, focus_message, focus_window_seconds = focus_paste_target(paste_target)
+    if paste_target is not None and not focus_ok:
+        return PasteResult(
+            ok=False,
+            message=f"已複製但未自動貼上，請手動貼上。原因：{focus_message}",
+            clipboard_write_seconds=clipboard_write_seconds,
+            pre_send_wait_seconds=pre_send_wait_seconds,
+            key_send_seconds=0.0,
+            post_send_wait_seconds=0.0,
+            verification_seconds=0.0,
+            focus_window_seconds=focus_window_seconds,
+        )
 
     send_started = time.perf_counter()
     try:
@@ -54,6 +81,7 @@ def paste_text(text: str, delay_seconds: float = 0.12, post_send_wait_seconds: f
             key_send_seconds=key_send_seconds,
             post_send_wait_seconds=0.0,
             verification_seconds=0.0,
+            focus_window_seconds=focus_window_seconds,
         )
     key_send_seconds = time.perf_counter() - send_started
 
@@ -73,6 +101,7 @@ def paste_text(text: str, delay_seconds: float = 0.12, post_send_wait_seconds: f
             key_send_seconds=key_send_seconds,
             post_send_wait_seconds=measured_post_send_wait_seconds,
             verification_seconds=verification_seconds,
+            focus_window_seconds=focus_window_seconds,
         )
     return PasteResult(
         ok=True,
@@ -82,6 +111,7 @@ def paste_text(text: str, delay_seconds: float = 0.12, post_send_wait_seconds: f
         key_send_seconds=key_send_seconds,
         post_send_wait_seconds=measured_post_send_wait_seconds,
         verification_seconds=verification_seconds,
+        focus_window_seconds=focus_window_seconds,
     )
 
 
@@ -91,6 +121,7 @@ def paste_text_preserving_clipboard(
     post_send_wait_seconds: float = 0.05,
     restore_delay_seconds: float = 0.3,
     background: bool = True,
+    paste_target: PasteTarget | None = None,
 ) -> PasteResult:
     """Paste `text` like `paste_text`, then restore whatever was on the
     clipboard beforehand so an unrelated copy the user made earlier (code,
@@ -104,7 +135,12 @@ def paste_text_preserving_clipboard(
     `background=False` for deterministic synchronous testing.
     """
     snapshot = snapshot_clipboard()
-    result = paste_text(text, delay_seconds=delay_seconds, post_send_wait_seconds=post_send_wait_seconds)
+    result = paste_text(
+        text,
+        delay_seconds=delay_seconds,
+        post_send_wait_seconds=post_send_wait_seconds,
+        paste_target=paste_target,
+    )
     if not result.ok:
         return result
 

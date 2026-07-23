@@ -1,5 +1,6 @@
 import csv
 import json
+import sys
 from dataclasses import replace
 from datetime import datetime
 
@@ -519,9 +520,16 @@ def test_vocab_export_import_roundtrip_via_dialog(qapp, tmp_path, monkeypatch):
 def test_empty_masked_key_field_accepts_paste_without_reveal(qapp):
     field = MaskedKeyField("OpenAI", "", lambda value: (True, "ok"))
     clipboard = qapp.clipboard()
-    previous_text = clipboard.text()
+    if sys.platform == "win32":
+        import pyperclip
+
+        previous_text = pyperclip.paste()
+        set_clipboard_text = pyperclip.copy
+    else:
+        previous_text = clipboard.text()
+        set_clipboard_text = clipboard.setText
     try:
-        clipboard.setText("sk-pasted-first-run-key")
+        set_clipboard_text("sk-pasted-first-run-key")
 
         field.line_edit.setFocus()
         field.line_edit.paste()
@@ -531,7 +539,7 @@ def test_empty_masked_key_field_accepts_paste_without_reveal(qapp):
         assert field.line_edit.text() == "sk-pasted-first-run-key"
         assert field.current_value() == "sk-pasted-first-run-key"
     finally:
-        clipboard.setText(previous_text)
+        set_clipboard_text(previous_text)
 
 
 def test_masked_key_field_reveal_toggle_and_edit(qapp, tmp_path):

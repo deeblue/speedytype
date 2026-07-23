@@ -63,14 +63,14 @@ def test_root_readme_distinguishes_development_tree_from_release():
 def test_release_checklist_documents_verified_annotated_tag_workflow():
     content = RELEASE.read_text(encoding="utf-8")
     required = (
-        'VERSION = "0.5.4"',
+        'VERSION = "0.5.7"',
         'BUILD_DATE = "2026-07-20"',
         "python -m pytest -q",
         "python -m compileall -q speedytype scripts",
         "python scripts/build_release.py",
-        'git tag -a v0.5.4 -m "SpeedyType 0.5.4"',
+        'git tag -a v0.5.7 -m "SpeedyType 0.5.7"',
         "git push origin master",
-        "git push origin v0.5.4",
+        "git push origin v0.5.7",
         "Never move or force-update an existing release tag",
     )
     for text in required:
@@ -94,7 +94,7 @@ def test_macos_docs_describe_native_menu_bar_permissions_and_release_gate():
         "restart the daemon",
         "Python .ips",
         "ten consecutive recording/paste cycles",
-        "v0.5.4",
+        "v0.5.7",
     )
     for text in required_setup:
         assert text in setup

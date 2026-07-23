@@ -7,7 +7,7 @@ preserved in the [2026-07-18 snapshot](../../archive/reports/KNOWN_LIMITATIONS-2
 
 - **Impact:** The Quartz event tap, AppKit menu-bar/accessory behavior, privacy
   prompts, settings hotkey capture, paste, restart, and bounded automatic stop
-  are implemented and automated where possible, but final v0.5.4 acceptance
+  are implemented and automated where possible, but final v0.5.7 acceptance
   remains pending on a real Mac.
 - **Workaround:** Follow the real-Mac checklist in
   [MAC_SETUP.md](../user/MAC_SETUP.md) before publishing the release tag.

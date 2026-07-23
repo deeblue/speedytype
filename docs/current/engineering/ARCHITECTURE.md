@@ -59,6 +59,11 @@ admitted to one complete-file `whisper-1` request with
 FLAC preparation fails and the WAV passes both duration and byte guards. See
 [the long-recording decisions](DECISIONS.md#2026-07-18--use-durable-wav-and-validated-lossless-flac).
 
+Chunked transcription is not part of the production path. Current research on
+borrowing Deepgram/DeepL-style boundary semantics for better local chunk
+planning is tracked separately in
+[Chunking Strategy Proposal](CHUNKING_STRATEGY_PROPOSAL.md).
+
 ## Polish, Paste, and Usage Records
 
 The raw transcript can be sent to the configured LLM for polishing. The paste

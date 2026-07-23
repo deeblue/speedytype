@@ -1,7 +1,8 @@
 import pytest
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
-from speedytype.overlay import RecordingPill, format_recording_elapsed
+from speedytype.overlay import RecordingPill, format_recording_elapsed, overlay_window_flags
 
 
 @pytest.fixture(scope="module")
@@ -30,6 +31,36 @@ def test_show_elapsed_stores_recording_mode_and_formatted_text(pill):
 
     assert pill._mode == "recording"
     assert pill._elapsed_text == "01:05"
+
+
+def test_macos_overlay_uses_non_focus_regular_window_flags():
+    flags = overlay_window_flags("darwin")
+
+    assert flags & Qt.WindowType.FramelessWindowHint
+    assert flags & Qt.WindowType.WindowStaysOnTopHint
+    assert flags & Qt.WindowType.WindowDoesNotAcceptFocus
+    assert not flags & Qt.WindowType.Tool
+
+
+def test_show_recording_presents_and_raises_pill(pill, monkeypatch):
+    calls = []
+    monkeypatch.setattr(pill, "show", lambda: calls.append("show"))
+    monkeypatch.setattr(pill, "raise_", lambda: calls.append("raise"))
+
+    pill.show_recording()
+
+    assert calls == ["show", "raise"]
+
+
+def test_macos_show_recording_does_not_raise_and_steal_focus(pill, monkeypatch):
+    calls = []
+    monkeypatch.setattr("speedytype.overlay.sys.platform", "darwin")
+    monkeypatch.setattr(pill, "show", lambda: calls.append("show"))
+    monkeypatch.setattr(pill, "raise_", lambda: calls.append("raise"))
+
+    pill.show_recording()
+
+    assert calls == ["show"]
 
 
 def test_countdown_supersedes_elapsed_state(pill):

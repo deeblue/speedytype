@@ -1,9 +1,9 @@
 # SpeedyType User Guide
 
-> macOS v0.5.4 release-candidate note: the daemon uses a native Quartz
+> macOS v0.5.7 release-candidate note: the daemon uses a native Quartz
 > keyboard event tap and AppKit accessory policy. Automated contracts pass on
 > Windows, but real-Mac acceptance remains pending; do not publish the final
-> v0.5.4 tag until the checklist in `MAC_SETUP.md` passes on the target Mac.
+> v0.5.7 tag until the checklist in `MAC_SETUP.md` passes on the target Mac.
 
 ## What SpeedyType Does
 
@@ -227,13 +227,13 @@ Compare the downloaded ZIP SHA-256 with `SHA256SUMS.txt`.
 Windows:
 
 ```powershell
-Get-FileHash SpeedyType-0.5.4-source.zip -Algorithm SHA256
+Get-FileHash SpeedyType-0.5.7-source.zip -Algorithm SHA256
 ```
 
 macOS:
 
 ```sh
-shasum -a 256 SpeedyType-0.5.4-source.zip
+shasum -a 256 SpeedyType-0.5.7-source.zip
 ```
 
 Real macOS runtime verification remains required before describing Mac command

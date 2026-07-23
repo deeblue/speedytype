@@ -24,12 +24,22 @@ from speedytype.recording_recovery import (
 from speedytype.usage_stats import calculate_usage
 
 
-def _write_wav(path: Path) -> None:
+def _write_wav(path: Path, *, frames: int = 32_000, sample_value: int = 3000) -> None:
     with wave.open(str(path), "wb") as wav_file:
         wav_file.setnchannels(1)
         wav_file.setsampwidth(2)
         wav_file.setframerate(16_000)
-        wav_file.writeframes(b"\x00\x00" * 1600)
+        wav_file.writeframes(sample_value.to_bytes(2, "little", signed=True) * frames)
+
+
+def _write_wav_samples(path: Path, samples: list[int]) -> None:
+    with wave.open(str(path), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(16_000)
+        wav_file.writeframes(
+            b"".join(sample.to_bytes(2, "little", signed=True) for sample in samples)
+        )
 
 
 def test_sub_tenth_second_recording_skips_all_external_work_and_latency_row(tmp_path, monkeypatch):
@@ -64,6 +74,106 @@ def test_sub_tenth_second_recording_skips_all_external_work_and_latency_row(tmp_
     assert result.paste_message == "Recording too short; skipped."
     assert result.latency.recording_seconds == pytest.approx(0.01)
     assert not config.latency_log_path.exists()
+
+
+def test_near_silent_recording_skips_external_work_and_paste(tmp_path, monkeypatch):
+    wav_path = tmp_path / "near-silent.wav"
+    _write_wav(wav_path, frames=16_000, sample_value=0)
+    config = _config(tmp_path)
+    monkeypatch.setattr(
+        "speedytype.pipeline.transcribe_audio",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Whisper must not run for silence")),
+    )
+    monkeypatch.setattr(
+        "speedytype.pipeline.prepare_upload",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("FLAC must not run for silence")),
+    )
+    monkeypatch.setattr(
+        "speedytype.pipeline.call_llm_polisher",
+        lambda *args: (_ for _ in ()).throw(AssertionError("LLM must not run for silence")),
+    )
+    monkeypatch.setattr(
+        "speedytype.pipeline.paste_text_preserving_clipboard",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("paste must not run for silence")),
+    )
+
+    result = process_wav(wav_path, config, do_paste=True, usage_scope="daily")
+
+    assert result.raw_transcript == result.polished_text == ""
+    assert result.paste_ok is False
+    assert result.paste_message == "Recording is silent or too quiet; skipped."
+    assert not config.latency_log_path.exists()
+
+
+def test_short_background_noise_with_brief_click_skips_external_work(tmp_path, monkeypatch):
+    wav_path = tmp_path / "short-background-click.wav"
+    samples = [250] * int(1.87 * 16_000)
+    click_start = int(0.4 * 16_000)
+    for index in range(click_start, click_start + int(0.05 * 16_000)):
+        samples[index] = 5000 if index % 2 == 0 else -5000
+    _write_wav_samples(wav_path, samples)
+    config = _config(tmp_path)
+    monkeypatch.setattr(
+        "speedytype.pipeline.transcribe_audio",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Whisper must not run for short non-speech noise")),
+    )
+    monkeypatch.setattr(
+        "speedytype.pipeline.prepare_upload",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("FLAC must not run for short non-speech noise")),
+    )
+    monkeypatch.setattr(
+        "speedytype.pipeline.call_llm_polisher",
+        lambda *args: (_ for _ in ()).throw(AssertionError("LLM must not run for short non-speech noise")),
+    )
+
+    result = process_wav(wav_path, config, do_paste=True, usage_scope="daily")
+
+    assert result.raw_transcript == result.polished_text == ""
+    assert result.paste_ok is False
+    assert result.paste_message == "Recording has no sustained speech; skipped."
+    assert not config.latency_log_path.exists()
+
+
+def test_short_empty_recording_hallucination_skips_gemini_and_paste(tmp_path, monkeypatch):
+    wav_path = tmp_path / "short-hallucination.wav"
+    _write_wav(wav_path, frames=int(0.85 * 16_000), sample_value=3000)
+    config = _config(tmp_path)
+    monkeypatch.setattr(
+        "speedytype.pipeline.call_llm_polisher",
+        lambda *args: (_ for _ in ()).throw(AssertionError("LLM must not run for empty-recording hallucination")),
+    )
+    monkeypatch.setattr(
+        "speedytype.pipeline.paste_text_preserving_clipboard",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("paste must not run for empty-recording hallucination")),
+    )
+
+    result = process_wav(
+        wav_path,
+        config,
+        do_paste=True,
+        raw_transcript_override="字幕由 Amara.org 社區提供",
+        whisper_seconds_override=1.0,
+        usage_scope="daily",
+    )
+
+    assert result.raw_transcript == "字幕由 Amara.org 社區提供"
+    assert result.polished_text == ""
+    assert result.paste_ok is False
+    assert result.paste_message == "Whisper returned an empty-recording hallucination; skipped."
+    assert not config.latency_log_path.exists()
+
+
+def test_short_non_silent_recording_still_runs_transcription(tmp_path, monkeypatch):
+    wav_path = tmp_path / "short-speech.wav"
+    _write_wav(wav_path, frames=8_000, sample_value=3000)
+    sent = []
+    monkeypatch.setattr("speedytype.pipeline.transcribe_audio", lambda *args, **kwargs: sent.append(True) or "raw")
+    monkeypatch.setattr("speedytype.pipeline.call_llm_polisher", lambda *args: _llm_result("polished"))
+
+    result = process_wav(wav_path, _config(tmp_path), do_paste=False, usage_scope="daily")
+
+    assert sent == [True]
+    assert result.raw_transcript == "raw"
 
 
 def _config(tmp_path: Path) -> AppConfig:
@@ -230,6 +340,53 @@ def test_process_wav_propagates_authoritative_llm_usage(tmp_path, monkeypatch) -
     assert row["llm_input_tokens"] == "120"
     assert row["llm_output_tokens"] == "30"
     assert row["llm_total_tokens"] == "150"
+
+
+def test_process_wav_restores_recording_target_before_paste(tmp_path, monkeypatch) -> None:
+    wav_path = tmp_path / "audio.wav"
+    _write_wav(wav_path)
+    paste_target = object()
+    paste_calls = []
+
+    monkeypatch.setattr("speedytype.pipeline.call_llm_polisher", lambda *args: _llm_result("polished text"))
+    monkeypatch.setattr(
+        "speedytype.pipeline.paste_text_preserving_clipboard",
+        lambda text, **kwargs: paste_calls.append((text, kwargs))
+        or SimpleNamespace(
+            ok=True,
+            message="Paste shortcut sent.",
+            clipboard_write_seconds=0.01,
+            pre_send_wait_seconds=0.02,
+            key_send_seconds=0.03,
+            post_send_wait_seconds=0.04,
+            verification_seconds=0.05,
+            focus_window_seconds=0.06,
+        ),
+    )
+    config = _config(tmp_path)
+
+    result = process_wav(
+        wav_path,
+        config,
+        do_paste=True,
+        raw_transcript_override="raw",
+        usage_scope="daily",
+        paste_target=paste_target,
+    )
+
+    assert paste_calls == [
+        (
+            "polished text",
+            {
+                "restore_delay_seconds": config.clipboard_restore_delay_seconds,
+                "paste_target": paste_target,
+            },
+        )
+    ]
+    assert result.latency.focus_window_seconds == pytest.approx(0.06)
+    with config.latency_log_path.open("r", encoding="utf-8", newline="") as csv_file:
+        row = next(csv.DictReader(csv_file))
+    assert row["focus_window_seconds"] == "0.060000"
 
 
 def test_normal_transcription_sends_and_records_selected_stt_model(tmp_path, monkeypatch) -> None:

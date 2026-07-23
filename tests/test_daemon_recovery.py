@@ -282,6 +282,35 @@ def test_toggle_release_rearms_and_second_activation_processes_once(tmp_path, mo
     assert processed == [tmp_path / "recording-0.wav"]
 
 
+def test_daemon_captures_recording_focus_target_and_passes_it_to_processing(tmp_path, monkeypatch):
+    _, controller, recorder_calls, _processed, threads = _orchestration_controller(
+        tmp_path, monkeypatch, mode="toggle"
+    )
+    process_calls = []
+    monkeypatch.setattr("speedytype.daemon.capture_paste_target", lambda: "editor-window")
+    monkeypatch.setattr("speedytype.daemon.wait_until_hotkey_released", lambda *args: ("released", 1.0))
+    monkeypatch.setattr(
+        "speedytype.daemon.process_wav",
+        lambda path, *args, **kwargs: process_calls.append((path, kwargs)),
+    )
+
+    controller.on_press()
+    session = controller._active_session
+    controller._finish_after_release(session)
+    controller.on_press()
+    controller._finish_after_release(session)
+
+    assert len([thread for thread in threads if not thread.daemon]) == 1
+    assert recorder_calls == ["stop"]
+    assert session.paste_target == "editor-window"
+    assert process_calls == [
+        (
+            tmp_path / "recording-0.wav",
+            {"do_paste": True, "usage_scope": "daily", "paste_target": "editor-window"},
+        )
+    ]
+
+
 @pytest.mark.parametrize("mode", ["hold", "toggle"])
 def test_deadline_uses_idempotent_stop_path_and_later_events_do_not_reprocess(
     tmp_path, monkeypatch, mode

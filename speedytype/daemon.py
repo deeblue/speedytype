@@ -24,6 +24,7 @@ from speedytype.overlay import AudioLevelEmitter, RecordingPill
 from speedytype.pipeline import process_wav
 from speedytype.paths import default_daemon_log_path, default_env_path, default_pid_path, default_settings_path
 from speedytype.platform.app import activate_window, configure_daemon_application
+from speedytype.platform.clipboard import PasteTarget, capture_paste_target
 from speedytype.recording_control import RecordingAction, RecordingControl, RecordingPhase
 from speedytype.recording_recovery import RecoveryRecord, discover_recoverable_recordings, mark_recording, remove_unconfirmed_recording
 from speedytype.platform.process import is_process_running, terminate_process
@@ -58,6 +59,7 @@ class _RecordingSession:
     rollback_requested: bool = False
     shutdown_requested: bool = False
     shutdown_draining: bool = False
+    paste_target: PasteTarget | None = None
 
 
 def report_recoverable_recordings(
@@ -196,6 +198,7 @@ class DaemonController(QObject):
                         path=path,
                         started_at=candidate.started_at,
                         candidate=candidate,
+                        paste_target=capture_paste_target(),
                     )
                     session.thread = threading.Thread(
                         target=self._record_session, args=(session,), daemon=False
@@ -540,7 +543,16 @@ class DaemonController(QObject):
         self, active_path: Path, session: _RecordingSession | None = None
     ) -> None:
         try:
-            process_wav(active_path, self.config, do_paste=True, usage_scope="daily")
+            if session is None:
+                process_wav(active_path, self.config, do_paste=True, usage_scope="daily")
+            else:
+                process_wav(
+                    active_path,
+                    self.config,
+                    do_paste=True,
+                    usage_scope="daily",
+                    paste_target=session.paste_target,
+                )
         except Exception as exc:
             category = str(getattr(exc, "category", type(exc).__name__))
             preserved_path = Path(getattr(exc, "preserved_wav", active_path))

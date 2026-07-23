@@ -1,9 +1,9 @@
 # SpeedyType Current Status
 
-**As of:** 2026-07-18  
-**Current code version:** 0.5.4  
-**Build date:** 2026-07-20  
-**Target release candidate:** 0.5.4
+**As of:** 2026-07-20
+**Current code version:** 0.5.7
+**Build date:** 2026-07-20
+**Target release candidate:** 0.5.7
 
 ## Implemented
 
@@ -15,6 +15,12 @@
   countdown, 25-minute automatic stop, and pill-local stop warning.
 - Settings-window SpeedyType application identity, filtered recording-device
   picker, and wheel-safe recording mode/device selectors.
+- Windows paste target restoration before Ctrl+V, with fail-closed clipboard
+  retention when the captured target window cannot be restored.
+- macOS recording pill visibility hardening, non-focus overlay presentation,
+  paste target restoration to the original foreground application, strengthened
+  short no-speech detection, and silent/near-silent recording gate to avoid
+  empty-recording hallucination paste.
 - Cross-platform 80 ms hotkey qualification with immediate provisional capture,
   delayed recording UI, safe rejected-artifact cleanup, and persistent
   privacy-safe rejection diagnostics.

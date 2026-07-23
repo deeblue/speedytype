@@ -85,9 +85,9 @@ def test_current_status_records_only_macos_hardware_gate():
     status = (ROOT / "docs" / "current" / "STATUS.md").read_text(
         encoding="utf-8"
     )
-    assert "0.5.4" in status
+    assert "0.5.7" in status
     assert "2026-07-20" in status
-    assert "0.5.4" in status
+    assert "0.5.7" in status
     assert "macOS is the only hardware release gate" in current
     assert "No 24- or 25-minute real recording is required" in current
     assert "Windows Toggle real-device gate is pending" not in current

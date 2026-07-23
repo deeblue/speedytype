@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 from PyQt6.QtCore import Qt, QObject, QTimer, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QPainter, QPen
 from PyQt6.QtWidgets import QApplication, QWidget
@@ -20,6 +22,14 @@ BAR_MAX_HEIGHT = 26
 PILL_WIDTH = 220
 PILL_HEIGHT = 56
 SCREEN_MARGIN = 24
+
+
+def overlay_window_flags(platform: str | None = None) -> Qt.WindowType:
+    platform = sys.platform if platform is None else platform
+    flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
+    if platform == "darwin":
+        return flags | Qt.WindowType.WindowDoesNotAcceptFocus
+    return flags | Qt.WindowType.Tool
 
 
 def format_recording_elapsed(seconds: int) -> str:
@@ -57,13 +67,10 @@ class RecordingPill(QWidget):
 
     def __init__(self, warning_duration_ms: int = 2000) -> None:
         super().__init__()
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool
-        )
+        self.setWindowFlags(overlay_window_flags())
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.resize(PILL_WIDTH, PILL_HEIGHT)
 
         self._mode = "recording"
@@ -101,6 +108,12 @@ class RecordingPill(QWidget):
         y = geo.bottom() - PILL_HEIGHT - SCREEN_MARGIN
         self.move(x, y)
 
+    def _present(self) -> None:
+        self.show()
+        if sys.platform != "darwin":
+            self.raise_()
+        self.update()
+
     def show_recording(self) -> None:
         self._mode = "recording"
         self._bar_heights = [float(BAR_MIN_HEIGHT)] * NUM_BARS
@@ -110,8 +123,7 @@ class RecordingPill(QWidget):
         self._hide_pending = False
         self._spinner_timer.stop()
         self._position_bottom_center()
-        self.show()
-        self.update()
+        self._present()
 
     def show_elapsed(self, elapsed_seconds: int) -> None:
         """Slot: display the persistent elapsed time while recording."""
@@ -130,8 +142,7 @@ class RecordingPill(QWidget):
         self._processing_pending = False
         self._spinner_timer.start(80)
         self._position_bottom_center()
-        self.show()
-        self.update()
+        self._present()
 
     def show_countdown(self, remaining_seconds: int) -> None:
         """Slot: switch to (or update) the countdown-warning display."""
@@ -147,8 +158,7 @@ class RecordingPill(QWidget):
         self._spinner_timer.stop()
         self._warning_timer.start()
         self._position_bottom_center()
-        self.show()
-        self.update()
+        self._present()
 
     def hide_pill(self) -> None:
         if self._mode == "auto_stopped" and self._warning_timer.isActive():
