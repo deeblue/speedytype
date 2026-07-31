@@ -7,7 +7,7 @@ import wave
 
 import numpy as np
 
-from speedytype.api import transcribe_audio
+from speedytype.api import DEFAULT_STT_MODEL, transcribe_audio_result
 from speedytype.platform.clipboard import PasteTarget
 from speedytype.clipboard import paste_text_preserving_clipboard
 from speedytype.console import safe_print
@@ -122,7 +122,7 @@ def process_wav(
     do_paste: bool = True,
     run_label: str = "",
     usage_scope: str = "development",
-    stt_model: str = "whisper-1",
+    stt_model: str = DEFAULT_STT_MODEL,
     raw_transcript_override: str | None = None,
     whisper_seconds_override: float | None = None,
     hybrid_request_count: int = 0,
@@ -204,6 +204,7 @@ def process_wav(
     wav_fallback_used = False
     wav_fallback_reason = ""
     processing_started = False
+    actual_stt_model = stt_model
     try:
         if raw_transcript_override is None:
             mark_recording(audio_path, "encoding")
@@ -223,7 +224,9 @@ def process_wav(
                 mark_recording(audio_path, "processing")
                 processing_started = True
                 whisper_start = time.perf_counter()
-                raw = transcribe_audio(prepared.path, config, model=stt_model)
+                transcription = transcribe_audio_result(prepared.path, config, model=stt_model)
+                raw = transcription.text
+                actual_stt_model = transcription.stt_model
                 whisper_seconds = time.perf_counter() - whisper_start
         else:
             mark_recording(audio_path, "processing")
@@ -245,7 +248,7 @@ def process_wav(
             total_tail_latency_seconds=precomputed_tail_seconds + time.perf_counter() - tail_start,
             run_label="empty_recording_hallucination",
             usage_scope=usage_scope,
-            stt_model=stt_model,
+            stt_model=actual_stt_model,
             stt_audio_seconds=resolved_stt_audio_seconds,
             stt_upload_container=upload_container,
             stt_upload_bytes=upload_bytes,
@@ -275,7 +278,7 @@ def process_wav(
             hybrid_fallback_used=hybrid_fallback_used,
             hybrid_validation_reasons=hybrid_validation_reasons,
             usage_scope=usage_scope,
-            stt_model=stt_model,
+            stt_model=actual_stt_model,
             stt_audio_seconds=resolved_stt_audio_seconds,
             stt_upload_container=upload_container,
             stt_upload_bytes=upload_bytes,
@@ -336,7 +339,7 @@ def process_wav(
         hybrid_fallback_used=hybrid_fallback_used,
         hybrid_validation_reasons=hybrid_validation_reasons,
         usage_scope=usage_scope,
-        stt_model=stt_model,
+        stt_model=actual_stt_model,
         stt_audio_seconds=resolved_stt_audio_seconds,
         stt_upload_container=upload_container,
         stt_upload_bytes=upload_bytes,

@@ -23,6 +23,7 @@ class ConfigError(RuntimeError):
 class AppConfig:
     openai_api_key: str
     gemini_api_key: str
+    groq_api_key: str = ""
     minimax_api_key: str = ""
     mic_device: str = ""
     mic_device_warning: str = ""
@@ -110,6 +111,7 @@ def load_config(
 
     openai_api_key = resolution.values.get("OPENAI_API_KEY", "").strip()
     gemini_api_key = resolution.values.get("GEMINI_API_KEY", "").strip()
+    groq_api_key = resolution.values.get("GROQ_API_KEY", "").strip()
     missing = [name for name, value in (("OPENAI_API_KEY", openai_api_key), ("GEMINI_API_KEY", gemini_api_key)) if not value]
     if missing and require_api_keys:
         raise ConfigError(
@@ -130,6 +132,7 @@ def load_config(
     return AppConfig(
         openai_api_key=openai_api_key,
         gemini_api_key=gemini_api_key,
+        groq_api_key=groq_api_key,
         minimax_api_key=resolution.values.get("MINIMAX_API_KEY", "").strip(),
         mic_device=mic_device_value,
         mic_device_warning=mic_device_warning,

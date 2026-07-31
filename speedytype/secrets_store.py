@@ -21,6 +21,7 @@ ENV_LOCK_RANGE_BYTES = 0x7FFFFFFF
 SECRET_KEY_NAMES = {
     "OPENAI_API_KEY": "openai_api_key",
     "GEMINI_API_KEY": "gemini_api_key",
+    "GROQ_API_KEY": "groq_api_key",
     "MINIMAX_API_KEY": "minimax_api_key",
 }
 

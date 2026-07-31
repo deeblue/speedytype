@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,10 @@ from speedytype.config import AppConfig, DEFAULT_GEMINI_MODEL
 
 
 WHISPER_URL = "https://api.openai.com/v1/audio/transcriptions"
+GROQ_TRANSCRIPTIONS_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+DEFAULT_GROQ_STT_MODEL = "whisper-large-v3"
+DEFAULT_STT_MODEL = f"groq/{DEFAULT_GROQ_STT_MODEL}"
+OPENAI_FALLBACK_STT_MODEL = "whisper-1"
 GEMINI_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 BASE_SYSTEM_PROMPT = """你是一個精通多國語言的「語音輸入修飾專家」。
 1. 刪除所有口語贅字：如「呃」、「然後」、「那個」、「就是說」。
@@ -39,6 +44,27 @@ SYSTEM_PROMPT = BASE_SYSTEM_PROMPT.format(disambiguation_hints=DISAMBIGUATION_HI
 
 class ApiResponseFormatError(RuntimeError):
     pass
+
+
+class MissingSttCredentialError(RuntimeError):
+    category = "MissingSttCredential"
+
+
+class GroqRateLimitError(RuntimeError):
+    category = "groq_rate_limit"
+
+
+@dataclass(frozen=True)
+class TranscriptionResult:
+    text: str
+    provider: str
+    model: str
+    fallback_used: bool = False
+    fallback_reason: str = ""
+
+    @property
+    def stt_model(self) -> str:
+        return f"{self.provider}/{self.model}"
 
 
 def _raw_payload(payload: Any) -> str:
@@ -85,6 +111,28 @@ def _raise_http_error(label: str, response: requests.Response) -> None:
     raise RuntimeError(f"{label} API error status={response.status_code}, body:\n{response.text}")
 
 
+def _raise_groq_http_error(response: requests.Response) -> None:
+    if response.status_code >= 200 and response.status_code < 300:
+        return
+    if response.status_code == 429:
+        raise GroqRateLimitError(f"Groq API rate limit reached, body:\n{response.text}")
+    raise RuntimeError(f"Groq API error status={response.status_code}, body:\n{response.text}")
+
+
+def _provider_and_model(model: str) -> tuple[str, str]:
+    if "/" in model:
+        provider, provider_model = model.split("/", 1)
+        return provider.strip().lower(), provider_model.strip()
+    return "openai", model.strip()
+
+
+def _mime_type(audio_path: Path) -> str:
+    return {
+        ".flac": "audio/flac",
+        ".wav": "audio/wav",
+    }.get(audio_path.suffix.lower(), "application/octet-stream")
+
+
 def transcribe_audio_request(
     audio_path: Path,
     config: AppConfig,
@@ -95,10 +143,7 @@ def transcribe_audio_request(
     prompt_override: str | None = None,
     model: str = "whisper-1",
 ) -> dict[str, Any]:
-    mime_type = {
-        ".flac": "audio/flac",
-        ".wav": "audio/wav",
-    }.get(audio_path.suffix.lower(), "application/octet-stream")
+    mime_type = _mime_type(audio_path)
     data: dict[str, Any] = {
         "model": model,
         "prompt": config.whisper_vocab_bias if prompt_override is None else prompt_override,
@@ -120,15 +165,87 @@ def transcribe_audio_request(
     return response.json()
 
 
+def transcribe_audio_groq_request(
+    audio_path: Path,
+    config: AppConfig,
+    *,
+    timeout_seconds: int = 120,
+    response_format: str = "json",
+    prompt_override: str | None = None,
+    model: str = DEFAULT_GROQ_STT_MODEL,
+) -> dict[str, Any]:
+    if not config.groq_api_key:
+        raise MissingSttCredentialError(
+            "Missing GROQ_API_KEY; provision it into the SpeedyType keyring before using the default Groq STT provider."
+        )
+    data: dict[str, Any] = {
+        "model": model,
+        "prompt": config.whisper_vocab_bias if prompt_override is None else prompt_override,
+    }
+    if response_format:
+        data["response_format"] = response_format
+    with audio_path.open("rb") as audio_file:
+        response = requests.post(
+            GROQ_TRANSCRIPTIONS_URL,
+            headers={"Authorization": f"Bearer {config.groq_api_key}"},
+            files={"file": (audio_path.name, audio_file, _mime_type(audio_path))},
+            data=data,
+            timeout=timeout_seconds,
+        )
+    _raise_groq_http_error(response)
+    return response.json()
+
+
+def transcribe_audio_result(
+    audio_path: Path,
+    config: AppConfig,
+    timeout_seconds: int = 120,
+    *,
+    model: str = DEFAULT_STT_MODEL,
+) -> TranscriptionResult:
+    provider, provider_model = _provider_and_model(model)
+    if provider == "groq":
+        try:
+            payload = transcribe_audio_groq_request(
+                audio_path,
+                config,
+                timeout_seconds=timeout_seconds,
+                model=provider_model or DEFAULT_GROQ_STT_MODEL,
+            )
+            return TranscriptionResult(parse_whisper_text(payload), "groq", provider_model or DEFAULT_GROQ_STT_MODEL)
+        except GroqRateLimitError as exc:
+            payload = transcribe_audio_request(
+                audio_path,
+                config,
+                timeout_seconds=timeout_seconds,
+                model=OPENAI_FALLBACK_STT_MODEL,
+            )
+            return TranscriptionResult(
+                parse_whisper_text(payload),
+                "openai",
+                OPENAI_FALLBACK_STT_MODEL,
+                fallback_used=True,
+                fallback_reason=exc.category,
+            )
+    if provider == "openai":
+        payload = transcribe_audio_request(
+            audio_path,
+            config,
+            timeout_seconds=timeout_seconds,
+            model=provider_model or OPENAI_FALLBACK_STT_MODEL,
+        )
+        return TranscriptionResult(parse_whisper_text(payload), "openai", provider_model or OPENAI_FALLBACK_STT_MODEL)
+    raise ValueError(f"Unsupported STT provider: {provider}")
+
+
 def transcribe_audio(
     audio_path: Path,
     config: AppConfig,
     timeout_seconds: int = 120,
     *,
-    model: str = "whisper-1",
+    model: str = DEFAULT_STT_MODEL,
 ) -> str:
-    payload = transcribe_audio_request(audio_path, config, timeout_seconds=timeout_seconds, model=model)
-    return parse_whisper_text(payload)
+    return transcribe_audio_result(audio_path, config, timeout_seconds=timeout_seconds, model=model).text
 
 
 def transcribe_audio_verbose(

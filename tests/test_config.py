@@ -16,6 +16,7 @@ def test_settings_config_allows_missing_required_keys(tmp_path):
 
     assert config.openai_api_key == ""
     assert config.gemini_api_key == ""
+    assert config.groq_api_key == ""
 
 
 def test_operational_config_still_rejects_missing_required_keys(tmp_path):
@@ -30,6 +31,7 @@ def test_load_config_reads_env_file(tmp_path: Path):
             [
                 "OPENAI_API_KEY=sk-test",
                 "GEMINI_API_KEY=gem-test",
+                "GROQ_API_KEY=groq-test",
                 "GEMINI_MODEL=gemini-test-flash",
             ]
         ),
@@ -40,6 +42,7 @@ def test_load_config_reads_env_file(tmp_path: Path):
 
     assert config.openai_api_key == "sk-test"
     assert config.gemini_api_key == "gem-test"
+    assert config.groq_api_key == "groq-test"
     assert config.gemini_model == "gemini-test-flash"
 
 
@@ -51,12 +54,14 @@ def test_load_config_uses_resolved_keyring_values(tmp_path, monkeypatch):
         lambda *a, **k: SecretResolution({
             "OPENAI_API_KEY": "ring-openai",
             "GEMINI_API_KEY": "ring-gemini",
+            "GROQ_API_KEY": "ring-groq",
             "MINIMAX_API_KEY": "ring-minimax",
         }),
     )
     config = load_config(env_file, settings_path=tmp_path / "settings.json")
     assert config.openai_api_key == "ring-openai"
     assert config.gemini_api_key == "ring-gemini"
+    assert config.groq_api_key == "ring-groq"
 
 
 def test_load_config_missing_message_mentions_settings_and_env(tmp_path, monkeypatch):

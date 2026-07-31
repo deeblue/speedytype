@@ -2,6 +2,12 @@
   "updated_date": "2026-07-14",
   "currency": "USD",
   "stt": {
+    "groq/whisper-large-v3": {
+      "per_minute": 0
+    },
+    "openai/whisper-1": {
+      "per_minute": 0.006
+    },
     "whisper-1": {
       "per_minute": 0.006
     }

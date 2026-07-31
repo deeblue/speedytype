@@ -142,6 +142,7 @@ def run_live_verification(real_env_path: str | Path, fallback_root: str | Path) 
     resolved_values = {
         "OPENAI_API_KEY": config.openai_api_key,
         "GEMINI_API_KEY": config.gemini_api_key,
+        "GROQ_API_KEY": config.groq_api_key,
         "MINIMAX_API_KEY": config.minimax_api_key,
     }
 

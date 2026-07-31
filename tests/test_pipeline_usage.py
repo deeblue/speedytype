@@ -13,6 +13,7 @@ import pytest
 
 from speedytype.config import AppConfig
 from speedytype.flac_upload import UploadPreparationError
+from speedytype.api import DEFAULT_STT_MODEL, TranscriptionResult
 from speedytype.llm import LlmResult, LlmUsage
 from speedytype.pipeline import process_wav
 from speedytype.paths import default_pricing_path
@@ -51,7 +52,7 @@ def test_sub_tenth_second_recording_skips_all_external_work_and_latency_row(tmp_
         wav_file.writeframes(b"\x00\x00" * 160)
     config = _config(tmp_path)
     monkeypatch.setattr(
-        "speedytype.pipeline.transcribe_audio",
+        "speedytype.pipeline.transcribe_audio_result",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Whisper must not run")),
     )
     monkeypatch.setattr(
@@ -81,7 +82,7 @@ def test_near_silent_recording_skips_external_work_and_paste(tmp_path, monkeypat
     _write_wav(wav_path, frames=16_000, sample_value=0)
     config = _config(tmp_path)
     monkeypatch.setattr(
-        "speedytype.pipeline.transcribe_audio",
+        "speedytype.pipeline.transcribe_audio_result",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Whisper must not run for silence")),
     )
     monkeypatch.setattr(
@@ -114,7 +115,7 @@ def test_short_background_noise_with_brief_click_skips_external_work(tmp_path, m
     _write_wav_samples(wav_path, samples)
     config = _config(tmp_path)
     monkeypatch.setattr(
-        "speedytype.pipeline.transcribe_audio",
+        "speedytype.pipeline.transcribe_audio_result",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Whisper must not run for short non-speech noise")),
     )
     monkeypatch.setattr(
@@ -167,7 +168,10 @@ def test_short_non_silent_recording_still_runs_transcription(tmp_path, monkeypat
     wav_path = tmp_path / "short-speech.wav"
     _write_wav(wav_path, frames=8_000, sample_value=3000)
     sent = []
-    monkeypatch.setattr("speedytype.pipeline.transcribe_audio", lambda *args, **kwargs: sent.append(True) or "raw")
+    monkeypatch.setattr(
+        "speedytype.pipeline.transcribe_audio_result",
+        lambda *args, **kwargs: sent.append(True) or _stt_result("raw"),
+    )
     monkeypatch.setattr("speedytype.pipeline.call_llm_polisher", lambda *args: _llm_result("polished"))
 
     result = process_wav(wav_path, _config(tmp_path), do_paste=False, usage_scope="daily")
@@ -200,6 +204,10 @@ def _llm_result(text: str = "polished") -> LlmResult:
     )
 
 
+def _stt_result(text: str = "raw", *, provider: str = "groq", model: str = "whisper-large-v3") -> TranscriptionResult:
+    return TranscriptionResult(text=text, provider=provider, model=model)
+
+
 def test_owned_recording_prepares_flac_records_upload_and_completes(tmp_path, monkeypatch) -> None:
     wav_path = _owned_wav(tmp_path)
     flac_path = tmp_path / "prepared.flac"
@@ -217,8 +225,8 @@ def test_owned_recording_prepares_flac_records_upload_and_completes(tmp_path, mo
     sent = []
     monkeypatch.setattr("speedytype.pipeline.prepare_upload", fake_prepare)
     monkeypatch.setattr(
-        "speedytype.pipeline.transcribe_audio",
-        lambda path, config, *, model: sent.append(path) or "raw",
+        "speedytype.pipeline.transcribe_audio_result",
+        lambda path, config, *, model: sent.append(path) or _stt_result("raw"),
     )
     monkeypatch.setattr("speedytype.pipeline.call_llm_polisher", lambda *args: _llm_result())
 
@@ -245,7 +253,7 @@ def test_pipeline_records_short_wav_fallback_metadata(tmp_path, monkeypatch) -> 
         yield prepared
 
     monkeypatch.setattr("speedytype.pipeline.prepare_upload", fake_prepare)
-    monkeypatch.setattr("speedytype.pipeline.transcribe_audio", lambda *args, **kwargs: "raw")
+    monkeypatch.setattr("speedytype.pipeline.transcribe_audio_result", lambda *args, **kwargs: _stt_result("raw"))
     monkeypatch.setattr("speedytype.pipeline.call_llm_polisher", lambda *args: _llm_result())
 
     result = process_wav(wav_path, _config(tmp_path), do_paste=False)
@@ -270,7 +278,7 @@ def test_transcription_failure_marks_owned_wav_failed_retained(tmp_path, monkeyp
 
     monkeypatch.setattr("speedytype.pipeline.prepare_upload", fake_prepare)
     monkeypatch.setattr(
-        "speedytype.pipeline.transcribe_audio",
+        "speedytype.pipeline.transcribe_audio_result",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("provider detail")),
     )
 
@@ -396,9 +404,9 @@ def test_normal_transcription_sends_and_records_selected_stt_model(tmp_path, mon
 
     def fake_transcribe(path, config, *, model):
         sent_models.append(model)
-        return "raw"
+        return _stt_result("raw", provider="openai", model=model)
 
-    monkeypatch.setattr("speedytype.pipeline.transcribe_audio", fake_transcribe)
+    monkeypatch.setattr("speedytype.pipeline.transcribe_audio_result", fake_transcribe)
     monkeypatch.setattr(
         "speedytype.pipeline.call_llm_polisher",
         lambda text, config: LlmResult(
@@ -417,9 +425,30 @@ def test_normal_transcription_sends_and_records_selected_stt_model(tmp_path, mon
     result = process_wav(wav_path, config, do_paste=False, stt_model="whisper-selected")
 
     assert sent_models == ["whisper-selected"]
-    assert result.latency.stt_model == "whisper-selected"
+    assert result.latency.stt_model == "openai/whisper-selected"
     with config.latency_log_path.open("r", encoding="utf-8", newline="") as csv_file:
-        assert next(csv.DictReader(csv_file))["stt_model"] == "whisper-selected"
+        assert next(csv.DictReader(csv_file))["stt_model"] == "openai/whisper-selected"
+
+
+def test_normal_transcription_defaults_to_groq_and_records_actual_provider(tmp_path, monkeypatch) -> None:
+    wav_path = tmp_path / "audio.wav"
+    _write_wav(wav_path)
+    sent_models = []
+
+    def fake_transcribe(path, config, *, model):
+        sent_models.append(model)
+        return _stt_result("raw")
+
+    monkeypatch.setattr("speedytype.pipeline.transcribe_audio_result", fake_transcribe)
+    monkeypatch.setattr("speedytype.pipeline.call_llm_polisher", lambda *args: _llm_result())
+    config = _config(tmp_path)
+
+    result = process_wav(wav_path, config, do_paste=False)
+
+    assert sent_models == [DEFAULT_STT_MODEL]
+    assert result.latency.stt_model == DEFAULT_STT_MODEL
+    with config.latency_log_path.open("r", encoding="utf-8", newline="") as csv_file:
+        assert next(csv.DictReader(csv_file))["stt_model"] == DEFAULT_STT_MODEL
 
 
 def test_process_wav_rejects_invalid_usage_scope(tmp_path) -> None:
@@ -434,7 +463,10 @@ def test_daily_empty_transcript_does_not_record_an_llm_call(tmp_path, monkeypatc
         "speedytype.pipeline.call_llm_polisher",
         lambda *args: (_ for _ in ()).throw(AssertionError("empty transcript must skip the LLM")),
     )
-    monkeypatch.setattr("speedytype.pipeline.transcribe_audio", lambda path, config, *, model: "   ")
+    monkeypatch.setattr(
+        "speedytype.pipeline.transcribe_audio_result",
+        lambda path, config, *, model: _stt_result("   "),
+    )
     config = _config(tmp_path)
 
     result = process_wav(
@@ -445,7 +477,7 @@ def test_daily_empty_transcript_does_not_record_an_llm_call(tmp_path, monkeypatc
     )
 
     assert result.latency.usage_scope == "daily"
-    assert result.latency.stt_model == "whisper-1"
+    assert result.latency.stt_model == DEFAULT_STT_MODEL
     assert result.latency.llm_provider == ""
     assert result.latency.llm_model == ""
     assert result.latency.llm_input_tokens is None

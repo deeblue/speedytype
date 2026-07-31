@@ -28,6 +28,12 @@ def test_set_api_key_verifies_round_trip(monkeypatch):
     assert values[("SpeedyType", "openai_api_key")] == "sk-fake"
 
 
+def test_groq_api_key_uses_dedicated_keyring_username(monkeypatch):
+    values = install_fake_backend(monkeypatch)
+    secrets_store.set_api_key("GROQ_API_KEY", "gsk-fake")
+    assert values[("SpeedyType", "groq_api_key")] == "gsk-fake"
+
+
 def test_delete_api_key_verifies_value_is_absent(monkeypatch):
     credential = "sk-lingering-fake-secret"
     values = install_fake_backend(
@@ -90,14 +96,18 @@ def test_delete_api_key_reports_password_delete_error_when_value_remains(monkeyp
 def test_resolve_migrates_file_value_and_removes_only_verified_line(tmp_path, monkeypatch):
     install_fake_backend(monkeypatch)
     env_path = tmp_path / ".env"
-    env_path.write_text("# keep\nOPENAI_API_KEY=sk-fake\nGEMINI_API_KEY=gem-fake\nLLM_PROVIDER=gemini\n", encoding="utf-8")
+    env_path.write_text(
+        "# keep\nOPENAI_API_KEY=sk-fake\nGEMINI_API_KEY=gem-fake\nGROQ_API_KEY=groq-fake\nLLM_PROVIDER=gemini\n",
+        encoding="utf-8",
+    )
     result = secrets_store.resolve_api_keys(
         env_path,
-        {"OPENAI_API_KEY": "sk-fake", "GEMINI_API_KEY": "gem-fake"},
+        {"OPENAI_API_KEY": "sk-fake", "GEMINI_API_KEY": "gem-fake", "GROQ_API_KEY": "groq-fake"},
         environment={},
     )
     assert result.values["OPENAI_API_KEY"] == "sk-fake"
-    assert result.migrated == ("OPENAI_API_KEY", "GEMINI_API_KEY")
+    assert result.values["GROQ_API_KEY"] == "groq-fake"
+    assert result.migrated == ("OPENAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY")
     assert env_path.read_text(encoding="utf-8") == "# keep\nLLM_PROVIDER=gemini\n"
 
 

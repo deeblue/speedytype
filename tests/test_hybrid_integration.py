@@ -30,7 +30,7 @@ def test_pipeline_override_does_not_call_whisper(tmp_path, monkeypatch):
     wav = tmp_path / "audio.wav"
     write_empty_wav(wav)
     monkeypatch.setattr(
-        "speedytype.pipeline.transcribe_audio",
+        "speedytype.pipeline.transcribe_audio_result",
         lambda *args: (_ for _ in ()).throw(AssertionError("Whisper must not run twice")),
     )
     monkeypatch.setattr("speedytype.pipeline.call_llm_polisher", lambda text, config: type("R", (), {

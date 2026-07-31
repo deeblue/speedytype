@@ -222,11 +222,13 @@ def test_live_verification_reports_status_without_printing_complete_values(
     secrets = {
         "OPENAI_API_KEY": "openai-complete-secret",
         "GEMINI_API_KEY": "gemini-complete-secret",
+        "GROQ_API_KEY": "groq-complete-secret",
         "MINIMAX_API_KEY": "minimax-complete-secret",
     }
     config = SimpleNamespace(
         openai_api_key=secrets["OPENAI_API_KEY"],
         gemini_api_key=secrets["GEMINI_API_KEY"],
+        groq_api_key=secrets["GROQ_API_KEY"],
         minimax_api_key=secrets["MINIMAX_API_KEY"],
     )
     loaded_paths = []
@@ -274,6 +276,7 @@ def test_live_verification_reports_status_without_printing_complete_values(
     assert read_names == [
         ("OPENAI_API_KEY", "openai_api_key"),
         ("GEMINI_API_KEY", "gemini_api_key"),
+        ("GROQ_API_KEY", "groq_api_key"),
         ("MINIMAX_API_KEY", "minimax_api_key"),
     ]
     assert all(secret not in output for secret in secrets.values())
@@ -294,6 +297,7 @@ def test_live_verification_converts_provider_exception_to_fixed_failure_status(
     config = SimpleNamespace(
         openai_api_key="openai-secret",
         gemini_api_key="gemini-secret",
+        groq_api_key="groq-secret",
         minimax_api_key="",
     )
     monkeypatch.setattr(
@@ -307,6 +311,7 @@ def test_live_verification_converts_provider_exception_to_fixed_failure_status(
         lambda env_name, **kwargs: {
             "OPENAI_API_KEY": config.openai_api_key,
             "GEMINI_API_KEY": config.gemini_api_key,
+            "GROQ_API_KEY": config.groq_api_key,
             "MINIMAX_API_KEY": None,
         }[env_name],
     )
@@ -334,11 +339,13 @@ def test_live_verification_allows_optional_minimax_key_to_be_absent(
     config = SimpleNamespace(
         openai_api_key="openai-secret",
         gemini_api_key="gemini-secret",
+        groq_api_key="groq-secret",
         minimax_api_key="",
     )
     stored = {
         "OPENAI_API_KEY": config.openai_api_key,
         "GEMINI_API_KEY": config.gemini_api_key,
+        "GROQ_API_KEY": config.groq_api_key,
         "MINIMAX_API_KEY": None,
     }
     monkeypatch.setattr(
