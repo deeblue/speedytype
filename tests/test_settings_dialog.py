@@ -631,6 +631,15 @@ def test_save_writes_only_changed_secret_to_keyring(qapp, tmp_path, monkeypatch)
     assert env_path.read_text(encoding="utf-8") == original_env
 
 
+def test_save_groq_key_from_settings(qapp, tmp_path, monkeypatch):
+    writes = []
+    monkeypatch.setattr("speedytype.settings_dialog.set_api_key", lambda name, value: writes.append((name, value)))
+    dialog = SettingsDialog(make_config(), tmp_path / ".env", tmp_path / "settings.json")
+    dialog.groq_field.line_edit.setText("groq-test-value")
+    dialog._save()
+    assert writes == [("GROQ_API_KEY", "groq-test-value")]
+
+
 def test_save_empty_changed_secret_deletes_keyring_entry(qapp, tmp_path, monkeypatch):
     deleted = []
     monkeypatch.setattr("speedytype.settings_dialog.set_api_key", lambda *a: None)

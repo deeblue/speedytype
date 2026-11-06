@@ -40,6 +40,16 @@ def mask_secret(value: str, visible_suffix: int = 4) -> str:
     return "•" * (len(value) - visible_suffix) + value[-visible_suffix:]
 
 
+def test_groq_key(api_key: str, timeout_seconds: float = 15.0) -> tuple[bool, str]:
+    if not api_key:
+        return False, "No key provided."
+    try:
+        response = requests.get("https://api.groq.com/openai/v1/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=timeout_seconds)
+    except requests.RequestException:
+        return False, "Connection test failed."
+    return (True, "Groq key OK (model list retrieved).") if response.status_code == 200 else (False, "Connection test failed.")
+
+
 def test_openai_key(api_key: str, timeout_seconds: float = 15.0) -> tuple[bool, str]:
     if not api_key:
         return False, "No key provided."

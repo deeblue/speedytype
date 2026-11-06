@@ -19,9 +19,9 @@ def test_settings_config_allows_missing_required_keys(tmp_path):
     assert config.groq_api_key == ""
 
 
-def test_operational_config_still_rejects_missing_required_keys(tmp_path):
-    with pytest.raises(ConfigError, match="OPENAI_API_KEY, GEMINI_API_KEY"):
-        load_config(tmp_path / ".env", settings_path=tmp_path / "settings.json")
+def test_operational_config_allows_missing_keys(tmp_path):
+    config = load_config(tmp_path / ".env", settings_path=tmp_path / "settings.json")
+    assert not config.openai_api_key and not config.gemini_api_key
 
 
 def test_load_config_reads_env_file(tmp_path: Path):
@@ -64,12 +64,10 @@ def test_load_config_uses_resolved_keyring_values(tmp_path, monkeypatch):
     assert config.groq_api_key == "ring-groq"
 
 
-def test_load_config_missing_message_mentions_settings_and_env(tmp_path, monkeypatch):
+def test_load_config_with_no_resolved_keys(tmp_path, monkeypatch):
     monkeypatch.setattr("speedytype.config.resolve_api_keys", lambda *a, **k: SecretResolution({}))
-    with pytest.raises(ConfigError) as exc:
-        load_config(tmp_path / ".env", settings_path=tmp_path / "settings.json")
-    assert "設定頁面" in str(exc.value)
-    assert ".env" in str(exc.value)
+    config = load_config(tmp_path / ".env", settings_path=tmp_path / "settings.json")
+    assert not any((config.openai_api_key, config.gemini_api_key, config.groq_api_key, config.minimax_api_key))
 
 
 def test_load_config_reads_behavior_settings_from_settings_json(tmp_path: Path):
@@ -153,15 +151,9 @@ def test_load_config_falls_back_when_saved_mic_device_is_missing(tmp_path: Path,
     assert "A Device That No Longer Exists" in config.mic_device_warning
 
 
-def test_load_config_reports_missing_required_keys(tmp_path: Path):
+def test_load_config_does_not_require_keys(tmp_path: Path):
     env_file = tmp_path / ".env"
     env_file.write_text("OPENAI_API_KEY=\nHOTKEY=f9\n", encoding="utf-8")
 
-    with pytest.raises(ConfigError) as exc:
-        load_config(env_file, settings_path=tmp_path / "settings.json")
-
-    message = str(exc.value)
-    assert "Missing required configuration: OPENAI_API_KEY, GEMINI_API_KEY" in message
-    assert str(env_file) in message
-    assert "設定頁面" in message
-    assert "keyring 不可用時於 .env 提供備援值" in message
+    config = load_config(env_file, settings_path=tmp_path / "settings.json")
+    assert not config.openai_api_key and not config.gemini_api_key

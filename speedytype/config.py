@@ -19,6 +19,17 @@ class ConfigError(RuntimeError):
     pass
 
 
+class MissingApiKeyError(RuntimeError):
+    def __init__(self, key_name: str):
+        self.key_name = key_name
+        super().__init__(f"缺少 {key_name}。請至 SpeedyType 設定頁面新增金鑰，儲存後重新啟動。")
+
+
+def require_api_key(value: str, key_name: str) -> None:
+    if not value.strip():
+        raise MissingApiKeyError(key_name)
+
+
 @dataclass(frozen=True)
 class AppConfig:
     openai_api_key: str
@@ -112,14 +123,8 @@ def load_config(
     openai_api_key = resolution.values.get("OPENAI_API_KEY", "").strip()
     gemini_api_key = resolution.values.get("GEMINI_API_KEY", "").strip()
     groq_api_key = resolution.values.get("GROQ_API_KEY", "").strip()
-    missing = [name for name, value in (("OPENAI_API_KEY", openai_api_key), ("GEMINI_API_KEY", gemini_api_key)) if not value]
-    if missing and require_api_keys:
-        raise ConfigError(
-            "Missing required configuration: "
-            + ", ".join(missing)
-            + ". 請從 SpeedyType 設定頁面新增金鑰，或在 keyring 不可用時於 .env 提供備援值："
-            + f"{env_path.resolve()}."
-        )
+    # Kept for compatibility with callers; credentials are checked on use.
+    del require_api_keys
 
     # Behavior settings (max recording length, hotkey, vocabulary bias, mic
     # device) now live in settings.json, editable from the Settings dialog,

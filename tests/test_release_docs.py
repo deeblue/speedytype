@@ -63,14 +63,14 @@ def test_root_readme_distinguishes_development_tree_from_release():
 def test_release_checklist_documents_verified_annotated_tag_workflow():
     content = RELEASE.read_text(encoding="utf-8")
     required = (
-        'VERSION = "0.5.7"',
-        'BUILD_DATE = "2026-07-20"',
+        'VERSION = "0.5.8"',
+        'BUILD_DATE = "2026-11-06"',
         "python -m pytest -q",
         "python -m compileall -q speedytype scripts",
         "python scripts/build_release.py",
-        'git tag -a v0.5.7 -m "SpeedyType 0.5.7"',
+        'git tag -a v0.5.8 -m "SpeedyType 0.5.8"',
         "git push origin master",
-        "git push origin v0.5.7",
+        "git push origin v0.5.8",
         "Never move or force-update an existing release tag",
     )
     for text in required:

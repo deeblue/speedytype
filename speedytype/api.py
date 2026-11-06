@@ -7,7 +7,7 @@ from typing import Any
 
 import requests
 
-from speedytype.config import AppConfig, DEFAULT_GEMINI_MODEL
+from speedytype.config import AppConfig, DEFAULT_GEMINI_MODEL, MissingApiKeyError, require_api_key
 
 
 WHISPER_URL = "https://api.openai.com/v1/audio/transcriptions"
@@ -46,7 +46,7 @@ class ApiResponseFormatError(RuntimeError):
     pass
 
 
-class MissingSttCredentialError(RuntimeError):
+class MissingSttCredentialError(MissingApiKeyError):
     category = "MissingSttCredential"
 
 
@@ -143,6 +143,7 @@ def transcribe_audio_request(
     prompt_override: str | None = None,
     model: str = "whisper-1",
 ) -> dict[str, Any]:
+    require_api_key(config.openai_api_key, "OPENAI_API_KEY")
     mime_type = _mime_type(audio_path)
     data: dict[str, Any] = {
         "model": model,
@@ -175,9 +176,7 @@ def transcribe_audio_groq_request(
     model: str = DEFAULT_GROQ_STT_MODEL,
 ) -> dict[str, Any]:
     if not config.groq_api_key:
-        raise MissingSttCredentialError(
-            "Missing GROQ_API_KEY; provision it into the SpeedyType keyring before using the default Groq STT provider."
-        )
+        raise MissingSttCredentialError("GROQ_API_KEY")
     data: dict[str, Any] = {
         "model": model,
         "prompt": config.whisper_vocab_bias if prompt_override is None else prompt_override,
@@ -273,6 +272,7 @@ def gemini_generate_content_url(model: str, api_key: str) -> str:
 
 
 def polish_text(text: str, config: AppConfig, timeout_seconds: int = 120) -> str:
+    require_api_key(config.gemini_api_key, "GEMINI_API_KEY")
     body = {
         "systemInstruction": {"parts": [{"text": build_system_prompt(config)}]},
         "contents": [{"role": "user", "parts": [{"text": text}]}],
@@ -289,6 +289,7 @@ def polish_text(text: str, config: AppConfig, timeout_seconds: int = 120) -> str
 
 
 def discover_flash_model(api_key: str, timeout_seconds: int = 30) -> str:
+    require_api_key(api_key, "GEMINI_API_KEY")
     response = requests.get(f"{GEMINI_MODELS_URL}?key={api_key}", timeout=timeout_seconds)
     _raise_http_error("Gemini model list", response)
     payload = response.json()

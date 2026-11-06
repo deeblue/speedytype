@@ -8,7 +8,7 @@ import time
 import requests
 
 from speedytype.api import _raise_http_error, build_system_prompt, gemini_generate_content_url, parse_gemini_text
-from speedytype.config import AppConfig
+from speedytype.config import AppConfig, require_api_key
 
 
 @dataclass(frozen=True)
@@ -105,6 +105,7 @@ def _strip_minimax_think(text: str) -> str:
 
 
 def call_gemini_polisher(text: str, config: AppConfig, *, model: str, thinking_level: str = "", timeout_seconds: int = 120) -> LlmResult:
+    require_api_key(config.gemini_api_key, "GEMINI_API_KEY")
     def operation() -> dict[str, Any]:
         generation_config: dict[str, Any] = {"temperature": 0.1}
         if thinking_level:
@@ -151,6 +152,7 @@ def parse_openai_text(payload: dict[str, Any]) -> str:
 
 
 def call_openai_polisher(text: str, config: AppConfig, *, model: str, reasoning_effort: str = "", timeout_seconds: int = 120) -> LlmResult:
+    require_api_key(config.openai_api_key, "OPENAI_API_KEY")
     def operation() -> dict[str, Any]:
         body: dict[str, Any] = {
             "model": model,
@@ -183,8 +185,7 @@ def call_openai_polisher(text: str, config: AppConfig, *, model: str, reasoning_
 
 
 def call_minimax_polisher(text: str, config: AppConfig, *, model: str, thinking_type: str = "", timeout_seconds: int = 120) -> LlmResult:
-    if not config.minimax_api_key:
-        raise RuntimeError("Missing MINIMAX_API_KEY; skipping MiniMax call.")
+    require_api_key(config.minimax_api_key, "MINIMAX_API_KEY")
 
     def operation() -> dict[str, Any]:
         body: dict[str, Any] = {

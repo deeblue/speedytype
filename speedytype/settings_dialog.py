@@ -29,6 +29,7 @@ from speedytype.budget_dialog import BudgetDialog
 from speedytype.capacity_widget import BudgetCapacityWidget
 from speedytype.config import AppConfig
 from speedytype.env_writer import (
+    test_groq_key,
     test_gemini_key,
     test_minimax_key,
     test_openai_key,
@@ -190,6 +191,7 @@ class SettingsDialog(QDialog):
         self.settings_path = str(settings_path or default_settings_path())
         self.pricing_path = Path(pricing_path) if pricing_path is not None else default_pricing_path()
         self._saved_key_values = {
+            "GROQ_API_KEY": config.groq_api_key,
             "OPENAI_API_KEY": config.openai_api_key,
             "GEMINI_API_KEY": config.gemini_api_key,
             "MINIMAX_API_KEY": config.minimax_api_key,
@@ -523,9 +525,11 @@ class SettingsDialog(QDialog):
         group = QGroupBox("API 金鑰")
         group_layout = QVBoxLayout(group)
 
+        self.groq_field = MaskedKeyField("Groq", self.config.groq_api_key, test_groq_key)
         self.openai_field = MaskedKeyField("OpenAI", self.config.openai_api_key, test_openai_key)
         self.gemini_field = MaskedKeyField("Gemini", self.config.gemini_api_key, test_gemini_key)
         self.minimax_field = MaskedKeyField("MiniMax", self.config.minimax_api_key, test_minimax_key)
+        group_layout.addWidget(self.groq_field)
         group_layout.addWidget(self.openai_field)
         group_layout.addWidget(self.gemini_field)
         group_layout.addWidget(self.minimax_field)
@@ -572,6 +576,7 @@ class SettingsDialog(QDialog):
 
         key_changes = []
         for field, env_key in (
+            (self.groq_field, "GROQ_API_KEY"),
             (self.openai_field, "OPENAI_API_KEY"),
             (self.gemini_field, "GEMINI_API_KEY"),
             (self.minimax_field, "MINIMAX_API_KEY"),

@@ -14,7 +14,7 @@ from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 from speedytype.audio import Recorder, temp_wav_path
-from speedytype.config import AppConfig
+from speedytype.config import AppConfig, MissingApiKeyError
 from speedytype.console import safe_print
 from speedytype.hotkey import PlatformPermissionError, is_hotkey_active, register_hold_hotkey, remove_hotkey, wait_until_hotkey_released
 from speedytype.hotkey_debounce import append_rejection_record
@@ -561,6 +561,8 @@ class DaemonController(QObject):
                 f"Recording processing failed ({category}). WAV preserved: "
                 f"{preserved_path}. Daemon remains available."
             )
+            if isinstance(exc, MissingApiKeyError):
+                message = f"{exc} 錄音已保留：{preserved_path}"
             safe_print(message, flush=True)
             self.processing_error_signal.emit(message)
         finally:
